@@ -6,246 +6,133 @@
 <title>Sleeper Fantasy Command Center</title>
 <style>
   :root {
-    --bg-base: #090A0F;
-    --bg-panel: #12151E;
-    --bg-card: #181C26;
-    --border: #262B38;
-    --text-main: #F2F4F8;
-    --text-muted: #8E96AA;
-    --accent: #0A84FF;
-    --accent-bg: rgba(10, 132, 255, 0.16);
-    --good: #30D158;
-    --good-bg: rgba(48, 209, 88, 0.14);
-    --warn: #FFD60A;
-    --warn-bg: rgba(255, 214, 10, 0.14);
-    --bad: #FF453A;
-    --bad-bg: rgba(255, 69, 58, 0.14);
+    --bg-base:#090A0F; --bg-panel:#12151E; --bg-card:#181C26; --border:#262B38;
+    --text-main:#F2F4F8; --text-muted:#8E96AA; --accent:#0A84FF; --accent-bg:rgba(10,132,255,0.16);
+    --good:#30D158; --good-bg:rgba(48,209,88,0.14); --warn:#FFD60A; --warn-bg:rgba(255,214,10,0.14);
+    --bad:#FF453A; --bad-bg:rgba(255,69,58,0.14);
   }
-  * { box-sizing: border-box; margin: 0; padding: 0; }
+  * { box-sizing:border-box; margin:0; padding:0; }
   body {
-    background-color: var(--bg-base); color: var(--text-main);
-    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", sans-serif;
-    padding: 16px; min-height: 100vh; display: flex; flex-direction: column; gap: 12px;
+    background:var(--bg-base); color:var(--text-main);
+    font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","Segoe UI",sans-serif;
+    padding:16px; min-height:100vh; display:flex; flex-direction:column; gap:12px;
   }
-  input, select, button {
-    font-family: inherit; font-size: 13px; font-weight: 600; border-radius: 8px; outline: none;
-  }
-  input, select {
-    background-color: var(--bg-card); color: var(--text-main); border: 1px solid var(--border); padding: 7px 12px;
-  }
-  input:focus, select:focus { border: 1.5px solid var(--accent); background-color: #1D2230; }
-  button {
-    background-color: var(--accent); color: #FFFFFF; border: none; padding: 8px 16px;
-    font-weight: 700; cursor: pointer; transition: background 0.15s ease;
-  }
-  button:hover { background-color: #0071E3; }
+  input, select, button { font-family:inherit; font-size:13px; font-weight:600; border-radius:8px; outline:none; }
+  input, select { background:var(--bg-card); color:var(--text-main); border:1px solid var(--border); padding:7px 12px; }
+  input:focus, select:focus { border:1.5px solid var(--accent); background:#1D2230; }
+  button { background:var(--accent); color:#FFF; border:none; padding:8px 16px; font-weight:700; cursor:pointer; transition:0.15s; }
+  button:hover { background:#0071E3; }
 
-  /* Top Navigation Bar */
   .top-nav {
-    background-color: rgba(20, 24, 34, 0.92); border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 14px; padding: 12px 18px; display: flex; flex-direction: column; gap: 10px;
+    background:rgba(20,24,34,0.92); border:1px solid rgba(255,255,255,0.08);
+    border-radius:14px; padding:12px 18px; display:flex; flex-direction:column; gap:10px;
   }
-  .top-brand-row { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; }
-  .title-label { font-size: 17px; font-weight: 800; color: var(--text-main); letter-spacing: 0.6px; }
-  .status-pill {
-    font-size: 12px; font-weight: 600; color: var(--text-muted); background-color: var(--bg-card);
-    border: 1px solid var(--border); padding: 4px 12px; border-radius: 8px;
-  }
-  .controls-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-  .controls-row label { font-size: 11px; font-weight: 700; color: var(--text-muted); letter-spacing: 0.5px; }
-  .controls-row select.grow { flex: 1; min-width: 175px; }
+  .top-brand-row { display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; }
+  .title-label { font-size:17px; font-weight:800; letter-spacing:0.6px; }
+  .status-pill { font-size:12px; font-weight:600; color:var(--text-muted); background:var(--bg-card); border:1px solid var(--border); padding:4px 12px; border-radius:8px; }
+  .controls-row { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+  .controls-row label { font-size:11px; font-weight:700; color:var(--text-muted); letter-spacing:0.5px; }
+  .controls-row select.grow { flex:1; min-width:175px; }
 
-  /* Body Layout */
-  .body-layout { display: flex; gap: 14px; flex: 1; min-height: 0; }
+  .body-layout { display:flex; gap:14px; flex:1; min-height:0; }
   .sidebar {
-    width: 195px; background-color: rgba(20, 24, 34, 0.92); border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 14px; padding: 10px 8px; display: flex; flex-direction: column; gap: 4px; flex-shrink: 0;
+    width:195px; background:rgba(20,24,34,0.92); border:1px solid rgba(255,255,255,0.08);
+    border-radius:14px; padding:10px 8px; display:flex; flex-direction:column; gap:4px; flex-shrink:0;
   }
-  .nav-btn {
-    background: transparent; color: var(--text-muted); text-align: left; padding: 12px 14px;
-    border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; border: none;
-  }
-  .nav-btn:hover { background-color: rgba(255, 255, 255, 0.05); color: var(--text-main); }
-  .nav-btn.active { background-color: var(--accent); color: #FFFFFF; font-weight: 700; }
+  .nav-btn { background:transparent; color:var(--text-muted); text-align:left; padding:12px 14px; border-radius:8px; font-size:13px; font-weight:600; border:none; cursor:pointer; }
+  .nav-btn:hover { background:rgba(255,255,255,0.05); color:var(--text-main); }
+  .nav-btn.active { background:var(--accent); color:#FFF; font-weight:700; }
 
   .content-stack {
-    flex: 1; background-color: rgba(20, 24, 34, 0.92); border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 14px; padding: 18px; overflow-y: auto; min-width: 0;
+    flex:1; background:rgba(20,24,34,0.92); border:1px solid rgba(255,255,255,0.08);
+    border-radius:14px; padding:18px; overflow-y:auto; min-width:0;
   }
-  .tab-page { display: none; flex-direction: column; gap: 12px; }
-  .tab-page.active { display: flex; }
+  .tab-page { display:none; flex-direction:column; gap:12px; }
+  .tab-page.active { display:flex; }
 
-  /* Banners & Cards */
-  .card-banner { background-color: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; }
-  .banner-inner { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
-  .badge { display: inline-block; padding: 5px 10px; border-radius: 6px; font-size: 11px; font-weight: 700; white-space: nowrap; }
-  .badge-green { background-color: var(--good-bg); color: var(--good); }
-  .badge-blue { background-color: var(--accent-bg); color: var(--accent); }
-  .badge-yellow { background-color: var(--warn-bg); color: var(--warn); }
-  .badge-red { background-color: var(--bad-bg); color: var(--bad); }
-  .badge-purple { background-color: rgba(191, 90, 242, 0.16); color: #BF5AF2; }
+  .card-banner { background:var(--bg-card); border:1px solid var(--border); border-radius:12px; padding:14px 16px; display:flex; flex-direction:column; gap:8px; }
+  .banner-inner { display:flex; align-items:center; gap:14px; flex-wrap:wrap; }
+  .badge { display:inline-block; padding:5px 10px; border-radius:6px; font-size:11px; font-weight:700; white-space:nowrap; }
+  .badge-green { background:var(--good-bg); color:var(--good); }
+  .badge-blue { background:var(--accent-bg); color:var(--accent); }
+  .badge-yellow { background:var(--warn-bg); color:var(--warn); }
+  .badge-red { background:var(--bad-bg); color:var(--bad); }
+  .badge-purple { background:rgba(191,90,242,0.16); color:#BF5AF2; }
 
-  .sup-bar {
-    background-color: var(--bg-card); border: 1px solid var(--border); border-radius: 12px;
-    padding: 10px 16px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
-  }
-  .sup-title { font-size: 11px; font-weight: 800; color: var(--text-muted); letter-spacing: 0.6px; width: 155px; }
-  .sup-item { font-size: 12px; font-weight: 700; flex: 1; min-width: 190px; color: var(--text-main); }
+  .sup-bar { background:var(--bg-card); border:1px solid var(--border); border-radius:12px; padding:10px 16px; display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+  .sup-title { font-size:11px; font-weight:800; color:var(--text-muted); letter-spacing:0.6px; width:155px; }
+  .sup-item { font-size:12px; font-weight:700; flex:1; min-width:190px; }
 
-  /* Positional Grade Strip */
-  .grade-grid {
-    display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px;
-  }
-  .grade-card {
-    background-color: #141720; border: 1px solid var(--border); border-radius: 10px;
-    padding: 10px 12px; display: flex; flex-direction: column; gap: 5px; cursor: pointer;
-    transition: border-color 0.15s ease, transform 0.1s ease;
-  }
-  .grade-card:hover { border-color: var(--accent); transform: translateY(-1px); }
-  .grade-card.priority-need { border: 1.5px solid var(--bad); background-color: rgba(255, 69, 58, 0.06); }
-  .grade-card.surplus-unit { border: 1.5px solid var(--good); background-color: rgba(48, 209, 88, 0.06); }
-  .grade-pill {
-    font-size: 15px; font-weight: 900; padding: 2px 9px; border-radius: 6px; letter-spacing: -0.3px;
-  }
+  .grade-grid { display:grid; grid-template-columns:repeat(5,1fr); gap:10px; }
+  .grade-card { background:#141720; border:1px solid var(--border); border-radius:10px; padding:10px 12px; display:flex; flex-direction:column; gap:5px; cursor:pointer; transition:0.15s; }
+  .grade-card:hover { border-color:var(--accent); transform:translateY(-1px); }
+  .grade-card.priority-need { border:1.5px solid var(--bad); background:rgba(255,69,58,0.06); }
+  .grade-card.surplus-unit { border:1.5px solid var(--good); background:rgba(48,209,88,0.06); }
+  .grade-pill { font-size:15px; font-weight:900; padding:2px 9px; border-radius:6px; }
 
-  /* Tables */
-  .sec-hdr { font-size: 11px; font-weight: 800; letter-spacing: 0.8px; margin-top: 4px; }
-  .table-wrap { border: 1px solid var(--border); border-radius: 10px; background-color: var(--bg-card); overflow-x: auto; }
-  table { width: 100%; border-collapse: collapse; font-size: 13px; }
-  th {
-    background-color: #1C202B; color: var(--text-muted); font-weight: 700; font-size: 11px;
-    padding: 10px 10px; border-bottom: 1px solid var(--border); text-align: center; white-space: nowrap; letter-spacing: 0.4px;
-  }
-  td { padding: 8px 10px; border-bottom: 1px solid #1E222E; text-align: center; vertical-align: middle; }
-  tr:last-child td { border-bottom: none; }
-  tr.table-row-hover:hover td { background-color: rgba(255, 255, 255, 0.02); }
-  .player-cell { display: flex; align-items: center; gap: 12px; text-align: left; min-width: 220px; }
-  .avatar {
-    width: 38px; height: 38px; border-radius: 50%; background-color: #232834;
-    object-fit: cover; flex-shrink: 0; display: flex; align-items: center; justify-content: center;
-    font-size: 10px; font-weight: 700; color: var(--text-muted); border: 1px solid rgba(255,255,255,0.12);
-  }
-  .team-logo-sm {
-    width: 18px; height: 18px; border-radius: 50%; vertical-align: middle; margin-right: 5px;
-    object-fit: contain; background: rgba(255,255,255,0.06); padding: 1px;
-  }
-  .pos-pill {
-    display: inline-block; width: 44px; height: 22px; line-height: 22px; border-radius: 6px;
-    font-weight: 800; font-size: 10px; text-align: center; flex-shrink: 0;
-  }
-  canvas.chart-canvas {
-    width: 100%; height: 300px; background-color: var(--bg-card);
-    border: 1px solid var(--border); border-radius: 12px; display: block;
-  }
+  .sec-hdr { font-size:11px; font-weight:800; letter-spacing:0.8px; margin-top:4px; }
+  .table-wrap { border:1px solid var(--border); border-radius:10px; background:var(--bg-card); overflow-x:auto; }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  th { background:#1C202B; color:var(--text-muted); font-weight:700; font-size:11px; padding:10px; border-bottom:1px solid var(--border); text-align:center; white-space:nowrap; }
+  td { padding:8px 10px; border-bottom:1px solid #1E222E; text-align:center; vertical-align:middle; }
+  tr:last-child td { border-bottom:none; }
+  tr.table-row-hover:hover td { background:rgba(255,255,255,0.02); }
+  .player-cell { display:flex; align-items:center; gap:12px; text-align:left; min-width:220px; }
+  .avatar { width:38px; height:38px; border-radius:50%; background:#232834; object-fit:cover; flex-shrink:0; border:1px solid rgba(255,255,255,0.12); }
+  .team-logo-sm { width:18px; height:18px; border-radius:50%; vertical-align:middle; margin-right:5px; object-fit:contain; background:rgba(255,255,255,0.06); padding:1px; }
+  .pos-pill { display:inline-block; width:44px; height:22px; line-height:22px; border-radius:6px; font-weight:800; font-size:10px; text-align:center; flex-shrink:0; }
+  canvas.chart-canvas { width:100%; height:300px; background:var(--bg-card); border:1px solid var(--border); border-radius:12px; display:block; }
 
-  /* Segmented Bars & Trade Builder */
-  .seg-bar-container { background-color: var(--bg-card); border: 1px solid var(--border); border-radius: 10px; padding: 4px; display: inline-flex; gap: 4px; flex-wrap: wrap; }
-  .seg-btn, .sos-mode-btn { background: transparent; color: var(--text-muted); padding: 8px 16px; border-radius: 7px; font-size: 12px; font-weight: 600; border: none; cursor: pointer; }
-  .seg-btn:hover, .sos-mode-btn:hover { color: var(--text-main); background-color: rgba(255, 255, 255, 0.06); }
-  .seg-btn.active, .sos-mode-btn.active { background-color: var(--accent); color: #FFFFFF; font-weight: 800; }
-  .trade-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; }
-  .scroll-list { max-height: 420px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding-right: 4px; }
-  .p-card {
-    background-color: #161922; border: 1px solid var(--border); border-radius: 10px;
-    padding: 8px 12px; display: flex; align-items: center; gap: 12px; cursor: pointer; user-select: none;
-  }
-  .p-card:hover { border: 1px solid #4A5568; background-color: #1C202B; }
-  .p-card.selected { background-color: rgba(10, 132, 255, 0.18); border: 1.5px solid var(--accent); }
+  .seg-bar-container { background:var(--bg-card); border:1px solid var(--border); border-radius:10px; padding:4px; display:inline-flex; gap:4px; flex-wrap:wrap; }
+  .seg-btn, .sos-mode-btn { background:transparent; color:var(--text-muted); padding:8px 16px; border-radius:7px; font-size:12px; font-weight:600; border:none; cursor:pointer; }
+  .seg-btn:hover, .sos-mode-btn:hover { color:var(--text-main); background:rgba(255,255,255,0.06); }
+  .seg-btn.active, .sos-mode-btn.active { background:var(--accent); color:#FFF; font-weight:800; }
+  .trade-grid { display:grid; grid-template-columns:1fr 1fr 1fr; gap:14px; }
+  .scroll-list { max-height:420px; overflow-y:auto; display:flex; flex-direction:column; gap:8px; padding-right:4px; }
+  .p-card { background:#161922; border:1px solid var(--border); border-radius:10px; padding:8px 12px; display:flex; align-items:center; gap:12px; cursor:pointer; user-select:none; }
+  .p-card:hover { border-color:#4A5568; background:#1C202B; }
+  .p-card.selected { background:rgba(10,132,255,0.18); border:1.5px solid var(--accent); }
 
-  /* Tabular Trade Asset Chips */
-  .trade-asset-stack { display: flex; flex-direction: column; gap: 6px; min-width: 240px; }
-  .trade-asset-item {
-    display: flex; align-items: center; gap: 10px; background-color: #141720;
-    border: 1px solid #222734; border-radius: 8px; padding: 6px 10px; text-align: left;
-  }
-  .pkg-chip {
-    display: flex; align-items: center; justify-content: space-between; gap: 10px;
-    background-color: #161922; border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px;
-  }
-  .btn-builder-action {
-    background-color: rgba(10, 132, 255, 0.16); color: #64D2FF; border: 1px solid var(--accent);
-    padding: 7px 12px; border-radius: 8px; font-size: 11px; font-weight: 800; cursor: pointer; white-space: nowrap;
-  }
-  .btn-builder-action:hover { background-color: var(--accent); color: #FFFFFF; }
+  .trade-asset-stack { display:flex; flex-direction:column; gap:6px; min-width:255px; }
+  .trade-asset-item { display:flex; align-items:center; gap:10px; background:#141720; border:1px solid #222734; border-radius:8px; padding:6px 10px; text-align:left; }
+  .pkg-chip { display:flex; align-items:center; justify-content:space-between; gap:10px; background:#161922; border:1px solid var(--border); border-radius:8px; padding:6px 10px; }
+  .btn-builder-action { background:rgba(10,132,255,0.16); color:#64D2FF; border:1px solid var(--accent); padding:7px 12px; border-radius:8px; font-size:11px; font-weight:800; cursor:pointer; white-space:nowrap; }
+  .btn-builder-action:hover { background:var(--accent); color:#FFF; }
 
-  /* SOS Heat-Map Cells */
-  .sos-cell {
-    border-radius: 8px; padding: 7px 10px; min-width: 125px;
-    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
-  }
-  .sos-smash { background-color: rgba(48, 209, 88, 0.22); border: 1px solid rgba(48, 209, 88, 0.55); color: #30D158; }
-  .sos-good  { background-color: rgba(48, 209, 88, 0.10); border: 1px solid rgba(48, 209, 88, 0.28); color: #86EFAC; }
-  .sos-mid   { background-color: rgba(142, 150, 170, 0.10); border: 1px solid rgba(142, 150, 170, 0.24); color: #F2F4F8; }
-  .sos-tough { background-color: rgba(255, 214, 10, 0.14); border: 1px solid rgba(255, 214, 10, 0.35); color: #FFD60A; }
-  .sos-avoid { background-color: rgba(255, 69, 58, 0.22); border: 1px solid rgba(255, 69, 58, 0.55); color: #FF453A; }
-  .sos-bye   { background-color: #12141C; border: 1px dashed #3A4256; color: #8E96AA; }
-  .dome-tag  {
-    font-size: 9px; font-weight: 800; padding: 1px 5px; border-radius: 4px;
-    background-color: rgba(100, 210, 255, 0.16); color: #64D2FF; margin-left: 3px;
-  }
+  .sos-mini-pill { display:inline-block; padding:1px 6px; border-radius:4px; font-size:10px; font-weight:800; }
+  .sos-mini-elite { background:rgba(48,209,88,0.20); color:#30D158; border:1px solid rgba(48,209,88,0.45); }
+  .sos-mini-avg   { background:rgba(10,132,255,0.15); color:#64D2FF; }
+  .sos-mini-tough { background:rgba(255,69,58,0.18); color:#FF453A; }
 
-  /* 6-Team Playoff Bracket Grid & Matchup Cards */
-  .bracket-grid {
-    display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; align-items: stretch;
-  }
-  .bracket-col {
-    background-color: var(--bg-card); border: 1px solid var(--border); border-radius: 12px;
-    padding: 14px; display: flex; flex-direction: column; gap: 12px;
-  }
-  .bracket-col-hdr {
-    display: flex; justify-content: space-between; align-items: center;
-    padding-bottom: 8px; border-bottom: 1px solid var(--border);
-  }
-  .bracket-match-card {
-    background-color: #131620; border: 1px solid var(--border); border-radius: 10px;
-    padding: 10px 12px; display: flex; flex-direction: column; gap: 8px;
-  }
-  .bracket-match-hdr {
-    display: flex; justify-content: space-between; align-items: center;
-    font-size: 11px; font-weight: 800; color: var(--text-muted); letter-spacing: 0.4px;
-  }
-  .bracket-slot {
-    background-color: #181C26; border: 1px solid #262B38; border-radius: 8px;
-    padding: 8px 10px; display: flex; align-items: center; justify-content: space-between;
-    gap: 10px; cursor: pointer; transition: border-color 0.15s ease, background-color 0.15s ease; user-select: none;
-  }
-  .bracket-slot:hover { border-color: var(--accent); background-color: #1E2330; }
-  .bracket-slot.winner {
-    border: 1.5px solid var(--good); background-color: rgba(48, 209, 88, 0.11);
-  }
-  .bracket-slot.bye-slot {
-    cursor: default; border: 1px dashed rgba(10, 132, 255, 0.45); background-color: rgba(10, 132, 255, 0.08);
-  }
-  .seed-pill {
-    display: inline-flex; align-items: center; justify-content: center;
-    width: 26px; height: 24px; border-radius: 6px; font-size: 11px; font-weight: 900;
-    background-color: #232834; color: var(--text-main); flex-shrink: 0;
-  }
-  .seed-pill.top-seed { background-color: var(--accent-bg); color: #64D2FF; border: 1px solid rgba(10, 132, 255, 0.4); }
-  .champ-callout {
-    background: linear-gradient(135deg, rgba(48, 209, 88, 0.18), rgba(10, 132, 255, 0.16));
-    border: 1.5px solid var(--good); border-radius: 10px; padding: 12px 14px; text-align: center;
-  }
+  .sos-cell { border-radius:8px; padding:7px 10px; min-width:125px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px; }
+  .sos-smash { background:rgba(48,209,88,0.22); border:1px solid rgba(48,209,88,0.55); color:#30D158; }
+  .sos-good  { background:rgba(48,209,88,0.10); border:1px solid rgba(48,209,88,0.28); color:#86EFAC; }
+  .sos-mid   { background:rgba(142,150,170,0.10); border:1px solid rgba(142,150,170,0.24); color:#F2F4F8; }
+  .sos-tough { background:rgba(255,214,10,0.14); border:1px solid rgba(255,214,10,0.35); color:#FFD60A; }
+  .sos-avoid { background:rgba(255,69,58,0.22); border:1px solid rgba(255,69,58,0.55); color:#FF453A; }
+  .sos-bye   { background:#12141C; border:1px dashed #3A4256; color:#8E96AA; }
+  .dome-tag  { font-size:9px; font-weight:800; padding:1px 5px; border-radius:4px; background:rgba(100,210,255,0.16); color:#64D2FF; margin-left:3px; }
 
-  /* Optimizer Rows */
-  .opt-row {
-    display: grid; grid-template-columns: 1fr 130px 1fr; gap: 12px; align-items: center;
-    padding: 6px; border-radius: 14px; height: 74px; background: transparent;
-  }
-  .opt-row.warn { background-color: #281D10; border: 1.5px solid var(--warn); }
-  .opt-row.sev { background-color: #2A1215; border: 1.5px solid var(--bad); }
+  .bracket-grid { display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px; align-items:stretch; }
+  .bracket-grid.two-col { grid-template-columns:1fr 1fr; }
+  .bracket-col { background:var(--bg-card); border:1px solid var(--border); border-radius:12px; padding:14px; display:flex; flex-direction:column; gap:12px; }
+  .bracket-col-hdr { display:flex; justify-content:space-between; align-items:center; padding-bottom:8px; border-bottom:1px solid var(--border); }
+  .bracket-match-card { background:#131620; border:1px solid var(--border); border-radius:10px; padding:10px 12px; display:flex; flex-direction:column; gap:8px; }
+  .bracket-match-hdr { display:flex; justify-content:space-between; align-items:center; font-size:11px; font-weight:800; color:var(--text-muted); }
+  .bracket-slot { background:#181C26; border:1px solid #262B38; border-radius:8px; padding:8px 10px; display:flex; align-items:center; justify-content:space-between; gap:10px; cursor:pointer; user-select:none; transition:0.15s; }
+  .bracket-slot:hover { border-color:var(--accent); background:#1E2330; }
+  .bracket-slot.winner { border:1.5px solid var(--good); background:rgba(48,209,88,0.11); }
+  .bracket-slot.bye-slot { cursor:default; border:1px dashed rgba(10,132,255,0.45); background:rgba(10,132,255,0.08); }
+  .seed-pill { display:inline-flex; align-items:center; justify-content:center; width:26px; height:24px; border-radius:6px; font-size:11px; font-weight:900; background:#232834; color:var(--text-main); flex-shrink:0; }
+  .seed-pill.top-seed { background:var(--accent-bg); color:#64D2FF; border:1px solid rgba(10,132,255,0.4); }
+  .champ-callout { background:linear-gradient(135deg,rgba(48,209,88,0.18),rgba(10,132,255,0.16)); border:1.5px solid var(--good); border-radius:10px; padding:12px 14px; text-align:center; }
 
-  @media (max-width: 1024px) {
-    .grade-grid { grid-template-columns: repeat(2, 1fr); }
-    .bracket-grid { grid-template-columns: 1fr; }
-  }
-  @media (max-width: 960px) {
-    .body-layout { flex-direction: column; }
-    .sidebar { width: 100%; flex-direction: row; overflow-x: auto; }
-    .nav-btn { white-space: nowrap; }
-    .trade-grid { grid-template-columns: 1fr; }
-    .opt-row { grid-template-columns: 1fr; height: auto; }
-  }
+  .opt-row { display:grid; grid-template-columns:1fr 130px 1fr; gap:12px; align-items:center; padding:6px; border-radius:14px; height:74px; }
+  .opt-row.warn { background:#281D10; border:1.5px solid var(--warn); }
+  .opt-row.sev { background:#2A1215; border:1.5px solid var(--bad); }
+
+  @media (max-width:1024px) { .grade-grid { grid-template-columns:repeat(2,1fr); } .bracket-grid, .bracket-grid.two-col { grid-template-columns:1fr; } }
+  @media (max-width:960px) { .body-layout { flex-direction:column; } .sidebar { width:100%; flex-direction:row; overflow-x:auto; } .nav-btn { white-space:nowrap; } .trade-grid, .opt-row { grid-template-columns:1fr; height:auto; } }
 </style>
 </head>
 <body>
@@ -289,22 +176,20 @@
     <div id="tab-roster" class="tab-page active">
       <div class="card-banner">
         <div class="banner-inner">
-          <div id="rTeamName" style="font-size:16px; font-weight:800; color:var(--text-main); flex:1;">Team: --</div>
+          <div id="rTeamName" style="font-size:16px; font-weight:800; flex:1;">Team: --</div>
           <span id="rRecord" class="badge badge-green">Record: 0 - 0</span>
           <span id="rAllPlay" class="badge badge-blue">All-Play: 0 - 0</span>
-          <span id="rPoints" style="font-size:12px; font-weight:600; color:var(--text-main);">PF: 0.0 (Max: 0.0 | 0.0% Eff) | PA: 0.0</span>
+          <span id="rPoints" style="font-size:12px; font-weight:600;">PF: 0.0 (Max: 0.0 | 0.0% Eff) | PA: 0.0</span>
           <span id="rRank" class="badge badge-yellow" style="background:#232834; color:var(--text-main);">Power Rank: #--</span>
         </div>
         <div id="rPosStrength" style="font-size:12px; color:var(--text-muted);">Positional Depth & Health Summary: Sync league to analyze.</div>
       </div>
-
       <div class="sup-bar">
         <div class="sup-title">WEEKLY SUPERLATIVES</div>
         <div id="supJug" class="sup-item">TOP SCORER: --</div>
         <div id="supBench" class="sup-item">BENCH POINTS LEFT: --</div>
         <div id="supHeart" class="sup-item">NARROWEST LOSS: --</div>
       </div>
-
       <div class="sec-hdr" style="color:var(--good);">STARTING LINEUP</div>
       <div class="table-wrap"><table id="startersTbl"></table></div>
       <div class="sec-hdr" style="color:var(--text-muted);">BENCH DEPTH</div>
@@ -347,14 +232,13 @@
         <span id="tradeFormatBadge" class="badge badge-blue">REDRAFT MODE</span>
       </div>
 
-      <!-- SUB-MODE 0: TRADE BUILDER -->
       <div id="tmode-0" class="trade-grid">
-        <div class="card-banner" style="display:flex; flex-direction:column; gap:10px;">
+        <div class="card-banner">
           <div style="font-size:11px; font-weight:800; color:var(--text-muted);">YOUR TEAM / MANAGER 1 ROSTER</div>
           <select id="tradeTeamA"></select>
           <div id="tradeListA" class="scroll-list"></div>
         </div>
-        <div class="card-banner" style="display:flex; flex-direction:column; gap:10px;">
+        <div class="card-banner">
           <div style="font-size:13px; font-weight:700; color:var(--text-muted);">Trade Package Analysis (Click Item to Remove)</div>
           <div id="sideATitle" style="font-size:12px; font-weight:800; color:var(--bad);">Manager 1 Sends (0 pts)</div>
           <div id="pkgListA" class="scroll-list" style="max-height:145px; min-height:75px; background:#10121A; padding:8px; border-radius:8px; border:1px solid var(--border);"></div>
@@ -362,28 +246,24 @@
           <div id="pkgListB" class="scroll-list" style="max-height:145px; min-height:75px; background:#10121A; padding:8px; border-radius:8px; border:1px solid var(--border);"></div>
           <div id="tradeFairness" style="text-align:center; font-weight:800; color:var(--accent); font-size:13px; padding:4px;">Select assets on both sides to analyze fairness & PPG impact.</div>
           <div id="tradeConsole" style="background:#10121A; border:1px solid var(--border); padding:10px; border-radius:10px; font-size:12px; line-height:1.5; color:var(--text-muted);">
-            Trade Builder calculates Asset Value Points and Optimal Starting Lineup PPG Delta.
+            Trade Builder calculates Asset Value Points, ROS Lineup PPG Delta, and Playoff PPG Delta.
           </div>
-          <button id="clearTradeBtn" style="background-color:#232834;">Clear Trade Package</button>
+          <button id="clearTradeBtn" style="background:#232834;">Clear Trade Package</button>
         </div>
-        <div class="card-banner" style="display:flex; flex-direction:column; gap:10px;">
+        <div class="card-banner">
           <div style="font-size:11px; font-weight:800; color:var(--text-muted);">TRADE PARTNER / MANAGER 2 ROSTER</div>
           <select id="tradeTeamB"></select>
           <div id="tradeListB" class="scroll-list"></div>
         </div>
       </div>
 
-      <!-- SUB-MODE 1: TRADE DATABASE (TABULAR) -->
       <div id="tmode-1" style="display:none; flex-direction:column; gap:12px;">
         <div class="card-banner" style="padding:12px 16px;">
           <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
             <input id="dbSearch" placeholder="Search player name (e.g. Bijan, Jefferson, Lamar, Bowers)..." style="flex:1; min-width:220px;" />
             <select id="dbPosFilter" style="width:165px;">
-              <option value="ALL">All Positions</option>
-              <option value="QB">QB Trades</option>
-              <option value="RB">RB Trades</option>
-              <option value="WR">WR Trades</option>
-              <option value="TE">TE Trades</option>
+              <option value="ALL">All Positions</option><option value="QB">QB Trades</option>
+              <option value="RB">RB Trades</option><option value="WR">WR Trades</option><option value="TE">TE Trades</option>
             </select>
             <select id="dbSrcFilter" style="width:230px;">
               <option value="ALL">All Sources (League + Market)</option>
@@ -393,49 +273,45 @@
             <span id="dbCountLbl" class="badge badge-green">0 trades found</span>
           </div>
         </div>
-        <div class="table-wrap">
-          <table id="dbTable"></table>
-        </div>
+        <div class="table-wrap"><table id="dbTable"></table></div>
       </div>
 
-      <!-- SUB-MODE 2: TRADE FINDER & POSITIONAL NEEDS ANALYSIS (TABULAR) -->
       <div id="tmode-2" style="display:none; flex-direction:column; gap:12px;">
         <div class="card-banner" style="gap:10px;">
           <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
-            <div style="font-size:13px; font-weight:800; color:var(--text-main); letter-spacing:0.4px;">
-              ROSTER POSITIONAL GRADES & TRADE UPGRADE BLUEPRINT
-            </div>
-            <div id="needsSubTag" style="font-size:11px; color:var(--text-muted); font-weight:600;">
-              Click any positional card below to filter Trade Finder for that upgrade
-            </div>
+            <div style="font-size:13px; font-weight:800;">ROSTER POSITIONAL GRADES & TRADE UPGRADE BLUEPRINT</div>
+            <div style="font-size:11px; color:var(--text-muted); font-weight:600;">Click any positional card below to filter Trade Finder for that upgrade</div>
           </div>
           <div id="posGradesGrid" class="grade-grid"></div>
-          <div id="rosterNeedsSummary" style="background:#10121A; border:1px solid var(--border); border-radius:9px; padding:10px 14px; font-size:12px; line-height:1.5; color:var(--text-main);">
+          <div id="rosterNeedsSummary" style="background:#10121A; border:1px solid var(--border); border-radius:9px; padding:10px 14px; font-size:12px; line-height:1.5;">
             Sync your Sleeper league above to generate positional grades, league ranks, and multi-player trade recommendations.
           </div>
         </div>
-
         <div class="card-banner" style="padding:12px 16px;">
           <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
             <label style="font-size:12px; color:var(--text-muted);">Target Upgrade:</label>
-            <select id="finderPos" style="width:auto; min-width:205px;">
+            <select id="finderPos" style="width:auto; min-width:195px;">
               <option value="AUTO">Auto (Target My #1 Weakest Position)</option>
               <option value="ALL">Any Position Upgrade</option>
-              <option value="QB">Target QB Upgrade</option>
-              <option value="RB">Target RB Upgrade</option>
-              <option value="WR">Target WR Upgrade</option>
-              <option value="TE">Target TE Upgrade</option>
+              <option value="QB">Target QB Upgrade</option><option value="RB">Target RB Upgrade</option>
+              <option value="WR">Target WR Upgrade</option><option value="TE">Target TE Upgrade</option>
             </select>
             <label style="font-size:12px; color:var(--text-muted);">Package Size:</label>
-            <select id="finderPkgType" style="width:auto; min-width:230px;">
+            <select id="finderPkgType" style="width:auto; min-width:215px;">
               <option value="ALL">All Packages (1-for-1, 2-for-1, 2-for-2, 1-for-2)</option>
               <option value="MULTI">Multi-Player Deals Only (2-for-1, 2-for-2, 1-for-2)</option>
               <option value="2FOR1">2-for-1 Stud Consolidations Only</option>
               <option value="2FOR2">2-for-2 Package Swaps Only</option>
               <option value="1FOR1">1-for-1 Positional Swaps Only</option>
             </select>
+            <label style="font-size:12px; color:var(--good); font-weight:800;">Playoff SOS Boost:</label>
+            <select id="finderSosBoost" style="width:auto; min-width:235px; border-color:rgba(48,209,88,0.5);">
+              <option value="BOOST">ON — Prioritize A / A+ Playoff Schedules</option>
+              <option value="STRICT">STRICT — Only Acquire A / A+ Playoff Slates</option>
+              <option value="OFF">OFF — Standard ROS PPG Only</option>
+            </select>
             <label style="font-size:12px; color:var(--text-muted);">Strategy:</label>
-            <select id="finderStrat" style="flex:1; min-width:220px;">
+            <select id="finderStrat" style="flex:1; min-width:190px;">
               <option value="0">Mutual Lineup Upgrade (Win-Win PPG)</option>
               <option value="1">Max My Starting Lineup PPG Gain</option>
               <option value="2">Strict Value Match (Within 8% Fairness)</option>
@@ -443,9 +319,7 @@
             <span id="finderCountLbl" class="badge badge-blue">0 proposals</span>
           </div>
         </div>
-        <div class="table-wrap">
-          <table id="finderTable"></table>
-        </div>
+        <div class="table-wrap"><table id="finderTable"></table></div>
       </div>
     </div>
 
@@ -489,18 +363,15 @@
         <div style="font-size:15px; font-weight:800;">ADVANCED PLAYER METRICS & TREND GRAPHS (TOP 32 ACTIVE)</div>
         <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
           <label style="font-size:12px; color:var(--text-muted);">Position Group:</label>
-          <select id="analyticsPos" style="width:auto; min-width:195px; padding-right:28px;">
-            <option value="QB">Quarterbacks (QB)</option>
-            <option value="RB">Running Backs (RB)</option>
-            <option value="WR">Wide Receivers (WR)</option>
-            <option value="TE">Tight Ends (TE)</option>
-            <option value="DEF">Team Defense (DEF)</option>
+          <select id="analyticsPos" style="width:auto; min-width:195px;">
+            <option value="QB">Quarterbacks (QB)</option><option value="RB">Running Backs (RB)</option>
+            <option value="WR">Wide Receivers (WR)</option><option value="TE">Tight Ends (TE)</option><option value="DEF">Team Defense (DEF)</option>
           </select>
           <label style="font-size:12px; color:var(--text-muted);">Active Metric View:</label>
-          <select id="analyticsGraphSelect" style="width:auto; min-width:420px; padding-right:28px;"></select>
+          <select id="analyticsGraphSelect" style="width:auto; min-width:420px;"></select>
         </div>
       </div>
-      <div class="card-banner" style="padding: 16px;">
+      <div class="card-banner" style="padding:16px;">
         <div id="singleGraphTitle" style="font-size:14px; font-weight:800; color:var(--accent); margin-bottom:8px;">Metric Graph</div>
         <canvas id="analyticsCanvasSingle" style="width:100%; height:440px; background:var(--bg-card); border-radius:10px; display:block;"></canvas>
       </div>
@@ -508,7 +379,7 @@
       <div class="table-wrap"><table id="analyticsTable"></table></div>
     </div>
 
-    <!-- TAB 7: STRENGTH OF SCHEDULE (SOS) HEAT-MAP WITH PLAYOFF TOGGLE -->
+    <!-- TAB 7: SOS HEAT-MAP -->
     <div id="tab-sos" class="tab-page">
       <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
         <div>
@@ -523,21 +394,17 @@
         </div>
         <div class="seg-bar-container">
           <button class="sos-mode-btn active" data-sosmode="NEXT4">Upcoming 4 Weeks</button>
-          <button class="sos-mode-btn" data-sosmode="PLAYOFFS">Fantasy Playoffs (Weeks 15–17)</button>
-          <button class="sos-mode-btn" data-sosmode="PUSH">Playoff Push + Playoffs (Weeks 14–17)</button>
+          <button class="sos-mode-btn" data-sosmode="PLAYOFFS">Fantasy Playoffs</button>
+          <button class="sos-mode-btn" data-sosmode="PUSH">Playoff Push + Playoffs</button>
         </div>
       </div>
-
       <div class="card-banner" style="padding:12px 16px;">
         <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; justify-content:space-between;">
           <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
             <label style="font-size:12px; color:var(--text-muted);">Position:</label>
             <select id="sosPos" style="width:auto; min-width:180px;">
-              <option value="QB">Quarterbacks (vs QB)</option>
-              <option value="RB">Running Backs (vs RB)</option>
-              <option value="WR">Wide Receivers (vs WR)</option>
-              <option value="TE">Tight Ends (vs TE)</option>
-              <option value="DEF">Team Defense (vs Opp Off)</option>
+              <option value="QB">Quarterbacks (vs QB)</option><option value="RB">Running Backs (vs RB)</option>
+              <option value="WR">Wide Receivers (vs WR)</option><option value="TE">Tight Ends (vs TE)</option><option value="DEF">Team Defense (vs Opp Off)</option>
             </select>
             <label style="font-size:12px; color:var(--text-muted);">Scope:</label>
             <select id="sosScope" style="width:auto; min-width:255px;">
@@ -555,43 +422,48 @@
           <span id="sosWindowBadge" class="badge badge-blue">UPCOMING 4-WEEK SLATE</span>
         </div>
       </div>
-
-      <div class="table-wrap">
-        <table id="sosTable"></table>
-      </div>
+      <div class="table-wrap"><table id="sosTable"></table></div>
     </div>
 
-    <!-- TAB 8: 6-TEAM FANTASY PLAYOFF BRACKET SIMULATOR (WEEKS 15–17) -->
+    <!-- TAB 8: LEAGUE-ADAPTIVE PLAYOFF BRACKET SIMULATOR -->
     <div id="tab-bracket" class="tab-page">
       <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
         <div>
-          <div style="font-size:15px; font-weight:800;">6-TEAM FANTASY PLAYOFF BRACKET SIMULATOR (WEEKS 15–17)</div>
+          <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+            <div id="bracketMainTitle" style="font-size:15px; font-weight:800;">FANTASY PLAYOFF BRACKET SIMULATOR</div>
+            <span id="bracketFormatBadge" class="badge badge-green">LEAGUE FORMAT: 6-TEAM PLAYOFF • STARTS WK 15</span>
+          </div>
           <div style="font-size:12px; color:var(--text-muted); margin-top:2px;">
-            Projections factor in optimal starting lineups + NFL opponent DvP & Dome environments for Weeks 15, 16, and 17. Click any team card to manually force an upset.
+            Automatically syncs your Sleeper league's playoff team count (4, 6, 7, or 8 teams), start week, 1-week/2-week round length, and re-seed rule. Click any team card to force an upset.
           </div>
         </div>
         <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
-          <label style="font-size:12px; color:var(--text-muted);">Seeding Basis:</label>
-          <select id="bracketSeedMode" style="width:auto; min-width:255px;">
-            <option value="CURRENT">Current Standings (Record → PF → PA)</option>
-            <option value="PROJ">Projected Week 14 Final Standings</option>
-            <option value="POWER">Power Rankings Top 6 Contenders</option>
+          <label style="font-size:12px; color:var(--text-muted);">Format:</label>
+          <select id="bracketTeamsOverride" style="width:auto; min-width:195px;">
+            <option value="AUTO">Auto (Use League Settings)</option>
+            <option value="4">4-Team Playoff (2 Rounds)</option>
+            <option value="6">6-Team Playoff (Top 2 Byes)</option>
+            <option value="7">7-Team Playoff (Top 1 Bye)</option>
+            <option value="8">8-Team Playoff (No Byes)</option>
           </select>
-          <label style="font-size:12px; color:var(--text-muted);">Bracket Rule:</label>
-          <select id="bracketReseedMode" style="width:auto; min-width:235px;">
-            <option value="FIXED">Sleeper Default Fixed (#1 vs #4/#5)</option>
-            <option value="RESEED">NFL Re-Seeded (#1 vs Lowest Seed)</option>
+          <label style="font-size:12px; color:var(--text-muted);">Seeding:</label>
+          <select id="bracketSeedMode" style="width:auto; min-width:225px;">
+            <option value="CURRENT">Current Standings (Record → PF → PA)</option>
+            <option value="PROJ">Projected Final Standings</option>
+            <option value="POWER">Power Rankings Contenders</option>
+          </select>
+          <label style="font-size:12px; color:var(--text-muted);">Rule:</label>
+          <select id="bracketReseedMode" style="width:auto; min-width:205px;">
+            <option value="AUTO">Auto (Use League Settings)</option>
+            <option value="FIXED">Fixed Bracket Draw</option>
+            <option value="RESEED">NFL Re-Seeded (#1 vs Lowest)</option>
           </select>
           <button id="resetBracketBtn" style="background:#232834; font-size:12px; padding:7px 14px;">Reset Picks</button>
         </div>
       </div>
-
       <div id="bracketGridContainer" class="bracket-grid"></div>
-
       <div class="sec-hdr" style="color:var(--good);">PLAYOFF FIELD & BUBBLE CHAMPIONSHIP ODDS BREAKDOWN</div>
-      <div class="table-wrap">
-        <table id="bracketOddsTable"></table>
-      </div>
+      <div class="table-wrap"><table id="bracketOddsTable"></table></div>
     </div>
 
     <!-- TAB 9: MATCHUP SIMULATOR -->
@@ -604,7 +476,7 @@
           <select id="simTeamB" style="min-width:210px;"></select>
         </div>
       </div>
-      <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 14px;">
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px;">
         <div class="card-banner" style="text-align:center;">
           <div id="simBannerA" style="font-size:14px; font-weight:800; color:var(--good);">Team A Win Prob: 50.0%</div>
           <div id="simScoreA" style="font-size:12px; color:var(--text-muted); font-weight:600;">Proj Score: 0.00 pts</div>
@@ -620,7 +492,6 @@
 </div>
 
 <script>
-// --- Preloader for all 32 NFL Team Logos ---
 const NFL_TEAMS = ["ari","atl","bal","buf","car","chi","cin","cle","dal","den","det","gb","hou","ind","jax","kc","lv","lac","lar","mia","min","ne","no","nyg","nyj","phi","pit","sf","sea","tb","ten","was"];
 const NFL_TEAM_NAMES = {
   ARI:"Arizona Cardinals", ATL:"Atlanta Falcons", BAL:"Baltimore Ravens", BUF:"Buffalo Bills",
@@ -632,131 +503,64 @@ const NFL_TEAM_NAMES = {
   NYJ:"New York Jets", PHI:"Philadelphia Eagles", PIT:"Pittsburgh Steelers", SF:"San Francisco 49ers",
   SEA:"Seattle Seahawks", TB:"Tampa Bay Buccaneers", TEN:"Tennessee Titans", WAS:"Washington Commanders"
 };
-
 const DOME_TEAMS = new Set(["ARI","ATL","DAL","DET","HOU","IND","LAC","LAR","LV","MIN","NO"]);
-
-const logoImgCache = {};
-let logoRedrawTimer = null;
-
-function scheduleLogoRedraw() {
-  if (logoRedrawTimer) return;
-  logoRedrawTimer = setTimeout(() => {
-    logoRedrawTimer = null;
-    if (document.getElementById("tab-analytics").classList.contains("active")) {
-      drawSingleAnalyticsChart();
-    }
-  }, 60);
-}
-
-NFL_TEAMS.forEach(t => {
-  const img = new Image();
-  img.onload = scheduleLogoRedraw;
-  img.src = `https://sleepercdn.com/images/team_logos/nfl/${t}.png`;
-  logoImgCache[t] = img;
-});
-
-function getTeamLogoImage(team) {
-  if (!team || team === "FA") return null;
-  let key = team.toLowerCase().trim();
-  if (key === "jac") key = "jax";
-  if (key === "la") key = "lar";
-  if (key === "wsh") key = "was";
-  if (!logoImgCache[key]) {
-    const img = new Image();
-    img.onload = scheduleLogoRedraw;
-    img.src = `https://sleepercdn.com/images/team_logos/nfl/${key}.png`;
-    logoImgCache[key] = img;
-  }
-  return logoImgCache[key];
-}
-
 const BYE_2026 = {
   CAR:5, KC:5, CIN:6, DET:6, MIA:6, MIN:6, BUF:7, JAX:7, LAC:7, WAS:7,
   HOU:8, NO:8, NYG:8, SF:8, PIT:9, TEN:9, CHI:10, DEN:10, PHI:10, TB:10,
   ATL:11, CLE:11, GB:11, LAR:11, LA:11, NE:11, SEA:11, BAL:13, IND:13, LV:13, NYJ:13, ARI:14, DAL:14
 };
 
+const logoImgCache = {};
+let logoRedrawTimer = null;
+function scheduleLogoRedraw() {
+  if (logoRedrawTimer) return;
+  logoRedrawTimer = setTimeout(() => {
+    logoRedrawTimer = null;
+    if (document.getElementById("tab-analytics").classList.contains("active")) drawSingleAnalyticsChart();
+  }, 60);
+}
+NFL_TEAMS.forEach(t => {
+  const img = new Image();
+  img.onload = scheduleLogoRedraw;
+  img.src = `https://sleepercdn.com/images/team_logos/nfl/${t}.png`;
+  logoImgCache[t] = img;
+});
+function getTeamLogoImage(team) {
+  if (!team || team === "FA") return null;
+  let k = team.toLowerCase().trim();
+  if (k === "jac") k = "jax"; if (k === "la") k = "lar"; if (k === "wsh") k = "was";
+  if (!logoImgCache[k]) {
+    const img = new Image(); img.onload = scheduleLogoRedraw;
+    img.src = `https://sleepercdn.com/images/team_logos/nfl/${k}.png`;
+    logoImgCache[k] = img;
+  }
+  return logoImgCache[k];
+}
+
 // Verified 18-Week 2026 NFL Regular Season Schedule
 const NFL_2026_SCHEDULE = (() => {
-  const teams = Object.keys(NFL_TEAM_NAMES);
   const sched = {};
-  teams.forEach(t => sched[t] = {});
-
+  Object.keys(NFL_TEAM_NAMES).forEach(t => sched[t] = {});
   const fullSeasonPairs = {
-    1: [
-      ["NE","SEA"],["SF","LAR"],["ATL","PIT"],["BAL","IND"],["BUF","HOU"],["CHI","CAR"],["CLE","JAX"],["NO","DET"],
-      ["NYJ","TEN"],["TB","CIN"],["ARI","LAC"],["GB","MIN"],["MIA","LV"],["WAS","PHI"],["DAL","NYG"],["DEN","KC"]
-    ],
-    2: [
-      ["DET","BUF"],["CAR","ATL"],["CIN","HOU"],["CLE","TB"],["GB","NYJ"],["MIN","CHI"],["NO","BAL"],["PHI","TEN"],
-      ["PIT","NE"],["JAX","DEN"],["LV","LAC"],["MIA","SF"],["SEA","ARI"],["WAS","DAL"],["IND","KC"],["NYG","LAR"]
-    ],
-    3: [
-      ["ATL","GB"],["CAR","CLE"],["CIN","PIT"],["HOU","IND"],["KC","MIA"],["LAC","BUF"],["NE","JAX"],["NYJ","DET"],
-      ["SEA","WAS"],["TEN","NYG"],["ARI","SF"],["MIN","TB"],["BAL","DAL"],["LV","NO"],["LAR","DEN"],["PHI","CHI"]
-    ],
-    4: [
-      ["PIT","CLE"],["IND","WAS"],["ARI","NYG"],["DAL","HOU"],["GB","TB"],["JAX","CIN"],["LAR","PHI"],["NE","BUF"],
-      ["NYJ","CHI"],["TEN","BAL"],["MIA","MIN"],["DEN","SF"],["KC","LV"],["LAC","SEA"],["DET","CAR"],["ATL","NO"]
-    ],
-    5: [
-      ["TB","DAL"],["PHI","JAX"],["NYG","WAS"],["CLE","NYJ"],["IND","PIT"],["HOU","TEN"],["MIN","NO"],["LV","NE"],
-      ["CIN","MIA"],["CHI","GB"],["DEN","LAC"],["DET","ARI"],["SF","SEA"],["BAL","ATL"],["BUF","LAR"]
-    ],
-    6: [
-      ["SEA","DEN"],["HOU","JAX"],["NYJ","NE"],["CAR","PHI"],["PIT","TB"],["BAL","CLE"],["CHI","ATL"],["NO","NYG"],
-      ["TEN","IND"],["ARI","LAR"],["LAC","KC"],["BUF","LV"],["DAL","GB"],["WAS","SF"]
-    ],
-    7: [
-      ["NE","CHI"],["PIT","NO"],["TB","CAR"],["MIA","NYJ"],["NYG","HOU"],["CIN","BAL"],["CLE","TEN"],["IND","MIN"],
-      ["SF","ATL"],["DEN","ARI"],["GB","DET"],["LAR","LV"],["KC","SEA"],["DAL","PHI"]
-    ],
-    8: [
-      ["CAR","GB"],["TEN","CIN"],["IND","JAX"],["CLE","PIT"],["BAL","BUF"],["ATL","TB"],["MIN","DET"],["LV","NYJ"],
-      ["KC","DEN"],["NE","MIA"],["PHI","WAS"],["CHI","SEA"],["ARI","DAL"],["LAR","LAC"]
-    ],
-    9: [
-      ["JAX","BAL"],["CIN","ATL"],["NYJ","KC"],["CLE","NO"],["DEN","CAR"],["DAL","IND"],["DET","MIA"],["GB","NE"],
-      ["ARI","SEA"],["TB","CHI"],["BUF","MIN"],["HOU","NYG"],["SF","LAR"],["LV","LAC"]
-    ],
-    10: [
-      ["WAS","NYG"],["NE","DET"],["BUF","NYJ"],["MIA","IND"],["KC","ATL"],["MIN","GB"],["JAX","TEN"],["PIT","CIN"],
-      ["LAC","BAL"],["LAR","ARI"],["SEA","LV"],["SF","DAL"],["NO","CAR"],["HOU","CLE"]
-    ],
-    11: [
-      ["IND","HOU"],["MIA","BUF"],["BAL","CAR"],["NO","CHI"],["TEN","DAL"],["TB","DET"],["ARI","KC"],["JAX","NYG"],
-      ["NYJ","LAC"],["LV","DEN"],["PIT","PHI"],["MIN","SF"],["CIN","WAS"]
-    ],
-    12: [
-      ["GB","LAR"],["CHI","DET"],["PHI","DAL"],["KC","BUF"],["DEN","PIT"],["NO","CIN"],["LV","CLE"],["BAL","HOU"],
-      ["WAS","ARI"],["SEA","SF"],["NE","LAC"],["CAR","TB"],["NYJ","MIA"],["TEN","JAX"],["MIN","ATL"],["IND","NYG"]
-    ],
-    13: [
-      ["KC","LAR"],["HOU","PIT"],["DAL","SEA"],["SF","NYG"],["GB","NO"],["JAX","CHI"],["PHI","ARI"],["MIA","DEN"],
-      ["CAR","MIN"],["BUF","NE"],["CLE","TEN"],["TB","ATL"],["DET","WAS"],["CIN","LAC"]
-    ],
-    14: [
-      ["MIN","NE"],["BUF","GB"],["PIT","JAX"],["IND","PHI"],["TB","BAL"],["NO","CAR"],["ATL","CLE"],["TEN","DET"],
-      ["CHI","MIA"],["LAC","LV"],["KC","CIN"],["LAR","SF"],["NYG","SEA"],["DEN","HOU"],["NYJ","WAS"]
-    ],
-    15: [
-      ["SF","LAC"],["DAL","LAR"],["CIN","CAR"],["CHI","BUF"],["ATL","WAS"],["DET","MIN"],["NO","TB"],["SEA","PHI"],
-      ["NE","KC"],["CLE","NYG"],["IND","TEN"],["MIA","GB"],["BAL","PIT"],["JAX","HOU"],["NYJ","ARI"],["DEN","LV"]
-    ],
-    16: [
-      ["CIN","IND"],["JAX","DAL"],["NYG","DET"],["LAR","SEA"],["SF","KC"],["ATL","TB"],["WAS","MIN"],["GB","CHI"],
-      ["ARI","NO"],["LAC","MIA"],["BUF","DEN"],["TEN","LV"],["NE","NYJ"],["CLE","BAL"],["HOU","PHI"],["CAR","PIT"]
-    ],
-    17: [
-      ["BAL","CIN"],["DET","CHI"],["WAS","JAX"],["NYG","DAL"],["NO","ATL"],["LAR","TB"],["KC","LAC"],["PHI","SF"],
-      ["LV","ARI"],["BUF","MIA"],["MIN","NYJ"],["DEN","NE"],["SEA","CAR"],["HOU","GB"],["PIT","TEN"],["IND","CLE"]
-    ],
-    18: [
-      ["SEA","LAR"],["ARI","SF"],["DAL","WAS"],["PHI","NYG"],["CHI","GB"],["DET","MIN"],["TB","ATL"],["CAR","NO"],
-      ["PIT","BAL"],["CIN","CLE"],["HOU","IND"],["JAX","TEN"],["BUF","NE"],["MIA","NYJ"],["KC","LV"],["DEN","LAC"]
-    ]
+    1: [["NE","SEA"],["SF","LAR"],["ATL","PIT"],["BAL","IND"],["BUF","HOU"],["CHI","CAR"],["CLE","JAX"],["NO","DET"],["NYJ","TEN"],["TB","CIN"],["ARI","LAC"],["GB","MIN"],["MIA","LV"],["WAS","PHI"],["DAL","NYG"],["DEN","KC"]],
+    2: [["DET","BUF"],["CAR","ATL"],["CIN","HOU"],["CLE","TB"],["GB","NYJ"],["MIN","CHI"],["NO","BAL"],["PHI","TEN"],["PIT","NE"],["JAX","DEN"],["LV","LAC"],["MIA","SF"],["SEA","ARI"],["WAS","DAL"],["IND","KC"],["NYG","LAR"]],
+    3: [["ATL","GB"],["CAR","CLE"],["CIN","PIT"],["HOU","IND"],["KC","MIA"],["LAC","BUF"],["NE","JAX"],["NYJ","DET"],["SEA","WAS"],["TEN","NYG"],["ARI","SF"],["MIN","TB"],["BAL","DAL"],["LV","NO"],["LAR","DEN"],["PHI","CHI"]],
+    4: [["PIT","CLE"],["IND","WAS"],["ARI","NYG"],["DAL","HOU"],["GB","TB"],["JAX","CIN"],["LAR","PHI"],["NE","BUF"],["NYJ","CHI"],["TEN","BAL"],["MIA","MIN"],["DEN","SF"],["KC","LV"],["LAC","SEA"],["DET","CAR"],["ATL","NO"]],
+    5: [["TB","DAL"],["PHI","JAX"],["NYG","WAS"],["CLE","NYJ"],["IND","PIT"],["HOU","TEN"],["MIN","NO"],["LV","NE"],["CIN","MIA"],["CHI","GB"],["DEN","LAC"],["DET","ARI"],["SF","SEA"],["BAL","ATL"],["BUF","LAR"]],
+    6: [["SEA","DEN"],["HOU","JAX"],["NYJ","NE"],["CAR","PHI"],["PIT","TB"],["BAL","CLE"],["CHI","ATL"],["NO","NYG"],["TEN","IND"],["ARI","LAR"],["LAC","KC"],["BUF","LV"],["DAL","GB"],["WAS","SF"]],
+    7: [["NE","CHI"],["PIT","NO"],["TB","CAR"],["MIA","NYJ"],["NYG","HOU"],["CIN","BAL"],["CLE","TEN"],["IND","MIN"],["SF","ATL"],["DEN","ARI"],["GB","DET"],["LAR","LV"],["KC","SEA"],["DAL","PHI"]],
+    8: [["CAR","GB"],["TEN","CIN"],["IND","JAX"],["CLE","PIT"],["BAL","BUF"],["ATL","TB"],["MIN","DET"],["LV","NYJ"],["KC","DEN"],["NE","MIA"],["PHI","WAS"],["CHI","SEA"],["ARI","DAL"],["LAR","LAC"]],
+    9: [["JAX","BAL"],["CIN","ATL"],["NYJ","KC"],["CLE","NO"],["DEN","CAR"],["DAL","IND"],["DET","MIA"],["GB","NE"],["ARI","SEA"],["TB","CHI"],["BUF","MIN"],["HOU","NYG"],["SF","LAR"],["LV","LAC"]],
+    10:[["WAS","NYG"],["NE","DET"],["BUF","NYJ"],["MIA","IND"],["KC","ATL"],["MIN","GB"],["JAX","TEN"],["PIT","CIN"],["LAC","BAL"],["LAR","ARI"],["SEA","LV"],["SF","DAL"],["NO","CAR"],["HOU","CLE"]],
+    11:[["IND","HOU"],["MIA","BUF"],["BAL","CAR"],["NO","CHI"],["TEN","DAL"],["TB","DET"],["ARI","KC"],["JAX","NYG"],["NYJ","LAC"],["LV","DEN"],["PIT","PHI"],["MIN","SF"],["CIN","WAS"]],
+    12:[["GB","LAR"],["CHI","DET"],["PHI","DAL"],["KC","BUF"],["DEN","PIT"],["NO","CIN"],["LV","CLE"],["BAL","HOU"],["WAS","ARI"],["SEA","SF"],["NE","LAC"],["CAR","TB"],["NYJ","MIA"],["TEN","JAX"],["MIN","ATL"],["IND","NYG"]],
+    13:[["KC","LAR"],["HOU","PIT"],["DAL","SEA"],["SF","NYG"],["GB","NO"],["JAX","CHI"],["PHI","ARI"],["MIA","DEN"],["CAR","MIN"],["BUF","NE"],["CLE","TEN"],["TB","ATL"],["DET","WAS"],["CIN","LAC"]],
+    14:[["MIN","NE"],["BUF","GB"],["PIT","JAX"],["IND","PHI"],["TB","BAL"],["NO","CAR"],["ATL","CLE"],["TEN","DET"],["CHI","MIA"],["LAC","LV"],["KC","CIN"],["LAR","SF"],["NYG","SEA"],["DEN","HOU"],["NYJ","WAS"]],
+    15:[["SF","LAC"],["DAL","LAR"],["CIN","CAR"],["CHI","BUF"],["ATL","WAS"],["DET","MIN"],["NO","TB"],["SEA","PHI"],["NE","KC"],["CLE","NYG"],["IND","TEN"],["MIA","GB"],["BAL","PIT"],["JAX","HOU"],["NYJ","ARI"],["DEN","LV"]],
+    16:[["CIN","IND"],["JAX","DAL"],["NYG","DET"],["LAR","SEA"],["SF","KC"],["ATL","TB"],["WAS","MIN"],["GB","CHI"],["ARI","NO"],["LAC","MIA"],["BUF","DEN"],["TEN","LV"],["NE","NYJ"],["CLE","BAL"],["HOU","PHI"],["CAR","PIT"]],
+    17:[["BAL","CIN"],["DET","CHI"],["WAS","JAX"],["NYG","DAL"],["NO","ATL"],["LAR","TB"],["KC","LAC"],["PHI","SF"],["LV","ARI"],["BUF","MIA"],["MIN","NYJ"],["DEN","NE"],["SEA","CAR"],["HOU","GB"],["PIT","TEN"],["IND","CLE"]],
+    18:[["SEA","LAR"],["ARI","SF"],["DAL","WAS"],["PHI","NYG"],["CHI","GB"],["DET","MIN"],["TB","ATL"],["CAR","NO"],["PIT","BAL"],["CIN","CLE"],["HOU","IND"],["JAX","TEN"],["BUF","NE"],["MIA","NYJ"],["KC","LV"],["DEN","LAC"]]
   };
-
   for (const [wkStr, pairs] of Object.entries(fullSeasonPairs)) {
     const wk = parseInt(wkStr, 10);
     pairs.forEach(([away, home]) => {
@@ -784,14 +588,14 @@ async function syncLiveEspnSchedule(weeksToSync) {
           const homeObj = comp.competitors.find(c => c.homeAway === "home");
           const awayObj = comp.competitors.find(c => c.homeAway === "away");
           if (!homeObj || !awayObj) return;
-          let hAbbr = (homeObj.team?.abbreviation || "").toUpperCase();
-          let aAbbr = (awayObj.team?.abbreviation || "").toUpperCase();
-          if (hAbbr === "WSH") hAbbr = "WAS"; if (aAbbr === "WSH") aAbbr = "WAS";
-          if (hAbbr === "JAC") hAbbr = "JAX"; if (aAbbr === "JAC") aAbbr = "JAX";
-          if (hAbbr === "LA") hAbbr = "LAR";  if (aAbbr === "LA") aAbbr = "LAR";
-          if (NFL_2026_SCHEDULE[hAbbr] && NFL_2026_SCHEDULE[aAbbr]) {
-            NFL_2026_SCHEDULE[hAbbr][wk] = { opp: aAbbr, isHome: true };
-            NFL_2026_SCHEDULE[aAbbr][wk] = { opp: hAbbr, isHome: false };
+          let h = (homeObj.team?.abbreviation || "").toUpperCase();
+          let a = (awayObj.team?.abbreviation || "").toUpperCase();
+          if (h === "WSH") h = "WAS"; if (a === "WSH") a = "WAS";
+          if (h === "JAC") h = "JAX"; if (a === "JAC") a = "JAX";
+          if (h === "LA") h = "LAR";  if (a === "LA") a = "LAR";
+          if (NFL_2026_SCHEDULE[h] && NFL_2026_SCHEDULE[a]) {
+            NFL_2026_SCHEDULE[h][wk] = { opp: a, isHome: true };
+            NFL_2026_SCHEDULE[a][wk] = { opp: h, isHome: false };
             updated = true;
           }
         });
@@ -806,17 +610,13 @@ async function syncLiveEspnSchedule(weeksToSync) {
 
 const DVP_RANKS_2026 = (() => {
   const teams = Object.keys(NFL_TEAM_NAMES);
-  const posList = ["QB", "RB", "WR", "TE", "DEF"];
   const map = {};
-  posList.forEach((pos, pIdx) => {
-    const scored = teams.map(t => {
-      const h = (t.charCodeAt(0) * (17 + pIdx * 5) + t.charCodeAt(1) * (31 + pIdx * 7) + (t.charCodeAt(2) || 7) * 13) % 997;
-      return { t, h };
-    }).sort((a, b) => a.h - b.h);
+  ["QB","RB","WR","TE","DEF"].forEach((pos, pIdx) => {
+    const scored = teams.map(t => ({
+      t, h: (t.charCodeAt(0) * (17 + pIdx * 5) + t.charCodeAt(1) * (31 + pIdx * 7) + (t.charCodeAt(2) || 7) * 13) % 997
+    })).sort((a, b) => a.h - b.h);
     map[pos] = {};
-    scored.forEach((item, idx) => {
-      map[pos][item.t] = idx + 1;
-    });
+    scored.forEach((item, idx) => map[pos][item.t] = idx + 1);
   });
   return map;
 })();
@@ -853,8 +653,7 @@ const state = {
   season: "2026", week: 6, userId: "", leagues: [], activeLeague: null,
   players: {}, rawProj: {}, rawStats: {}, managers: [],
   tradeSideA: [], tradeSideB: [], dbTrades: [], waiverTargets: [],
-  weakestPosByTeam: {}, sosWindowMode: "NEXT4",
-  bracketOverrides: { qf1: null, qf2: null, sf1: null, sf2: null, champ: null, third: null }
+  weakestPosByTeam: {}, sosWindowMode: "NEXT4", bracketOverrides: {}
 };
 
 const weekSelect = document.getElementById("weekSelect");
@@ -865,12 +664,8 @@ for (let w = 1; w <= 18; w++) {
 }
 
 function switchTradeMode(modeIdx) {
-  document.querySelectorAll(".seg-btn").forEach(b => {
-    b.classList.toggle("active", String(b.dataset.tmode) === String(modeIdx));
-  });
-  [0, 1, 2].forEach(i => {
-    document.getElementById(`tmode-${i}`).style.display = (i === modeIdx) ? (i === 0 ? "grid" : "flex") : "none";
-  });
+  document.querySelectorAll(".seg-btn").forEach(b => b.classList.toggle("active", String(b.dataset.tmode) === String(modeIdx)));
+  [0, 1, 2].forEach(i => document.getElementById(`tmode-${i}`).style.display = (i === modeIdx) ? (i === 0 ? "grid" : "flex") : "none");
 }
 
 function updateAnalyticsDropdownOptions() {
@@ -880,8 +675,7 @@ function updateAnalyticsDropdownOptions() {
   sel.innerHTML = "";
   (ANALYTICS_CONFIGS[pos] || []).forEach((c, idx) => {
     const opt = document.createElement("option");
-    opt.value = String(idx);
-    opt.textContent = c.title;
+    opt.value = String(idx); opt.textContent = c.title;
     sel.appendChild(opt);
   });
   sel.value = ["0","1","2"].includes(curVal) ? curVal : "0";
@@ -930,9 +724,9 @@ function avatarUrl(m) {
 
 function teamLogoUrl(team) {
   if (!team || team === "FA") return "";
-  let key = team.toLowerCase().trim();
-  if (key === "jac") key = "jax"; if (key === "la") key = "lar";
-  return `https://sleepercdn.com/images/team_logos/nfl/${key}.png`;
+  let k = team.toLowerCase().trim();
+  if (k === "jac") k = "jax"; if (k === "la") k = "lar";
+  return `https://sleepercdn.com/images/team_logos/nfl/${k}.png`;
 }
 
 function posBadgeStyle(pos) {
@@ -944,10 +738,87 @@ function posBadgeStyle(pos) {
   return "background:rgba(100,210,255,0.16);color:#64D2FF;";
 }
 
+function getResolvedPlayoffTeamCount() {
+  const override = document.getElementById("bracketTeamsOverride")?.value || "AUTO";
+  const totManagers = state.managers.length || 12;
+  let raw = override === "AUTO" ? (state.activeLeague?.playoffTeams || 6) : parseInt(override, 10);
+  if (![4, 6, 7, 8].includes(raw)) raw = raw <= 4 ? 4 : (raw === 7 ? 7 : (raw >= 8 ? 8 : 6));
+  return Math.min(raw, Math.max(4, totManagers));
+}
+
+function getResolvedBracketReseedMode() {
+  const override = document.getElementById("bracketReseedMode")?.value || "AUTO";
+  if (override !== "AUTO") return override;
+  return state.activeLeague?.playoffSeedType === 1 ? "RESEED" : "FIXED";
+}
+
+function getPlayoffRoundWeeksStructure() {
+  const lg = state.activeLeague;
+  const pTeams = getResolvedPlayoffTeamCount();
+  const numRounds = pTeams <= 4 ? 2 : 3;
+  const rType = lg?.playoffRoundType || 0; // 0 = 1wk/round, 1 = 1wk + 2wk Champ, 2 = 2wk/round
+  let startWk = lg?.playoffWeekStart || (pTeams <= 4 ? 16 : 15);
+  startWk = Math.min(17, Math.max(13, startWk));
+
+  const rounds = [];
+  let cur = startWk;
+  for (let r = 0; r < numRounds; r++) {
+    const isFinal = (r === numRounds - 1);
+    const span = (rType === 2 || (rType === 1 && isFinal)) ? 2 : 1;
+    const wks = [];
+    for (let s = 0; s < span; s++) {
+      if (cur <= 18) wks.push(cur++);
+    }
+    if (!wks.length) wks.push(17);
+    rounds.push(wks);
+  }
+  return rounds;
+}
+
+function getPlayoffWeeksForActiveLeague() {
+  const rounds = getPlayoffRoundWeeksStructure();
+  const flat = [];
+  rounds.forEach(rw => rw.forEach(w => { if (!flat.includes(w)) flat.push(w); }));
+  return flat.length ? flat : [15, 16, 17];
+}
+
+function getPlayerPlayoffSosProfile(p) {
+  if (!p || !p.team || p.team === "FA") {
+    return { avgRank: 16, letter: "C", isElite: false, oppsStr: "--", boostMult: 1.0, pillCls: "sos-mini-avg", poWeeks: [15,16,17] };
+  }
+  const poWeeks = getPlayoffWeeksForActiveLeague();
+  const posKey = ["QB","RB","WR","TE","DEF"].includes(p.position) ? p.position : "WR";
+  const sos = computeSosWindowMetrics(p.team, poWeeks, posKey);
+  let normTeam = p.team.toUpperCase().trim();
+  if (normTeam === "JAC") normTeam = "JAX"; if (normTeam === "LA") normTeam = "LAR";
+
+  const opps = poWeeks.map(w => {
+    const m = NFL_2026_SCHEDULE[normTeam]?.[w];
+    return m ? ((m.isHome ? "vs " : "@") + m.opp) : "TBD";
+  });
+
+  let letter = "B", pillCls = "sos-mini-avg";
+  if (sos.avgRank >= 24.5) { letter = "A+"; pillCls = "sos-mini-elite"; }
+  else if (sos.avgRank >= 20.5) { letter = "A"; pillCls = "sos-mini-elite"; }
+  else if (sos.avgRank >= 16.5) { letter = "B+"; pillCls = "sos-mini-avg"; }
+  else if (sos.avgRank >= 13.0) { letter = "C"; pillCls = "sos-mini-avg"; }
+  else if (sos.avgRank >= 9.5) { letter = "D"; pillCls = "sos-mini-tough"; }
+  else { letter = "F"; pillCls = "sos-mini-tough"; }
+
+  return {
+    avgRank: sos.avgRank, letter, isElite: sos.avgRank >= 20.5,
+    oppsStr: opps.join(", "), domeCount: sos.domeCount,
+    boostMult: 1 + ((sos.avgRank - 16.5) / 15.5) * 0.09 + (sos.domeCount * 0.012),
+    pillCls, poWeeks
+  };
+}
+
 function renderTradeAssetStackHTML(pids) {
   return `<div class="trade-asset-stack">` + pids.map(pid => {
     const p = state.players[pid];
     if (!p) return "";
+    const po = getPlayerPlayoffSosProfile(p);
+    const wkRangeLbl = `W${po.poWeeks[0]}–${po.poWeeks[po.poWeeks.length - 1]}`;
     return `
       <div class="trade-asset-item">
         <img class="avatar" style="width:34px;height:34px;" src="${avatarUrl(p)}" onerror="this.style.display='none'" />
@@ -956,9 +827,11 @@ function renderTradeAssetStackHTML(pids) {
           <div style="font-weight:700; font-size:13px; color:var(--text-main); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
             <img class="team-logo-sm" src="${teamLogoUrl(p.team)}" onerror="this.style.display='none'"/>${p.name}
           </div>
-          <div style="font-size:11px; color:var(--text-muted);">
-            ${p.position} #${p.posRank} • ${p.seasonPpg.toFixed(1)} PPG • Bye Wk ${p.byeWeek || '--'}
+          <div style="font-size:11px; color:var(--text-muted); display:flex; align-items:center; gap:5px; flex-wrap:wrap; margin-top:2px;">
+            <span>${p.position} #${p.posRank} • ${p.seasonPpg.toFixed(1)} PPG</span>
+            <span class="sos-mini-pill ${po.pillCls}">Playoff SOS: ${po.letter} (#${po.avgRank.toFixed(0)})</span>
           </div>
+          <div style="font-size:10px; color:var(--text-muted); margin-top:1px;">${wkRangeLbl}: ${po.oppsStr}</div>
         </div>
         <span class="badge badge-blue" style="font-size:11px;">VAL ${p.baseValue}</span>
       </div>`;
@@ -966,43 +839,29 @@ function renderTradeAssetStackHTML(pids) {
 }
 
 function openTradeInBuilder(aIds, bIds, teamAIdx = null, teamBIdx = null) {
-  if (teamAIdx !== null && teamAIdx >= 0 && teamAIdx < state.managers.length) {
-    document.getElementById("tradeTeamA").value = teamAIdx;
+  if (teamAIdx !== null && teamAIdx >= 0 && teamAIdx < state.managers.length) document.getElementById("tradeTeamA").value = teamAIdx;
+  if (teamBIdx !== null && teamBIdx >= 0 && teamBIdx < state.managers.length) document.getElementById("tradeTeamB").value = teamBIdx;
+  else if (state.managers.length >= 2) {
+    const oA = state.managers.findIndex(m => aIds.some(id => m.players.includes(id)));
+    const oB = state.managers.findIndex(m => bIds.some(id => m.players.includes(id)));
+    if (oA >= 0) document.getElementById("tradeTeamA").value = oA;
+    if (oB >= 0 && oB !== oA) document.getElementById("tradeTeamB").value = oB;
   }
-  if (teamBIdx !== null && teamBIdx >= 0 && teamBIdx < state.managers.length) {
-    document.getElementById("tradeTeamB").value = teamBIdx;
-  } else if (state.managers.length >= 2) {
-    const ownerA = state.managers.findIndex(m => aIds.some(id => m.players.includes(id)));
-    const ownerB = state.managers.findIndex(m => bIds.some(id => m.players.includes(id)));
-    if (ownerA >= 0) document.getElementById("tradeTeamA").value = ownerA;
-    if (ownerB >= 0 && ownerB !== ownerA) document.getElementById("tradeTeamB").value = ownerB;
-  }
-  state.tradeSideA = [...aIds];
-  state.tradeSideB = [...bIds];
-  renderTradeBuilderSide(true);
-  renderTradeBuilderSide(false);
-  updateTradeEvaluation();
-  switchTradeMode(0);
+  state.tradeSideA = [...aIds]; state.tradeSideB = [...bIds];
+  renderTradeBuilderSide(true); renderTradeBuilderSide(false);
+  updateTradeEvaluation(); switchTradeMode(0);
 }
 
 function targetPlayerFromSos(playerId, pos) {
   document.querySelectorAll(".nav-btn").forEach(b => b.classList.remove("active"));
   document.querySelectorAll(".tab-page").forEach(p => p.classList.remove("active"));
-  const tradeNavBtn = document.querySelector('.nav-btn[data-tab="tab-trade"]');
-  if (tradeNavBtn) tradeNavBtn.classList.add("active");
+  document.querySelector('.nav-btn[data-tab="tab-trade"]')?.classList.add("active");
   document.getElementById("tab-trade").classList.add("active");
-
-  if (["QB","RB","WR","TE"].includes(pos)) {
-    document.getElementById("finderPos").value = pos;
-  }
+  if (["QB","RB","WR","TE"].includes(pos)) document.getElementById("finderPos").value = pos;
   const ownerIdx = state.managers.findIndex(m => m.players.includes(playerId));
   const myIdx = parseInt(document.getElementById("tradeTeamA").value || "0", 10);
-  if (ownerIdx >= 0 && ownerIdx !== myIdx) {
-    openTradeInBuilder([], [playerId], myIdx, ownerIdx);
-  } else {
-    renderTradeFinder();
-    switchTradeMode(2);
-  }
+  if (ownerIdx >= 0 && ownerIdx !== myIdx) openTradeInBuilder([], [playerId], myIdx, ownerIdx);
+  else { renderTradeFinder(); switchTradeMode(2); }
 }
 
 function openMatchupInSimulator(rosterIdA, rosterIdB) {
@@ -1014,8 +873,7 @@ function openMatchupInSimulator(rosterIdA, rosterIdB) {
   renderMatchupSim();
   document.querySelectorAll(".nav-btn").forEach(b => b.classList.remove("active"));
   document.querySelectorAll(".tab-page").forEach(p => p.classList.remove("active"));
-  const simBtn = document.querySelector('.nav-btn[data-tab="tab-matchup"]');
-  if (simBtn) simBtn.classList.add("active");
+  document.querySelector('.nav-btn[data-tab="tab-matchup"]')?.classList.add("active");
   document.getElementById("tab-matchup").classList.add("active");
 }
 
@@ -1029,9 +887,7 @@ function isPosEligible(pos, slot) {
   return false;
 }
 
-function replacementPpg(pos) {
-  return { QB:15.2, RB:7.8, WR:8.4, TE:6.2, DEF:6.5, K:7.0 }[pos] || 8.0;
-}
+function replacementPpg(pos) { return { QB:15.2, RB:7.8, WR:8.4, TE:6.2, DEF:6.5, K:7.0 }[pos] || 8.0; }
 
 function defaultRealisticProj(m) {
   if (m.position !== "DEF" && (!m.team || m.team === "FA" || !m.isCurrentNfl || ["Out","IR","Suspended","PUP"].includes(m.injuryStatus))) return 0;
@@ -1195,7 +1051,6 @@ function calcOptimalLineup(rosterIds, useRos = true) {
   return { slots, filled, total };
 }
 
-// Calculates a team's optimal lineup projection for a specific Playoff Week (15, 16, or 17) factoring in NFL DvP & Dome environment
 function calcPlayoffWeekProjection(rosterIds, weekNum) {
   let slots = (state.activeLeague?.rosterPositions || []).filter(s => !["BN","IR","TAXI"].includes(s));
   if (!slots.length) slots = ["QB","RB","RB","WR","WR","TE","FLEX","K","DEF"];
@@ -1210,7 +1065,6 @@ function calcPlayoffWeekProjection(rosterIds, weekNum) {
     if (matchInfo) {
       const posKey = ["QB","RB","WR","TE","DEF"].includes(m.position) ? m.position : "WR";
       const dvp = DVP_RANKS_2026[posKey]?.[matchInfo.opp] || 16.5;
-      // Up to +9% boost for #32 smash matchup, down to -9% penalty for #1 shutdown defense
       mult += ((dvp - 16.5) / 15.5) * 0.09;
       const venue = matchInfo.isHome ? normTeam : matchInfo.opp;
       if (DOME_TEAMS.has(venue)) mult += 0.02;
@@ -1238,6 +1092,12 @@ function calcPlayoffWeekProjection(rosterIds, weekNum) {
   return { total, topNames };
 }
 
+function calcPlayoffWindowAvgLineupPpg(rosterIds) {
+  const poWeeks = getPlayoffWeeksForActiveLeague();
+  const sum = poWeeks.reduce((acc, w) => acc + calcPlayoffWeekProjection(rosterIds, w).total, 0);
+  return sum / Math.max(1, poWeeks.length);
+}
+
 async function initApp() {
   updateAnalyticsDropdownOptions();
   try {
@@ -1247,7 +1107,7 @@ async function initApp() {
     weekSelect.value = state.week;
   } catch {}
 
-  syncLiveEspnSchedule([state.week, state.week + 1, state.week + 2, state.week + 3, 15, 16, 17]);
+  syncLiveEspnSchedule([state.week, state.week + 1, state.week + 2, state.week + 3, 14, 15, 16, 17]);
 
   let rawPlayers = await getCachedPlayers();
   if (!rawPlayers) {
@@ -1321,11 +1181,19 @@ async function syncUserAccount() {
     if (!uObj || !uObj.user_id) { setStatus("User not found on Sleeper."); return; }
     state.userId = uObj.user_id;
     const lgs = await fetch(`https://api.sleeper.app/v1/user/${state.userId}/leagues/nfl/${state.season}`).then(r => r.json());
-    state.leagues = (lgs || []).map(o => ({
-      name: o.name, leagueId: o.league_id, season: o.season || state.season,
-      totalTeams: o.total_rosters || 12, leagueType: o.settings?.type || 0,
-      rosterPositions: o.roster_positions || [], scoringSettings: o.scoring_settings || {}
-    }));
+    state.leagues = (lgs || []).map(o => {
+      const st = o.settings || {};
+      const totTeams = o.total_rosters || 12;
+      const pTeams = st.playoff_teams || (totTeams <= 8 ? 4 : 6);
+      const pStart = st.playoff_week_start > 0 ? st.playoff_week_start : (pTeams <= 4 ? 16 : 15);
+      return {
+        name: o.name, leagueId: o.league_id, season: o.season || state.season,
+        totalTeams: totTeams, leagueType: st.type || 0,
+        playoffTeams: pTeams, playoffWeekStart: pStart,
+        playoffSeedType: st.playoff_seed_type || 0, playoffRoundType: st.playoff_round_type || 0,
+        rosterPositions: o.roster_positions || [], scoringSettings: o.scoring_settings || {}
+      };
+    });
     const sel = document.getElementById("leagueSelect");
     sel.innerHTML = "";
     state.leagues.forEach((l, i) => {
@@ -1341,12 +1209,27 @@ async function syncUserAccount() {
 async function loadLeague(idx) {
   state.activeLeague = state.leagues[idx];
   if (!state.activeLeague) return;
-  state.bracketOverrides = { qf1: null, qf2: null, sf1: null, sf2: null, champ: null, third: null };
+  state.bracketOverrides = {};
+  document.getElementById("bracketTeamsOverride").value = "AUTO";
+  document.getElementById("bracketReseedMode").value = "AUTO";
   document.getElementById("tradeFormatBadge").textContent =
     state.activeLeague.leagueType === 2 ? "DYNASTY MODE" : (state.activeLeague.leagueType === 1 ? "KEEPER MODE" : "REDRAFT MODE");
 
-  await fetchWeeklyProjections();
   const lid = state.activeLeague.leagueId;
+  try {
+    const lgMeta = await fetch(`https://api.sleeper.app/v1/league/${lid}`).then(r => r.json());
+    if (lgMeta && lgMeta.settings) {
+      const st = lgMeta.settings;
+      const totTeams = lgMeta.total_rosters || state.activeLeague.totalTeams || 12;
+      state.activeLeague.totalTeams = totTeams;
+      state.activeLeague.playoffTeams = st.playoff_teams || (totTeams <= 8 ? 4 : 6);
+      state.activeLeague.playoffWeekStart = st.playoff_week_start > 0 ? st.playoff_week_start : (state.activeLeague.playoffTeams <= 4 ? 16 : 15);
+      state.activeLeague.playoffSeedType = st.playoff_seed_type || 0;
+      state.activeLeague.playoffRoundType = st.playoff_round_type || 0;
+    }
+  } catch {}
+
+  await fetchWeeklyProjections();
   const [users, rosters, matchups] = await Promise.all([
     fetch(`https://api.sleeper.app/v1/league/${lid}/users`).then(r => r.json()),
     fetch(`https://api.sleeper.app/v1/league/${lid}/rosters`).then(r => r.json()),
@@ -1378,6 +1261,7 @@ async function loadLeague(idx) {
   });
 
   const tot = Math.max(1, state.managers.length);
+  const regSeasonWks = Math.max(13, (state.activeLeague.playoffWeekStart || 15) - 1);
   [...state.managers].sort((a, b) => b.rosPpg - a.rosPpg).forEach((m, i) => m.week1Rank = i + 1);
 
   state.managers.forEach((m, i) => {
@@ -1389,14 +1273,15 @@ async function loadLeague(idx) {
     const expP = tot > 1 ? ew / (tot - 1) : 0;
     m.luck = (actP - expP) * 100;
     m.power = ((m.pf / maxPF) * 60) + (expP * 40);
-    const rem = Math.max(0, 14 - tg);
+    const rem = Math.max(0, regSeasonWks - tg);
     const wr = Math.min(0.88, Math.max(0.15, 0.25 + expP * 0.55 + (m.rosPpg - 105) / 100));
     m.projW = m.wins + Math.round(rem * wr);
-    m.projL = Math.max(0, 14 - m.projW);
+    m.projL = Math.max(0, regSeasonWks - m.projW);
   });
 
   state.managers.sort((a, b) => b.power - a.power);
   const nw = Math.max(2, state.week);
+  const pSpots = state.activeLeague.playoffTeams || 6;
   state.managers.forEach((m, i) => {
     m.currentRank = i + 1;
     m.history = [];
@@ -1405,7 +1290,8 @@ async function loadLeague(idx) {
       m.history.push(Math.min(tot, Math.max(1, Math.round(m.week1Rank * (1 - t) + m.currentRank * t))));
     }
     const rf = (tot - m.currentRank + 1) / tot;
-    m.playoffPct = Math.min(99, Math.max(4, rf * 75 + (m.projW / 14) * 30));
+    const spotBoost = (pSpots / tot) * 22;
+    m.playoffPct = Math.min(99, Math.max(4, rf * 68 + (m.projW / regSeasonWks) * 25 + spotBoost - 8));
   });
 
   const selectors = ["teamSelect", "tradeTeamA", "tradeTeamB", "simTeamA", "simTeamB"];
@@ -1430,7 +1316,7 @@ async function loadLeague(idx) {
   renderSuperlatives(matchups || []);
   renderAllViews(myIdx);
   await buildTradeDatabase();
-  setStatus(`Synced ${state.activeLeague.name} • Week ${state.week}`);
+  setStatus(`Synced ${state.activeLeague.name} (${state.activeLeague.playoffTeams}-Team Playoff) • Week ${state.week}`);
 }
 
 function renderSuperlatives(matchups) {
@@ -1611,39 +1497,29 @@ function drawPowerChart() {
 
     ctx.strokeStyle = "#222836"; ctx.lineWidth = 1;
     ctx.fillStyle = "#8E96AA"; ctx.font = "600 10px -apple-system, sans-serif";
-    const steps = 4;
-    for (let i = 0; i <= steps; i++) {
-      const r = i / steps;
-      const gx = plot.l + r * plot.w;
-      const gy = plot.t + (1 - r) * plot.h;
+    for (let i = 0; i <= 4; i++) {
+      const r = i / 4;
+      const gx = plot.l + r * plot.w, gy = plot.t + (1 - r) * plot.h;
       ctx.beginPath();
       ctx.moveTo(gx, plot.t); ctx.lineTo(gx, plot.t + plot.h);
       ctx.moveTo(plot.l, gy); ctx.lineTo(plot.l + plot.w, gy);
       ctx.stroke();
-
-      const xVal = (minE + r * (maxE - minE)).toFixed(1) + "%";
       ctx.textAlign = "center";
-      ctx.fillText(xVal, gx, plot.t + plot.h + 18);
-
-      const yVal = (minP + r * (maxP - minP)).toFixed(0);
+      ctx.fillText((minE + r * (maxE - minE)).toFixed(1) + "%", gx, plot.t + plot.h + 18);
       ctx.textAlign = "right";
-      ctx.fillText(yVal, plot.l - 10, gy + 4);
+      ctx.fillText((minP + r * (maxP - minP)).toFixed(0), plot.l - 10, gy + 4);
     }
 
     ctx.strokeStyle = "#4A5568"; ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.moveTo(plot.l, plot.t); ctx.lineTo(plot.l, plot.t + plot.h);
-    ctx.lineTo(plot.l + plot.w, plot.t + plot.h);
+    ctx.moveTo(plot.l, plot.t); ctx.lineTo(plot.l, plot.t + plot.h); ctx.lineTo(plot.l + plot.w, plot.t + plot.h);
     ctx.stroke();
 
     ctx.fillStyle = "#64D2FF"; ctx.font = "700 11px -apple-system, sans-serif";
     ctx.textAlign = "center";
     ctx.fillText("LINEUP EFFICIENCY (% OF MAX PF)", plot.l + plot.w / 2, plot.t + plot.h + 44);
-
     ctx.save();
-    ctx.translate(24, plot.t + plot.h / 2);
-    ctx.rotate(-Math.PI / 2);
-    ctx.textAlign = "center";
+    ctx.translate(24, plot.t + plot.h / 2); ctx.rotate(-Math.PI / 2);
     ctx.fillText("POINTS AGAINST (PA)", 0, 0);
     ctx.restore();
 
@@ -1662,11 +1538,8 @@ function drawPowerChart() {
       ctx.fillStyle = "#F2F4F8"; ctx.font = "700 10px -apple-system, sans-serif";
       const label = m.teamName.split(" (")[0].slice(0, 12);
       const lw = ctx.measureText(label).width;
-      if (x + 12 + lw > W - 12) {
-        ctx.textAlign = "right"; ctx.fillText(label, x - 10, y + 4);
-      } else {
-        ctx.textAlign = "left"; ctx.fillText(label, x + 10, y + 4);
-      }
+      if (x + 12 + lw > W - 12) { ctx.textAlign = "right"; ctx.fillText(label, x - 10, y + 4); }
+      else { ctx.textAlign = "left"; ctx.fillText(label, x + 10, y + 4); }
     });
     ctx.textAlign = "left";
   }
@@ -1685,11 +1558,12 @@ function renderTradeBuilderSide(isSideA) {
 
   sorted.forEach(p => {
     const isExt = tm && !tm.players.includes(p.id);
+    const po = getPlayerPlayoffSosProfile(p);
     const div = document.createElement("div");
     div.className = "p-card" + (activeArr.includes(p.id) ? " selected" : "");
     div.innerHTML = `
       <img class="avatar" src="${avatarUrl(p)}" onerror="this.style.display='none'" />
-      <div style="flex:1;"><div style="font-weight:700;font-size:13px;color:#F2F4F8;"><img class="team-logo-sm" src="${teamLogoUrl(p.team)}" onerror="this.style.display='none'"/>${p.name}${isExt ? ' <span class="badge badge-yellow" style="font-size:9px;padding:2px 6px;">COMP</span>' : ''}</div><div style="font-size:11px;color:#8E96AA;">${p.position} #${p.posRank} - ${p.team} • ${p.seasonPpg.toFixed(1)} PPG</div></div>
+      <div style="flex:1;"><div style="font-weight:700;font-size:13px;color:#F2F4F8;"><img class="team-logo-sm" src="${teamLogoUrl(p.team)}" onerror="this.style.display='none'"/>${p.name}${isExt ? ' <span class="badge badge-yellow" style="font-size:9px;padding:2px 6px;">COMP</span>' : ''}</div><div style="font-size:11px;color:#8E96AA;">${p.position} #${p.posRank} - ${p.team} • ${p.seasonPpg.toFixed(1)} PPG • <span class="sos-mini-pill ${po.pillCls}">Playoff SOS: ${po.letter}</span></div></div>
       <div style="text-align:right;"><span class="badge badge-green">VAL ${p.baseValue}</span></div>`;
     div.onclick = () => {
       const idx = activeArr.indexOf(p.id);
@@ -1730,15 +1604,12 @@ function updateTradeEvaluation() {
       const p = state.players[id];
       if (!p) return;
       const chip = document.createElement("div");
-      chip.className = "pkg-chip";
-      chip.style.cursor = "pointer";
-      chip.title = "Click to remove from package";
+      chip.className = "pkg-chip"; chip.style.cursor = "pointer";
       chip.innerHTML = `
         <div style="display:flex;align-items:center;gap:8px;">
           <img class="avatar" style="width:28px;height:28px;" src="${avatarUrl(p)}" onerror="this.style.display='none'" />
           <span class="pos-pill" style="${posBadgeStyle(p.position)}width:38px;height:20px;line-height:20px;">${p.position}</span>
-          <b style="font-size:12px;">${p.name}</b>
-          <span style="font-size:11px;color:var(--text-muted);">(${p.team})</span>
+          <b style="font-size:12px;">${p.name}</b><span style="font-size:11px;color:var(--text-muted);">(${p.team})</span>
         </div>
         <span class="badge badge-blue" style="font-size:10px;">VAL ${p.baseValue} ✕</span>`;
       chip.onclick = () => {
@@ -1769,14 +1640,17 @@ function updateTradeEvaluation() {
   const afterBIds = tmB.players.filter(id => !state.tradeSideB.includes(id)).concat(state.tradeSideA);
   const dA = calcOptimalLineup(afterAIds, true).total - beforeA;
   const dB = calcOptimalLineup(afterBIds, true).total - beforeB;
+  const poDeltaA = calcPlayoffWindowAvgLineupPpg(afterAIds) - calcPlayoffWindowAvgLineupPpg(tmA.players);
+  const poDeltaB = calcPlayoffWindowAvgLineupPpg(afterBIds) - calcPlayoffWindowAvgLineupPpg(tmB.players);
 
   document.getElementById("tradeConsole").innerHTML = `
     <b>Value Comparison:</b> ${nameA}: ${adjA} pts | ${nameB}: ${adjB} pts (${ratio.toFixed(1)}% Match)<br>
-    <b>Starting Lineup Impact:</b> ${nameA}: <span style="color:${dA>=0?'var(--good)':'var(--bad)'};font-weight:700;">${dA>=0?'+':''}${dA.toFixed(2)} PPG</span> |
-    ${nameB}: <span style="color:${dB>=0?'var(--good)':'var(--bad)'};font-weight:700;">${dB>=0?'+':''}${dB.toFixed(2)} PPG</span>`;
+    <b>ROS Lineup Impact:</b> ${nameA}: <span style="color:${dA>=0?'var(--good)':'var(--bad)'};font-weight:700;">${dA>=0?'+':''}${dA.toFixed(2)} PPG</span> |
+    ${nameB}: <span style="color:${dB>=0?'var(--good)':'var(--bad)'};font-weight:700;">${dB>=0?'+':''}${dB.toFixed(2)} PPG</span><br>
+    <b>Playoff Lineup Impact:</b> ${nameA}: <span style="color:${poDeltaA>=0?'var(--good)':'var(--bad)'};font-weight:700;">${poDeltaA>=0?'+':''}${poDeltaA.toFixed(2)} Playoff PPG</span> |
+    ${nameB}: <span style="color:${poDeltaB>=0?'var(--good)':'var(--bad)'};font-weight:700;">${poDeltaB>=0?'+':''}${poDeltaB.toFixed(2)} Playoff PPG</span>`;
 }
 
-// --- Positional Grades & Roster Needs Blueprint Analyzer ---
 function computeLeaguePositionalGrades(myIdx) {
   const gridEl = document.getElementById("posGradesGrid");
   const summaryEl = document.getElementById("rosterNeedsSummary");
@@ -1808,15 +1682,13 @@ function computeLeaguePositionalGrades(myIdx) {
       const backups = byPos[pos].slice(req, req + 2);
       const stScore = starters.reduce((s, p) => s + p.baseValue + p.seasonPpg * 180, 0);
       const bkScore = backups.reduce((s, p) => s + p.baseValue * 0.35 + p.seasonPpg * 55, 0);
-      const stPpg = starters.reduce((s, p) => s + (p.projectedPoints > 0.1 ? p.projectedPoints : p.seasonPpg), 0);
-      scoresByUnit[pos].push({ mIdx, score: stScore + bkScore, stPpg, topPlayers: byPos[pos].slice(0, 3) });
+      scoresByUnit[pos].push({ mIdx, score: stScore + bkScore, topPlayers: byPos[pos].slice(0, 3) });
     });
 
     const flexPool = [...byPos.RB.slice(slotCounts.RB), ...byPos.WR.slice(slotCounts.WR), ...byPos.TE.slice(slotCounts.TE)]
       .sort((a, b) => b.baseValue - a.baseValue).slice(0, 4);
     const depthScore = flexPool.reduce((s, p) => s + p.baseValue + p.seasonPpg * 120, 0);
-    const depthPpg = flexPool.reduce((s, p) => s + p.seasonPpg, 0);
-    scoresByUnit.DEPTH.push({ mIdx, score: depthScore, stPpg: depthPpg, topPlayers: flexPool.slice(0, 3) });
+    scoresByUnit.DEPTH.push({ mIdx, score: depthScore, topPlayers: flexPool.slice(0, 3) });
   });
 
   const myGrades = {};
@@ -1833,16 +1705,12 @@ function computeLeaguePositionalGrades(myIdx) {
     else if (pct >= 0.24) { letter = "C"; badgeCls = "badge-yellow"; }
     else if (pct >= 0.10) { letter = "D"; badgeCls = "badge-red"; }
     else { letter = "F"; badgeCls = "badge-red"; }
-
-    myGrades[u] = { unit: u, rank: rk, totalTeams, letter, badgeCls, pct, stPpg: mine.stPpg, topPlayers: mine.topPlayers };
+    myGrades[u] = { unit: u, rank: rk, totalTeams, letter, badgeCls, topPlayers: mine.topPlayers };
   });
 
-  const coreUnits = ["QB", "RB", "WR", "TE"].map(k => myGrades[k]);
-  coreUnits.sort((a, b) => b.rank - a.rank);
-  const weakest = coreUnits[0];
-  const secondWeakest = coreUnits[1];
+  const coreUnits = ["QB", "RB", "WR", "TE"].map(k => myGrades[k]).sort((a, b) => b.rank - a.rank);
+  const weakest = coreUnits[0], secondWeakest = coreUnits[1];
   const strongest = [...coreUnits].sort((a, b) => a.rank - b.rank)[0];
-
   state.weakestPosByTeam[myIdx] = weakest.unit;
 
   const targetFilterVal = document.getElementById("finderPos").value;
@@ -1855,29 +1723,24 @@ function computeLeaguePositionalGrades(myIdx) {
     const isSurplus = u === strongest.unit && g.rank <= Math.ceil(totalTeams * 0.35);
     const card = document.createElement("div");
     card.className = "grade-card" + (isWeakest ? " priority-need" : (isSurplus ? " surplus-unit" : ""));
-    const unitTitle = u === "DEPTH" ? "BENCH / FLEX" : `${u} UNIT`;
     const roleTag = isWeakest
       ? `<span style="color:var(--bad);font-size:10px;font-weight:800;">#1 PRIORITY NEED</span>`
       : (isSurplus ? `<span style="color:var(--good);font-size:10px;font-weight:800;">SURPLUS CHIP</span>` : `<span style="color:var(--text-muted);font-size:10px;font-weight:700;">${activeTarget === u ? 'TARGETING' : 'CLICK TO TARGET'}</span>`);
-
     const namesStr = g.topPlayers.length ? g.topPlayers.map(p => p.name.split(" ").pop()).join(", ") : "Empty";
     card.innerHTML = `
       <div style="display:flex;justify-content:space-between;align-items:center;">
-        <span style="font-size:11px;font-weight:800;color:var(--text-main);">${unitTitle}</span>
+        <span style="font-size:11px;font-weight:800;">${u === "DEPTH" ? "BENCH / FLEX" : u + " UNIT"}</span>
         <span class="grade-pill ${g.badgeCls}">${g.letter}</span>
       </div>
       <div style="display:flex;justify-content:space-between;align-items:center;margin-top:2px;">
-        <span style="font-size:12px;font-weight:800;color:var(--text-main);">Rank #${g.rank} <span style="color:var(--text-muted);font-weight:600;">of ${totalTeams}</span></span>
+        <span style="font-size:12px;font-weight:800;">Rank #${g.rank} <span style="color:var(--text-muted);font-weight:600;">of ${totalTeams}</span></span>
         ${roleTag}
       </div>
       <div style="font-size:11px;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px;">
         Core: <b style="color:var(--text-main);">${namesStr}</b>
       </div>`;
     if (u !== "DEPTH") {
-      card.onclick = () => {
-        document.getElementById("finderPos").value = u;
-        renderTradeFinder();
-      };
+      card.onclick = () => { document.getElementById("finderPos").value = u; renderTradeFinder(); };
     }
     gridEl.appendChild(card);
   });
@@ -1892,17 +1755,14 @@ function computeLeaguePositionalGrades(myIdx) {
         <b style="color:var(--bad);">Primary Roster Weakness — ${weakest.unit} (Grade ${weakest.letter}, Rank #${weakest.rank}/${totalTeams}):</b>
         ${myTeamName}'s ${weakest.unit} group (${weakNames}) trails league contenders, with ${secondWeakest.unit} (Rank #${secondWeakest.rank}/${totalTeams}) as your secondary upgrade spot.<br>
         <b style="color:var(--good);">Best Trade Leverage — ${strongest.unit} Surplus (Grade ${strongest.letter}, Rank #${strongest.rank}/${totalTeams}):</b>
-        Deal from your ${strongest.unit} depth (${surplusNames}) in a <b>2-for-1 consolidation</b> or <b>2-for-2 package</b> below to boost starting PPG.
+        Deal from your ${strongest.unit} depth (${surplusNames}) in a <b>2-for-1 consolidation</b> or <b>2-for-2 package</b> below to acquire players with <b>A / A+ Fantasy Playoff schedules</b>.
       </div>
       <button id="autoTargetNeedBtn" class="btn-builder-action" style="padding:8px 14px;">Target ${weakest.unit} Upgrades (${weakest.letter})</button>
     </div>`;
-  const btn = document.getElementById("autoTargetNeedBtn");
-  if (btn) {
-    btn.onclick = () => {
-      document.getElementById("finderPos").value = weakest.unit;
-      renderTradeFinder();
-    };
-  }
+  document.getElementById("autoTargetNeedBtn").onclick = () => {
+    document.getElementById("finderPos").value = weakest.unit;
+    renderTradeFinder();
+  };
   return { weakestPos: weakest.unit, secondWeakestPos: secondWeakest.unit, surplusPos: strongest.unit, myGrades };
 }
 
@@ -1933,10 +1793,7 @@ async function buildTradeDatabase() {
           if (aIds.length && bIds.length) {
             const aVal = aIds.reduce((s, id) => s + state.players[id].baseValue, 0);
             const bVal = bIds.reduce((s, id) => s + state.players[id].baseValue, 0);
-            state.dbTrades.push({
-              aIds, bIds, aVal, bVal, src: "LEAGUE",
-              label: `Week ${wIdx + 1} League Trade`, format: fmtTag
-            });
+            state.dbTrades.push({ aIds, bIds, aVal, bVal, src: "LEAGUE", label: `Week ${wIdx + 1} League Trade`, format: fmtTag });
           }
         });
       });
@@ -1957,12 +1814,8 @@ async function buildTradeDatabase() {
       if (pA.position === pB.position) continue;
       const match = (1 - Math.abs(pA.baseValue - pB.baseValue) / Math.max(pA.baseValue, pB.baseValue)) * 100;
       if (match >= 93) {
-        state.dbTrades.push({
-          aIds: [pA.id], bIds: [pB.id], aVal: pA.baseValue, bVal: pB.baseValue,
-          src: "MARKET", label: recencyTags[compIdx % recencyTags.length], format: fmtTag
-        });
-        compIdx++;
-        break;
+        state.dbTrades.push({ aIds: [pA.id], bIds: [pB.id], aVal: pA.baseValue, bVal: pB.baseValue, src: "MARKET", label: recencyTags[compIdx % recencyTags.length], format: fmtTag });
+        compIdx++; break;
       }
     }
     if (i < 24 && i + 20 < pool.length && compIdx % 2 === 0) {
@@ -1971,12 +1824,8 @@ async function buildTradeDatabase() {
           const pkgVal = Math.round((pool[m1].baseValue + pool[m2].baseValue) * 0.92);
           const match = (1 - Math.abs(pA.baseValue - pkgVal) / Math.max(pA.baseValue, pkgVal)) * 100;
           if (match >= 93.5) {
-            state.dbTrades.push({
-              aIds: [pA.id], bIds: [pool[m1].id, pool[m2].id], aVal: pA.baseValue, bVal: pkgVal,
-              src: "MARKET", label: "2-for-1 Consolidation Comp", format: fmtTag
-            });
-            compIdx++;
-            break;
+            state.dbTrades.push({ aIds: [pA.id], bIds: [pool[m1].id, pool[m2].id], aVal: pA.baseValue, bVal: pkgVal, src: "MARKET", label: "2-for-1 Consolidation Comp", format: fmtTag });
+            compIdx++; break;
           }
         }
         break;
@@ -1993,17 +1842,7 @@ function renderTradeDatabase() {
   const pos = document.getElementById("dbPosFilter").value;
   const src = document.getElementById("dbSrcFilter").value;
   const tbl = document.getElementById("dbTable");
-  tbl.innerHTML = `
-    <thead>
-      <tr>
-        <th style="width:155px;">Source / Format</th>
-        <th style="text-align:left;">Side A Receives</th>
-        <th style="width:145px;">Value Balance</th>
-        <th style="text-align:left;">Side B Receives</th>
-        <th style="width:135px;">Modify Trade</th>
-      </tr>
-    </thead>
-    <tbody></tbody>`;
+  tbl.innerHTML = `<thead><tr><th style="width:155px;">Source / Format</th><th style="text-align:left;">Side A Receives</th><th style="width:145px;">Value Balance</th><th style="text-align:left;">Side B Receives</th><th style="width:135px;">Modify Trade</th></tr></thead><tbody></tbody>`;
   const tbody = tbl.querySelector("tbody");
 
   let shown = 0;
@@ -2020,36 +1859,21 @@ function renderTradeDatabase() {
 
     const diff = Math.abs(t.aVal - t.bVal);
     const matchPct = Math.max(t.aVal, t.bVal) > 0 ? (1 - diff / Math.max(t.aVal, t.bVal)) * 100 : 100;
-    const srcBadge = t.src === "LEAGUE"
-      ? `<span class="badge badge-green">LEAGUE TRADE</span>`
-      : `<span class="badge badge-blue">MARKET COMP</span>`;
+    const srcBadge = t.src === "LEAGUE" ? `<span class="badge badge-green">LEAGUE TRADE</span>` : `<span class="badge badge-blue">MARKET COMP</span>`;
 
     const tr = document.createElement("tr");
     tr.className = "table-row-hover";
     tr.innerHTML = `
-      <td>
-        <div style="display:flex;flex-direction:column;gap:5px;align-items:center;">
-          ${srcBadge}
-          <div style="font-size:11px;font-weight:700;color:var(--text-main);">${t.label}</div>
-          <div style="font-size:10px;color:var(--text-muted);">${t.format}</div>
-        </div>
-      </td>
+      <td><div style="display:flex;flex-direction:column;gap:5px;align-items:center;">${srcBadge}<div style="font-size:11px;font-weight:700;">${t.label}</div><div style="font-size:10px;color:var(--text-muted);">${t.format}</div></div></td>
       <td>${renderTradeAssetStackHTML(t.aIds)}</td>
-      <td>
-        <div style="display:flex;flex-direction:column;gap:5px;align-items:center;">
-          <span class="badge ${matchPct >= 92 ? 'badge-green' : 'badge-yellow'}">${matchPct.toFixed(0)}% Fair Match</span>
-          <div style="font-size:11px;font-weight:700;color:var(--text-muted);">${t.aVal} vs ${t.bVal}</div>
-        </div>
-      </td>
+      <td><div style="display:flex;flex-direction:column;gap:5px;align-items:center;"><span class="badge ${matchPct >= 92 ? 'badge-green' : 'badge-yellow'}">${matchPct.toFixed(0)}% Fair Match</span><div style="font-size:11px;font-weight:700;color:var(--text-muted);">${t.aVal} vs ${t.bVal}</div></div></td>
       <td>${renderTradeAssetStackHTML(t.bIds)}</td>
       <td><button class="btn-builder-action">Open in Builder →</button></td>`;
     tr.querySelector("button").onclick = () => openTradeInBuilder(t.aIds, t.bIds);
     tbody.appendChild(tr);
   });
 
-  if (shown === 0) {
-    tbody.innerHTML = `<tr><td colspan="5" style="padding:24px;color:var(--text-muted);">No matching trades found for the current filters.</td></tr>`;
-  }
+  if (shown === 0) tbody.innerHTML = `<tr><td colspan="5" style="padding:24px;color:var(--text-muted);">No matching trades found for the current filters.</td></tr>`;
   document.getElementById("dbCountLbl").textContent = `${shown} trades shown`;
 }
 
@@ -2057,18 +1881,7 @@ function renderTradeFinder() {
   const myIdx = parseInt(document.getElementById("tradeTeamA").value, 10) || 0;
   const myTm = state.managers[myIdx];
   const tbl = document.getElementById("finderTable");
-  tbl.innerHTML = `
-    <thead>
-      <tr>
-        <th style="text-align:left;width:225px;">Trade Partner & Deal Type</th>
-        <th style="text-align:left;">You Send</th>
-        <th style="text-align:left;">You Receive</th>
-        <th style="width:140px;">Package Value</th>
-        <th style="width:165px;">Lineup PPG Impact</th>
-        <th style="width:135px;">Modify Trade</th>
-      </tr>
-    </thead>
-    <tbody></tbody>`;
+  tbl.innerHTML = `<thead><tr><th style="text-align:left;width:230px;">Trade Partner & Deal Type</th><th style="text-align:left;">You Send</th><th style="text-align:left;">You Receive</th><th style="width:140px;">Package Value</th><th style="width:185px;">ROS & Playoff PPG Impact</th><th style="width:135px;">Modify Trade</th></tr></thead><tbody></tbody>`;
   const tbody = tbl.querySelector("tbody");
 
   if (!myTm || state.managers.length < 2) {
@@ -2082,9 +1895,11 @@ function renderTradeFinder() {
   const rawPosSel = document.getElementById("finderPos").value;
   const targetPos = rawPosSel === "AUTO" ? diag.weakestPos : rawPosSel;
   const pkgTypeFilter = document.getElementById("finderPkgType").value || "ALL";
+  const sosBoostMode = document.getElementById("finderSosBoost").value || "BOOST";
   const strat = parseInt(document.getElementById("finderStrat").value || "0", 10);
 
   const myBase = calcOptimalLineup(myTm.players, true).total;
+  const myPlayoffBase = calcPlayoffWindowAvgLineupPpg(myTm.players);
   const myPl = myTm.players.map(id => state.players[id])
     .filter(p => p && p.isCurrentNfl && ["QB","RB","WR","TE"].includes(p.position) && p.baseValue >= 900)
     .sort((a, b) => b.baseValue - a.baseValue);
@@ -2103,6 +1918,15 @@ function renderTradeFinder() {
       const bestOutAtTarget = Math.max(0, ...giveObjs.filter(p => p.position === targetPos).map(p => p.baseValue));
       if (bestInAtTarget <= bestOutAtTarget) return;
     }
+
+    const inSosList = getObjs.map(getPlayerPlayoffSosProfile);
+    const outSosList = giveObjs.map(getPlayerPlayoffSosProfile);
+    const hasElitePlayoffTarget = inSosList.some(s => s.isElite);
+    const avgInDvP = inSosList.reduce((s, x) => s + x.avgRank, 0) / Math.max(1, inSosList.length);
+    const avgOutDvP = outSosList.reduce((s, x) => s + x.avgRank, 0) / Math.max(1, outSosList.length);
+    const netDvPGain = avgInDvP - avgOutDvP;
+
+    if (sosBoostMode === "STRICT" && !hasElitePlayoffTarget) return;
 
     const rawGive = giveObjs.reduce((s, p) => s + p.baseValue, 0);
     const rawGet = getObjs.reduce((s, p) => s + p.baseValue, 0);
@@ -2123,15 +1947,25 @@ function renderTradeFinder() {
     const ptAfter = part.players.filter(id => !getIds.includes(id)).concat(giveIds);
     const dMy = calcOptimalLineup(myAfter, true).total - myBase;
     const dPt = calcOptimalLineup(ptAfter, true).total - partBase;
+    const dPlayoffMy = calcPlayoffWindowAvgLineupPpg(myAfter) - myPlayoffBase;
 
-    if (strat === 0 && (dMy < 0.05 || dPt < -0.25)) return;
-    if (strat === 1 && dMy < 0.25) return;
-    if (strat === 2 && (dMy <= 0 && dPt <= 0)) return;
+    const effectiveMyGain = sosBoostMode !== "OFF" ? Math.max(dMy, dPlayoffMy) : dMy;
+    if (strat === 0 && (effectiveMyGain < 0.05 || dPt < -0.25)) return;
+    if (strat === 1 && effectiveMyGain < 0.25) return;
+    if (strat === 2 && (effectiveMyGain <= 0 && dPt <= 0)) return;
+
+    let sosRankBonus = 0;
+    if (sosBoostMode !== "OFF") {
+      if (hasElitePlayoffTarget) sosRankBonus += 1.35;
+      sosRankBonus += (netDvPGain / 10) * 0.75;
+      sosRankBonus += (dPlayoffMy - dMy) * 0.85;
+    }
 
     seenKeys.add(key);
     props.push({
       part, partnerIdx: tIdx, giveIds, getIds,
       giveVal: adjGive, getVal: adjGet, match, dMy, dPt,
+      dPlayoffMy, hasElitePlayoffTarget, sosRankBonus,
       dealType, badgeCls, note: customNote
     });
   }
@@ -2150,12 +1984,7 @@ function renderTradeFinder() {
         for (let m1 = 0; m1 < Math.min(10, myPl.length); m1++) {
           if (myPl[m1].baseValue >= stud.baseValue * 0.92) continue;
           for (let m2 = m1 + 1; m2 < Math.min(11, myPl.length); m2++) {
-            evaluateAndPushCandidate(
-              part, tIdx, partBase,
-              [myPl[m1].id, myPl[m2].id], [stud.id],
-              "2-FOR-1 CONSOLIDATION", "badge-purple",
-              `Package ${myPl[m1].position}+${myPl[m2].position} depth for elite ${stud.position}1`
-            );
+            evaluateAndPushCandidate(part, tIdx, partBase, [myPl[m1].id, myPl[m2].id], [stud.id], "2-FOR-1 CONSOLIDATION", "badge-purple", `Package ${myPl[m1].position}+${myPl[m2].position} depth for elite ${stud.position}1`);
           }
         }
       });
@@ -2172,14 +2001,8 @@ function renderTradeFinder() {
             const g2 = myPl[m2];
             for (let ti2 = 1; ti2 < Math.min(10, thPl.length); ti2++) {
               const t2 = thPl[ti2];
-              if (t2.id === t1.id) continue;
-              if (g2.baseValue <= t2.baseValue) continue;
-              evaluateAndPushCandidate(
-                part, tIdx, partBase,
-                [g1.id, g2.id], [t1.id, t2.id],
-                "2-FOR-2 PACKAGE", "badge-green",
-                `Upgrade to ${t1.name.split(" ").pop()} (${t1.position}) while balancing ${g2.position}/${t2.position}`
-              );
+              if (t2.id === t1.id || g2.baseValue <= t2.baseValue) continue;
+              evaluateAndPushCandidate(part, tIdx, partBase, [g1.id, g2.id], [t1.id, t2.id], "2-FOR-2 PACKAGE", "badge-green", `Upgrade to ${t1.name.split(" ").pop()} (${t1.position}) while balancing ${g2.position}/${t2.position}`);
             }
           }
         }
@@ -2188,17 +2011,11 @@ function renderTradeFinder() {
 
     if (pkgTypeFilter === "ALL" || pkgTypeFilter === "MULTI") {
       myPl.slice(0, 4).forEach(myStud => {
-        if (myStud.baseValue < 3200) return;
-        if (targetPos !== "ALL" && myStud.position === targetPos) return;
+        if (myStud.baseValue < 3200 || (targetPos !== "ALL" && myStud.position === targetPos)) return;
         for (let t1 = 0; t1 < Math.min(8, thPl.length); t1++) {
           if (thPl[t1].baseValue >= myStud.baseValue * 0.90) continue;
           for (let t2 = t1 + 1; t2 < Math.min(10, thPl.length); t2++) {
-            evaluateAndPushCandidate(
-              part, tIdx, partBase,
-              [myStud.id], [thPl[t1].id, thPl[t2].id],
-              "1-FOR-2 DEPTH", "badge-yellow",
-              `Split ${myStud.position} stud into 2 startable ${thPl[t1].position}/${thPl[t2].position} upgrades`
-            );
+            evaluateAndPushCandidate(part, tIdx, partBase, [myStud.id], [thPl[t1].id, thPl[t2].id], "1-FOR-2 DEPTH", "badge-yellow", `Split ${myStud.position} stud into 2 startable ${thPl[t1].position}/${thPl[t2].position} upgrades`);
           }
         }
       });
@@ -2207,40 +2024,38 @@ function renderTradeFinder() {
     if (pkgTypeFilter === "ALL" || pkgTypeFilter === "1FOR1") {
       myPl.slice(0, 10).forEach(gP => {
         thPl.slice(0, 10).forEach(rP => {
-          if (gP.position === rP.position) return;
-          if (targetPos !== "ALL" && rP.position !== targetPos) return;
-          evaluateAndPushCandidate(
-            part, tIdx, partBase,
-            [gP.id], [rP.id],
-            "1-FOR-1 SWAP", "badge-blue",
-            `Direct ${gP.position} surplus for ${rP.position} starter swap`
-          );
+          if (gP.position === rP.position || (targetPos !== "ALL" && rP.position !== targetPos)) return;
+          evaluateAndPushCandidate(part, tIdx, partBase, [gP.id], [rP.id], "1-FOR-1 SWAP", "badge-blue", `Direct ${gP.position} surplus for ${rP.position} starter swap`);
         });
       });
     }
   });
 
   props.sort((a, b) => {
-    if (strat === 1) return b.dMy - a.dMy;
-    if (strat === 2) return b.match - a.match;
-    return (b.dMy * 1.35 + Math.max(0, b.dPt)) - (a.dMy * 1.35 + Math.max(0, a.dPt));
+    if (strat === 1) return (b.dMy + b.sosRankBonus) - (a.dMy + a.sosRankBonus);
+    if (strat === 2) return (b.match + b.sosRankBonus * 2.5) - (a.match + a.sosRankBonus * 2.5);
+    return (b.dMy * 1.35 + Math.max(0, b.dPt) + b.sosRankBonus) - (a.dMy * 1.35 + Math.max(0, a.dPt) + a.sosRankBonus);
   });
 
   const topProps = props.slice(0, 14);
   document.getElementById("finderCountLbl").textContent = `${topProps.length} proposals`;
 
   if (!topProps.length) {
-    tbody.innerHTML = `<tr><td colspan="6" style="padding:24px;color:var(--warn);">No strict matches for this filter combination. Try setting Package Size to "All Packages" or Target Upgrade to "Any Position".</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="6" style="padding:24px;color:var(--warn);">No strict matches for this filter combination. Try switching Playoff SOS Boost to "ON" or setting Package Size to "All Packages".</td></tr>`;
     return;
   }
 
   topProps.forEach(pr => {
     const tr = document.createElement("tr");
     tr.className = "table-row-hover";
+    const sosCalloutBadge = pr.hasElitePlayoffTarget ? `<span class="badge badge-green" style="margin-left:4px;">PLAYOFF SOS BOOST (A/A+)</span>` : "";
+
     tr.innerHTML = `
       <td style="text-align:left;">
-        <span class="badge ${pr.badgeCls}" style="margin-bottom:5px;">${pr.dealType}</span>
-        <div style="font-weight:800;font-size:13px;color:var(--text-main);">${pr.part.teamName.split(" (")[0]}</div>
+        <div style="display:flex;align-items:center;flex-wrap:wrap;gap:4px;margin-bottom:5px;">
+          <span class="badge ${pr.badgeCls}">${pr.dealType}</span>${sosCalloutBadge}
+        </div>
+        <div style="font-weight:800;font-size:13px;">${pr.part.teamName.split(" (")[0]}</div>
         <div style="font-size:11px;color:var(--accent);font-weight:700;margin-top:2px;">Rank #${pr.part.currentRank} (${pr.part.wins}-${pr.part.losses})</div>
         <div style="font-size:11px;color:var(--text-muted);margin-top:3px;">${pr.note}</div>
       </td>
@@ -2254,8 +2069,9 @@ function renderTradeFinder() {
       </td>
       <td>
         <div style="display:flex;flex-direction:column;gap:5px;align-items:center;">
-          <span class="badge ${pr.dMy >= 0 ? 'badge-green' : 'badge-yellow'}">You: ${pr.dMy >= 0 ? '+' : ''}${pr.dMy.toFixed(2)} PPG</span>
-          <span class="badge ${pr.dPt >= 0 ? 'badge-blue' : 'badge-yellow'}">Partner: ${pr.dPt >= 0 ? '+' : ''}${pr.dPt.toFixed(2)} PPG</span>
+          <span class="badge ${pr.dMy >= 0 ? 'badge-green' : 'badge-yellow'}">ROS: ${pr.dMy >= 0 ? '+' : ''}${pr.dMy.toFixed(2)} PPG</span>
+          <span class="badge ${pr.dPlayoffMy >= pr.dMy && pr.dPlayoffMy > 0 ? 'badge-green' : 'badge-purple'}">Playoffs: ${pr.dPlayoffMy >= 0 ? '+' : ''}${pr.dPlayoffMy.toFixed(2)} PPG</span>
+          <span style="font-size:10px;color:var(--text-muted);font-weight:700;">Partner: ${pr.dPt >= 0 ? '+' : ''}${pr.dPt.toFixed(2)} PPG</span>
         </div>
       </td>
       <td><button class="btn-builder-action">Open in Builder →</button></td>`;
@@ -2412,112 +2228,77 @@ function drawSingleAnalyticsChart() {
   const ys = pool.map(p => Number(p[cfg.yKey] || 0));
   let minX = Math.min(...xs), maxX = Math.max(...xs);
   let minY = Math.min(...ys), maxY = Math.max(...ys);
-  const padX = Math.max(0.4, (maxX - minX) * 0.12);
-  const padY = Math.max(0.4, (maxY - minY) * 0.12);
-  minX -= padX; maxX += padX;
-  minY -= padY; maxY += padY;
+  const padX = Math.max(0.4, (maxX - minX) * 0.12), padY = Math.max(0.4, (maxY - minY) * 0.12);
+  minX -= padX; maxX += padX; minY -= padY; maxY += padY;
 
   const plot = { l: 96, t: 28, w: W - 135, h: H - 96 };
-
-  const steps = 5;
-  ctx.strokeStyle = "#222836";
-  ctx.lineWidth = 1;
+  ctx.strokeStyle = "#222836"; ctx.lineWidth = 1;
   ctx.font = "600 11px -apple-system, BlinkMacSystemFont, sans-serif";
   ctx.fillStyle = "#8E96AA";
 
-  for (let i = 0; i <= steps; i++) {
-    const r = i / steps;
-    const gx = plot.l + r * plot.w;
-    const gy = plot.t + (1 - r) * plot.h;
-
+  for (let i = 0; i <= 5; i++) {
+    const r = i / 5;
+    const gx = plot.l + r * plot.w, gy = plot.t + (1 - r) * plot.h;
     ctx.beginPath();
     ctx.moveTo(gx, plot.t); ctx.lineTo(gx, plot.t + plot.h);
     ctx.moveTo(plot.l, gy); ctx.lineTo(plot.l + plot.w, gy);
     ctx.stroke();
 
-    ctx.strokeStyle = "#4A5568";
-    ctx.beginPath();
-    ctx.moveTo(gx, plot.t + plot.h); ctx.lineTo(gx, plot.t + plot.h + 5);
-    ctx.moveTo(plot.l - 5, gy); ctx.lineTo(plot.l, gy);
-    ctx.stroke();
-    ctx.strokeStyle = "#222836";
-
-    const xVal = minX + r * (maxX - minX);
+    const xVal = minX + r * (maxX - minX), yVal = minY + r * (maxY - minY);
     ctx.textAlign = "center";
     ctx.fillText(Math.abs(xVal) >= 100 ? xVal.toFixed(0) : xVal.toFixed(1), gx, plot.t + plot.h + 20);
-
-    const yVal = minY + r * (maxY - minY);
     ctx.textAlign = "right";
     ctx.fillText(Math.abs(yVal) >= 100 ? yVal.toFixed(0) : yVal.toFixed(1), plot.l - 10, gy + 4);
   }
 
-  ctx.strokeStyle = "#4A5568";
-  ctx.lineWidth = 2;
+  ctx.strokeStyle = "#4A5568"; ctx.lineWidth = 2;
   ctx.beginPath();
-  ctx.moveTo(plot.l, plot.t);
-  ctx.lineTo(plot.l, plot.t + plot.h);
-  ctx.lineTo(plot.l + plot.w, plot.t + plot.h);
+  ctx.moveTo(plot.l, plot.t); ctx.lineTo(plot.l, plot.t + plot.h); ctx.lineTo(plot.l + plot.w, plot.t + plot.h);
   ctx.stroke();
 
-  ctx.fillStyle = "#64D2FF";
-  ctx.font = "700 12px -apple-system, BlinkMacSystemFont, sans-serif";
+  ctx.fillStyle = "#64D2FF"; ctx.font = "700 12px -apple-system, BlinkMacSystemFont, sans-serif";
   ctx.textAlign = "center";
   ctx.fillText(cfg.xLbl.toUpperCase(), plot.l + plot.w / 2, plot.t + plot.h + 48);
-
   ctx.save();
-  ctx.translate(26, plot.t + plot.h / 2);
-  ctx.rotate(-Math.PI / 2);
-  ctx.textAlign = "center";
+  ctx.translate(26, plot.t + plot.h / 2); ctx.rotate(-Math.PI / 2);
   ctx.fillText(cfg.yLbl.toUpperCase(), 0, 0);
   ctx.restore();
 
   pool.forEach(p => {
-    const xv = Number(p[cfg.xKey] || 0);
-    const yv = Number(p[cfg.yKey] || 0);
+    const xv = Number(p[cfg.xKey] || 0), yv = Number(p[cfg.yKey] || 0);
     const x = plot.l + ((xv - minX) / Math.max(0.001, maxX - minX)) * plot.w;
     const y = plot.t + plot.h - ((yv - minY) / Math.max(0.001, maxY - minY)) * plot.h;
 
     const img = getTeamLogoImage(p.team);
     const size = 26;
-
     if (img && img.complete && img.naturalWidth > 0) {
       ctx.drawImage(img, x - size / 2, y - size / 2, size, size);
     } else {
       ctx.fillStyle = "#232834";
       ctx.beginPath(); ctx.arc(x, y, 11, 0, Math.PI * 2); ctx.fill();
       ctx.fillStyle = "#F2F4F8"; ctx.font = "700 8px -apple-system, sans-serif";
-      ctx.textAlign = "center";
-      ctx.fillText(p.team.slice(0, 3), x, y + 3);
+      ctx.textAlign = "center"; ctx.fillText(p.team.slice(0, 3), x, y + 3);
     }
 
-    ctx.fillStyle = "#F2F4F8";
-    ctx.font = "700 10px -apple-system, BlinkMacSystemFont, sans-serif";
+    ctx.fillStyle = "#F2F4F8"; ctx.font = "700 10px -apple-system, BlinkMacSystemFont, sans-serif";
     const label = p.position === "DEF" ? p.team : (p.name.split(" ").slice(1).join(" ") || p.name);
     const tw = ctx.measureText(label).width;
-    if (x + 15 + tw > plot.l + plot.w + 20) {
-      ctx.textAlign = "right";
-      ctx.fillText(label, x - 15, y + 4);
-    } else {
-      ctx.textAlign = "left";
-      ctx.fillText(label, x + 15, y + 4);
-    }
+    if (x + 15 + tw > plot.l + plot.w + 20) { ctx.textAlign = "right"; ctx.fillText(label, x - 15, y + 4); }
+    else { ctx.textAlign = "left"; ctx.fillText(label, x + 15, y + 4); }
   });
   ctx.textAlign = "left";
 }
 
-// --- Strength of Schedule (SOS) Heat-Map Renderer ---
 function renderSosCellHTML(teamAbbr, weekNum, pos, showDomeBadge = false) {
   let normTeam = (teamAbbr || "").toUpperCase().trim();
-  if (normTeam === "JAC") normTeam = "JAX";
-  if (normTeam === "LA") normTeam = "LAR";
+  if (normTeam === "JAC") normTeam = "JAX"; if (normTeam === "LA") normTeam = "LAR";
 
   if (BYE_2026[normTeam] === weekNum) {
     return `<div class="sos-cell sos-bye"><div style="font-weight:800;font-size:12px;">BYE WEEK</div><div style="font-size:10px;">Week ${weekNum} Off</div></div>`;
   }
   const m = NFL_2026_SCHEDULE[normTeam]?.[weekNum];
-  if (!m) {
-    return `<div class="sos-cell sos-mid"><div style="font-weight:700;font-size:12px;">TBD</div></div>`;
-  }
+  if (!m) return `<div class="sos-cell sos-mid"><div style="font-weight:700;font-size:12px;">TBD</div></div>`;
+
   const opp = m.opp;
   const dvpRank = DVP_RANKS_2026[pos]?.[opp] || 16;
   let cls = "sos-mid", tierTxt = "Neutral";
@@ -2528,15 +2309,13 @@ function renderSosCellHTML(teamAbbr, weekNum, pos, showDomeBadge = false) {
 
   const prefix = m.isHome ? "vs" : "@";
   const venueTeam = m.isHome ? normTeam : opp;
-  const isDome = DOME_TEAMS.has(venueTeam);
-  const envBadge = (showDomeBadge && isDome) ? `<span class="dome-tag" title="Indoor / Dome Game">DOME</span>` : "";
+  const envBadge = (showDomeBadge && DOME_TEAMS.has(venueTeam)) ? `<span class="dome-tag">DOME</span>` : "";
 
   return `
     <div class="sos-cell ${cls}">
       <div style="display:flex;align-items:center;gap:4px;font-weight:800;font-size:12px;">
         <img class="team-logo-sm" style="margin-right:2px;" src="${teamLogoUrl(opp)}" onerror="this.style.display='none'"/>
-        <span>${prefix} ${opp}</span>
-        ${envBadge}
+        <span>${prefix} ${opp}</span>${envBadge}
       </div>
       <div style="font-size:10px;font-weight:700;opacity:0.92;">DvP #${dvpRank} • ${tierTxt}</div>
     </div>`;
@@ -2544,8 +2323,7 @@ function renderSosCellHTML(teamAbbr, weekNum, pos, showDomeBadge = false) {
 
 function computeSosWindowMetrics(teamAbbr, weeks, pos) {
   let normTeam = (teamAbbr || "").toUpperCase().trim();
-  if (normTeam === "JAC") normTeam = "JAX";
-  if (normTeam === "LA") normTeam = "LAR";
+  if (normTeam === "JAC") normTeam = "JAX"; if (normTeam === "LA") normTeam = "LAR";
 
   let sumRank = 0, activeGames = 0, smashCount = 0, domeCount = 0, hasBye = false;
   weeks.forEach(w => {
@@ -2554,8 +2332,7 @@ function computeSosWindowMetrics(teamAbbr, weeks, pos) {
     const r = m ? (DVP_RANKS_2026[pos]?.[m.opp] || 16) : 16;
     const venueTeam = m ? (m.isHome ? normTeam : m.opp) : "";
     if (DOME_TEAMS.has(venueTeam)) domeCount++;
-    sumRank += r;
-    activeGames++;
+    sumRank += r; activeGames++;
     if (r >= 24) smashCount++;
   });
   const avgRank = activeGames > 0 ? sumRank / activeGames : 16;
@@ -2576,19 +2353,19 @@ function renderSosTab() {
   const sortOrder = document.getElementById("sosSort").value || "EASIEST";
   const winMode = state.sosWindowMode || "NEXT4";
 
-  let weeks = [];
-  let windowLabel = "";
+  let weeks = [], windowLabel = "";
   const isPlayoffs = (winMode === "PLAYOFFS" || winMode === "PUSH");
 
   if (winMode === "PLAYOFFS") {
-    weeks = [15, 16, 17];
-    windowLabel = "FANTASY PLAYOFFS (WEEKS 15–17)";
-    document.getElementById("sosWindowBadge").textContent = "FANTASY PLAYOFF SLATE (WKS 15–17)";
+    weeks = getPlayoffWeeksForActiveLeague();
+    windowLabel = `FANTASY PLAYOFFS (WEEKS ${weeks[0]}–${weeks[weeks.length - 1]})`;
+    document.getElementById("sosWindowBadge").textContent = `FANTASY PLAYOFF SLATE (WKS ${weeks[0]}–${weeks[weeks.length - 1]})`;
     document.getElementById("sosWindowBadge").className = "badge badge-green";
   } else if (winMode === "PUSH") {
-    weeks = [14, 15, 16, 17];
-    windowLabel = "PLAYOFF PUSH + PLAYOFFS (WEEKS 14–17)";
-    document.getElementById("sosWindowBadge").textContent = "PLAYOFF PUSH + PLAYOFFS (WKS 14–17)";
+    const poWks = getPlayoffWeeksForActiveLeague();
+    weeks = [Math.max(1, poWks[0] - 1), ...poWks];
+    windowLabel = `PLAYOFF PUSH + PLAYOFFS (WEEKS ${weeks[0]}–${weeks[weeks.length - 1]})`;
+    document.getElementById("sosWindowBadge").textContent = `PLAYOFF PUSH + PLAYOFFS (WKS ${weeks[0]}–${weeks[weeks.length - 1]})`;
     document.getElementById("sosWindowBadge").className = "badge badge-purple";
   } else {
     const startWk = Math.min(15, Math.max(1, state.week));
@@ -2598,60 +2375,32 @@ function renderSosTab() {
     document.getElementById("sosWindowBadge").className = "badge badge-blue";
   }
 
-  document.getElementById("sosTitleHdr").textContent =
-    `POSITIONAL STRENGTH OF SCHEDULE (${pos} • ${windowLabel})`;
-
-  const weekHeadersHTML = weeks.map(w => {
-    if (winMode === "PLAYOFFS" || winMode === "PUSH") {
-      const roundTag = w === 14 ? "Wk 14 (Finale)" : (w === 15 ? "Wk 15 (Quarters)" : (w === 16 ? "Wk 16 (Semis)" : "Wk 17 ( Finals )"));
-      return `<th>${roundTag}</th>`;
-    }
-    return `<th>Week ${w}</th>`;
-  }).join("");
-
+  document.getElementById("sosTitleHdr").textContent = `POSITIONAL STRENGTH OF SCHEDULE (${pos} • ${windowLabel})`;
+  const weekHeadersHTML = weeks.map(w => `<th>Week ${w}</th>`).join("");
   const tbl = document.getElementById("sosTable");
   const subjectHeader = scope === "ALL" ? "NFL Team" : "Player / Unit";
   const showActionCol = scope !== "ALL";
-  tbl.innerHTML = `
-    <thead>
-      <tr>
-        <th style="width:55px;">Rank</th>
-        <th style="text-align:left;min-width:230px;">${subjectHeader}</th>
-        ${weekHeadersHTML}
-        <th style="width:155px;">${winMode === "PLAYOFFS" ? "Playoff Avg DvP" : "Window Avg DvP"}</th>
-        <th style="width:165px;">Schedule Grade</th>
-        ${showActionCol ? '<th style="width:135px;">Trade Action</th>' : ''}
-      </tr>
-    </thead>
-    <tbody></tbody>`;
+  tbl.innerHTML = `<thead><tr><th style="width:55px;">Rank</th><th style="text-align:left;min-width:230px;">${subjectHeader}</th>${weekHeadersHTML}<th style="width:155px;">Window Avg DvP</th><th style="width:165px;">Schedule Grade</th>${showActionCol ? '<th style="width:135px;">Trade Action</th>' : ''}</tr></thead><tbody></tbody>`;
   const tbody = tbl.querySelector("tbody");
 
   let rows = [];
   if (scope === "ALL") {
-    rows = Object.keys(NFL_TEAM_NAMES).map(team => {
-      const sos = computeSosWindowMetrics(team, weeks, pos);
-      return { isTeamRow: true, team, name: NFL_TEAM_NAMES[team], sos };
-    });
+    rows = Object.keys(NFL_TEAM_NAMES).map(team => ({ isTeamRow: true, team, name: NFL_TEAM_NAMES[team], sos: computeSosWindowMetrics(team, weeks, pos) }));
   } else if (scope === "TOP_PLAYERS") {
-    rows = Object.values(state.players)
-      .filter(p => p.position === pos && p.isCurrentNfl)
-      .sort((a, b) => (b.baseValue - a.baseValue) || (b.seasonPpg - a.seasonPpg))
-      .slice(0, 36)
+    rows = Object.values(state.players).filter(p => p.position === pos && p.isCurrentNfl)
+      .sort((a, b) => (b.baseValue - a.baseValue) || (b.seasonPpg - a.seasonPpg)).slice(0, 36)
       .map(p => ({ isTeamRow: false, player: p, team: p.team, sos: computeSosWindowMetrics(p.team, weeks, pos) }));
   } else if (scope === "ROSTER") {
     const selTeamIdx = parseInt(document.getElementById("teamSelect").value || "0", 10);
     const mgr = state.managers[selTeamIdx];
-    const pids = mgr ? mgr.players : [];
-    rows = pids.map(id => state.players[id])
-      .filter(p => p && (p.position === pos || (pos === "DEF" && p.position === "DEF")))
+    rows = (mgr ? mgr.players : []).map(id => state.players[id])
+      .filter(p => p && p.position === pos)
       .map(p => ({ isTeamRow: false, player: p, team: p.team, sos: computeSosWindowMetrics(p.team, weeks, pos) }));
   } else {
     const rostered = new Set();
     state.managers.forEach(m => m.players.forEach(pid => rostered.add(pid)));
-    rows = Object.values(state.players)
-      .filter(p => p.position === pos && p.isCurrentNfl && !rostered.has(p.id))
-      .sort((a, b) => (b.vorpScore - a.vorpScore) || (b.projectedPoints - a.projectedPoints))
-      .slice(0, 24)
+    rows = Object.values(state.players).filter(p => p.position === pos && p.isCurrentNfl && !rostered.has(p.id))
+      .sort((a, b) => (b.vorpScore - a.vorpScore) || (b.projectedPoints - a.projectedPoints)).slice(0, 24)
       .map(p => ({ isTeamRow: false, player: p, team: p.team, sos: computeSosWindowMetrics(p.team, weeks, pos) }));
   }
 
@@ -2665,46 +2414,19 @@ function renderSosTab() {
   rows.forEach((r, idx) => {
     const tr = document.createElement("tr");
     tr.className = "table-row-hover";
-    const envMeta = isPlayoffs
-      ? `${r.sos.domeCount} Dome Game(s) • ${r.sos.smashCount} Smash Matchup(s)`
-      : `2026 Bye: Week ${BYE_2026[r.team] || '--'} • ${r.sos.smashCount} Smash Matchup(s)`;
-
+    const envMeta = isPlayoffs ? `${r.sos.domeCount} Dome Game(s) • ${r.sos.smashCount} Smash Matchup(s)` : `2026 Bye: Week ${BYE_2026[r.team] || '--'} • ${r.sos.smashCount} Smash Matchup(s)`;
     const subjectHTML = r.isTeamRow
-      ? `<div class="player-cell">
-           <img class="avatar" src="${teamLogoUrl(r.team)}" onerror="this.style.display='none'" />
-           <div>
-             <div style="font-weight:800;font-size:14px;color:var(--text-main);">${r.name} (${r.team})</div>
-             <div style="font-size:11px;color:var(--text-muted);">${envMeta}</div>
-           </div>
-         </div>`
-      : `<div class="player-cell">
-           <img class="avatar" src="${avatarUrl(r.player)}" onerror="this.style.display='none'" />
-           <div>
-             <div style="font-weight:700;font-size:14px;color:var(--text-main);"><img class="team-logo-sm" src="${teamLogoUrl(r.team)}" onerror="this.style.display='none'"/>${r.player.name}</div>
-             <div style="font-size:11px;color:var(--text-muted);">${r.player.position} #${r.player.posRank} (${r.team}) • ${r.player.seasonPpg.toFixed(1)} PPG • VAL ${r.player.baseValue}</div>
-           </div>
-         </div>`;
+      ? `<div class="player-cell"><img class="avatar" src="${teamLogoUrl(r.team)}" onerror="this.style.display='none'" /><div><div style="font-weight:800;font-size:14px;">${r.name} (${r.team})</div><div style="font-size:11px;color:var(--text-muted);">${envMeta}</div></div></div>`
+      : `<div class="player-cell"><img class="avatar" src="${avatarUrl(r.player)}" onerror="this.style.display='none'" /><div><div style="font-weight:700;font-size:14px;"><img class="team-logo-sm" src="${teamLogoUrl(r.team)}" onerror="this.style.display='none'"/>${r.player.name}</div><div style="font-size:11px;color:var(--text-muted);">${r.player.position} #${r.player.posRank} (${r.team}) • ${r.player.seasonPpg.toFixed(1)} PPG • VAL ${r.player.baseValue}</div></div></div>`;
 
     const cellsHTML = weeks.map(w => `<td>${renderSosCellHTML(r.team, w, pos, isPlayoffs)}</td>`).join("");
-    const actionHTML = showActionCol
-      ? `<td><button class="btn-builder-action">Trade Target →</button></td>`
-      : "";
-
     tr.innerHTML = `
       <td style="font-weight:800;color:var(--text-muted);">#${idx + 1}</td>
-      <td>${subjectHTML}</td>
-      ${cellsHTML}
-      <td>
-        <div style="font-weight:800;font-size:13px;color:var(--text-main);">DvP #${r.sos.avgRank.toFixed(1)}</div>
-        <div style="font-size:11px;color:var(--text-muted);">${r.sos.activeGames} Games${r.sos.hasBye ? ' (1 Bye)' : ''}${isPlayoffs ? ` • ${r.sos.domeCount} Dome` : ''}</div>
-      </td>
+      <td>${subjectHTML}</td>${cellsHTML}
+      <td><div style="font-weight:800;font-size:13px;">DvP #${r.sos.avgRank.toFixed(1)}</div><div style="font-size:11px;color:var(--text-muted);">${r.sos.activeGames} Games${r.sos.hasBye ? ' (1 Bye)' : ''}${isPlayoffs ? ` • ${r.sos.domeCount} Dome` : ''}</div></td>
       <td><span class="badge ${r.sos.badgeCls}">${r.sos.grade}</span></td>
-      ${actionHTML}`;
-
-    if (showActionCol && r.player) {
-      const btn = tr.querySelector("button");
-      if (btn) btn.onclick = () => targetPlayerFromSos(r.player.id, pos);
-    }
+      ${showActionCol ? '<td><button class="btn-builder-action">Trade Target →</button></td>' : ''}`;
+    if (showActionCol && r.player) tr.querySelector("button").onclick = () => targetPlayerFromSos(r.player.id, pos);
     tbody.appendChild(tr);
   });
 }
@@ -2716,36 +2438,48 @@ function erf(x) {
   return s * y;
 }
 
-// --- 6-Team Fantasy Playoff Bracket Simulator (Weeks 15, 16, 17) ---
-function computeHeadToHeadWinProb(scoreA, scoreB) {
+function computeHeadToHeadWinProb(scoreA, scoreB, numWeeks = 1) {
   const margin = (scoreA || 0) - (scoreB || 0);
-  const z = margin / 21.5;
+  const sigma = 21.5 * Math.sqrt(Math.max(1, numWeeks));
+  const z = margin / sigma;
   if (isNaN(z) || Math.abs(margin) < 0.01) return 50.0;
   return Math.min(98.5, Math.max(1.5, 0.5 * (1 + erf(z / Math.sqrt(2))) * 100));
 }
 
+// --- League-Adaptive Playoff Bracket Simulator (4, 6, 7, or 8 Playoff Teams + 1-Wk/2-Wk Rounds) ---
 function renderPlayoffBracketTab() {
   const grid = document.getElementById("bracketGridContainer");
   const oddsTbl = document.getElementById("bracketOddsTable");
   if (!grid || !oddsTbl) return;
 
-  if (!state.managers || state.managers.length < 6) {
+  const pTeams = getResolvedPlayoffTeamCount();
+  const reseedMode = getResolvedBracketReseedMode();
+  const roundWeeks = getPlayoffRoundWeeksStructure();
+  const allPoWeeks = getPlayoffWeeksForActiveLeague();
+  const isFourTeam = pTeams === 4;
+
+  const startWk = allPoWeeks[0], endWk = allPoWeeks[allPoWeeks.length - 1];
+  const reseedText = reseedMode === "RESEED" ? "NFL Re-Seeded" : "Fixed Draw";
+
+  document.getElementById("bracketMainTitle").textContent =
+    `${pTeams}-TEAM FANTASY PLAYOFF BRACKET SIMULATOR (WEEKS ${startWk}–${endWk})`;
+  document.getElementById("bracketFormatBadge").textContent =
+    `LEAGUE FORMAT: ${pTeams}-TEAM PLAYOFF • WKS ${startWk}–${endWk} • ${reseedText.toUpperCase()}`;
+
+  if (!state.managers || state.managers.length < 4) {
+    grid.className = "bracket-grid";
     grid.innerHTML = `
-      <div class="card-banner" style="grid-column: 1 / -1; text-align:center; padding:28px;">
-        <div style="font-size:14px; font-weight:800; color:var(--text-main);">Sync Your Sleeper Account to Simulate the 6-Team Playoff Bracket</div>
-        <div style="font-size:12px; color:var(--text-muted); margin-top:4px;">Enter your Sleeper username in the top bar and click Sync Account to project Quarterfinal (Week 15), Semifinal (Week 16), and Championship (Week 17) matchups.</div>
+      <div class="card-banner" style="grid-column:1 / -1; text-align:center; padding:28px;">
+        <div style="font-size:14px; font-weight:800;">Sync Your Sleeper Account to Simulate Your League's Playoff Bracket</div>
+        <div style="font-size:12px; color:var(--text-muted); margin-top:4px;">Enter your Sleeper username in the top bar and click Sync Account to load your league's exact playoff team count (4, 6, 7, or 8 teams), start week, and seeding rules.</div>
       </div>`;
     oddsTbl.innerHTML = "";
     return;
   }
 
   const seedMode = document.getElementById("bracketSeedMode").value || "CURRENT";
-  const reseedMode = document.getElementById("bracketReseedMode").value || "FIXED";
-
-  // Sort managers according to selected seeding basis
   const ranked = [...state.managers];
   if (seedMode === "CURRENT") {
-    // Sleeper official tiebreaker: Overall Record (Win %) -> Points For -> Points Against
     ranked.sort((a, b) => {
       const tgA = a.wins + a.losses, tgB = b.wins + b.losses;
       const wpA = tgA > 0 ? a.wins / tgA : 0, wpB = tgB > 0 ? b.wins / tgB : 0;
@@ -2759,79 +2493,30 @@ function renderPlayoffBracketTab() {
     ranked.sort((a, b) => (b.power - a.power) || (b.pf - a.pf));
   }
 
-  // Precompute Week 15, Week 16, and Week 17 projections for the top 8 teams
-  const seeded = ranked.slice(0, Math.min(8, ranked.length)).map((mgr, idx) => {
-    const wk15 = calcPlayoffWeekProjection(mgr.players, 15);
-    const wk16 = calcPlayoffWeekProjection(mgr.players, 16);
-    const wk17 = calcPlayoffWeekProjection(mgr.players, 17);
-    return {
-      ...mgr,
-      seed: idx + 1,
-      wk15Proj: wk15.total,
-      wk16Proj: wk16.total,
-      wk17Proj: wk17.total,
-      playoffAvgProj: (wk15.total + wk16.total + wk17.total) / 3,
-      coreNames: wk15.topNames.join(", ")
-    };
+  const showCount = Math.min(ranked.length, pTeams + 2);
+  const seeded = ranked.slice(0, showCount).map((mgr, idx) => {
+    const roundScores = roundWeeks.map(wks => wks.reduce((s, w) => s + calcPlayoffWeekProjection(mgr.players, w).total, 0));
+    const coreNames = calcPlayoffWeekProjection(mgr.players, startWk).topNames.join(", ");
+    return { ...mgr, seed: idx + 1, roundScores, coreNames };
   });
 
-  const s1 = seeded[0], s2 = seeded[1], s3 = seeded[2], s4 = seeded[3], s5 = seeded[4], s6 = seeded[5];
-
-  // Quarterfinal 1 (Week 15): Seed #4 vs Seed #5
-  const qf1Prob4 = computeHeadToHeadWinProb(s4.wk15Proj, s5.wk15Proj);
-  const qf1DefaultWinner = s4.wk15Proj >= s5.wk15Proj ? s4 : s5;
-  const qf1Winner = (state.bracketOverrides.qf1 === s4.rosterId) ? s4 : ((state.bracketOverrides.qf1 === s5.rosterId) ? s5 : qf1DefaultWinner);
-  const qf1Loser = qf1Winner.rosterId === s4.rosterId ? s5 : s4;
-
-  // Quarterfinal 2 (Week 15): Seed #3 vs Seed #6
-  const qf2Prob3 = computeHeadToHeadWinProb(s3.wk15Proj, s6.wk15Proj);
-  const qf2DefaultWinner = s3.wk15Proj >= s6.wk15Proj ? s3 : s6;
-  const qf2Winner = (state.bracketOverrides.qf2 === s3.rosterId) ? s3 : ((state.bracketOverrides.qf2 === s6.rosterId) ? s6 : qf2DefaultWinner);
-  const qf2Loser = qf2Winner.rosterId === s3.rosterId ? s6 : s3;
-
-  // Determine Week 16 Semifinal Pairings based on Fixed vs NFL Re-Seeded
-  let sf1Opp = qf1Winner;
-  let sf2Opp = qf2Winner;
-  if (reseedMode === "RESEED") {
-    // Seed #1 plays the lowest remaining seed (highest seed number); Seed #2 plays the other advancing seed
-    if (qf1Winner.seed > qf2Winner.seed) {
-      sf1Opp = qf1Winner;
-      sf2Opp = qf2Winner;
-    } else {
-      sf1Opp = qf2Winner;
-      sf2Opp = qf1Winner;
-    }
+  function resolveSeries(matchKey, teamA, teamB, roundIdx) {
+    const wks = roundWeeks[roundIdx] || [15];
+    const scoreA = teamA.roundScores[roundIdx] || 0;
+    const scoreB = teamB.roundScores[roundIdx] || 0;
+    const probA = computeHeadToHeadWinProb(scoreA, scoreB, wks.length);
+    const defWinner = scoreA >= scoreB ? teamA : teamB;
+    const ovr = state.bracketOverrides[matchKey];
+    const winner = ovr === teamA.rosterId ? teamA : (ovr === teamB.rosterId ? teamB : defWinner);
+    const loser = winner.rosterId === teamA.rosterId ? teamB : teamA;
+    return { matchKey, roundIdx, wks, teamA, teamB, scoreA, scoreB, probA, winner, loser };
   }
 
-  // Semifinal 1 (Week 16): Seed #1 vs sf1Opp
-  const sf1Prob1 = computeHeadToHeadWinProb(s1.wk16Proj, sf1Opp.wk16Proj);
-  const sf1DefaultWinner = s1.wk16Proj >= sf1Opp.wk16Proj ? s1 : sf1Opp;
-  const sf1Winner = (state.bracketOverrides.sf1 === s1.rosterId) ? s1 : ((state.bracketOverrides.sf1 === sf1Opp.rosterId) ? sf1Opp : sf1DefaultWinner);
-  const sf1Loser = sf1Winner.rosterId === s1.rosterId ? sf1Opp : s1;
-
-  // Semifinal 2 (Week 16): Seed #2 vs sf2Opp
-  const sf2Prob2 = computeHeadToHeadWinProb(s2.wk16Proj, sf2Opp.wk16Proj);
-  const sf2DefaultWinner = s2.wk16Proj >= sf2Opp.wk16Proj ? s2 : sf2Opp;
-  const sf2Winner = (state.bracketOverrides.sf2 === s2.rosterId) ? s2 : ((state.bracketOverrides.sf2 === sf2Opp.rosterId) ? sf2Opp : sf2DefaultWinner);
-  const sf2Loser = sf2Winner.rosterId === s2.rosterId ? sf2Opp : s2;
-
-  // Championship Finals (Week 17): sf1Winner vs sf2Winner
-  const champProbA = computeHeadToHeadWinProb(sf1Winner.wk17Proj, sf2Winner.wk17Proj);
-  const champDefaultWinner = sf1Winner.wk17Proj >= sf2Winner.wk17Proj ? sf1Winner : sf2Winner;
-  const champWinner = (state.bracketOverrides.champ === sf1Winner.rosterId) ? sf1Winner : ((state.bracketOverrides.champ === sf2Winner.rosterId) ? sf2Winner : champDefaultWinner);
-
-  // 3rd Place Matchup (Week 17): sf1Loser vs sf2Loser
-  const thirdProbA = computeHeadToHeadWinProb(sf1Loser.wk17Proj, sf2Loser.wk17Proj);
-  const thirdDefaultWinner = sf1Loser.wk17Proj >= sf2Loser.wk17Proj ? sf1Loser : sf2Loser;
-  const thirdWinner = (state.bracketOverrides.third === sf1Loser.rosterId) ? sf1Loser : ((state.bracketOverrides.third === sf2Loser.rosterId) ? sf2Loser : thirdDefaultWinner);
-
-  function renderMatchupCardHTML(matchKey, title, weekNum, teamA, teamB, scoreA, scoreB, winProbA, winnerObj) {
-    const winProbB = 100 - winProbA;
-    const aWon = winnerObj.rosterId === teamA.rosterId;
-    const bWon = winnerObj.rosterId === teamB.rosterId;
-    const shortA = teamA.teamName.split(" (")[0];
-    const shortB = teamB.teamName.split(" (")[0];
-
+  function renderMatchupCardHTML(title, series) {
+    const { matchKey, teamA, teamB, scoreA, scoreB, probA, winner } = series;
+    const probB = 100 - probA;
+    const aWon = winner.rosterId === teamA.rosterId;
+    const bWon = winner.rosterId === teamB.rosterId;
     return `
       <div class="bracket-match-card">
         <div class="bracket-match-hdr">
@@ -2842,217 +2527,220 @@ function renderPlayoffBracketTab() {
           <div style="display:flex;align-items:center;gap:8px;min-width:0;flex:1;">
             <span class="seed-pill ${teamA.seed <= 2 ? 'top-seed' : ''}">#${teamA.seed}</span>
             <div style="min-width:0;flex:1;">
-              <div style="font-weight:800;font-size:13px;color:var(--text-main);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${shortA}</div>
+              <div style="font-weight:800;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${teamA.teamName.split(" (")[0]}</div>
               <div style="font-size:10px;color:var(--text-muted);">${teamA.wins}-${teamA.losses} • Core: ${teamA.coreNames}</div>
             </div>
           </div>
           <div style="text-align:right;">
             <div style="font-weight:800;font-size:13px;color:${aWon ? 'var(--good)' : 'var(--text-main)'};">${scoreA.toFixed(1)} pts</div>
-            <div style="font-size:10px;font-weight:700;color:${winProbA >= 50 ? 'var(--good)' : 'var(--text-muted)'};">${winProbA.toFixed(0)}% Win</div>
+            <div style="font-size:10px;font-weight:700;color:${probA >= 50 ? 'var(--good)' : 'var(--text-muted)'};">${probA.toFixed(0)}% Win</div>
           </div>
         </div>
         <div class="bracket-slot ${bWon ? 'winner' : ''}" data-mkey="${matchKey}" data-rid="${teamB.rosterId}">
           <div style="display:flex;align-items:center;gap:8px;min-width:0;flex:1;">
             <span class="seed-pill ${teamB.seed <= 2 ? 'top-seed' : ''}">#${teamB.seed}</span>
             <div style="min-width:0;flex:1;">
-              <div style="font-weight:800;font-size:13px;color:var(--text-main);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${shortB}</div>
+              <div style="font-weight:800;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${teamB.teamName.split(" (")[0]}</div>
               <div style="font-size:10px;color:var(--text-muted);">${teamB.wins}-${teamB.losses} • Core: ${teamB.coreNames}</div>
             </div>
           </div>
           <div style="text-align:right;">
             <div style="font-weight:800;font-size:13px;color:${bWon ? 'var(--good)' : 'var(--text-main)'};">${scoreB.toFixed(1)} pts</div>
-            <div style="font-size:10px;font-weight:700;color:${winProbB > 50 ? 'var(--good)' : 'var(--text-muted)'};">${winProbB.toFixed(0)}% Win</div>
+            <div style="font-size:10px;font-weight:700;color:${probB > 50 ? 'var(--good)' : 'var(--text-muted)'};">${probB.toFixed(0)}% Win</div>
           </div>
         </div>
       </div>`;
   }
 
-  grid.innerHTML = `
-    <!-- COLUMN 1: WEEK 15 QUARTERFINALS -->
-    <div class="bracket-col">
-      <div class="bracket-col-hdr">
-        <div>
-          <div style="font-size:13px;font-weight:800;color:var(--text-main);">ROUND 1: QUARTERFINALS</div>
-          <div style="font-size:11px;color:var(--text-muted);">Week 15 • Top 2 Seeds Earn First-Round Byes</div>
-        </div>
-        <span class="badge badge-blue">WEEK 15</span>
-      </div>
+  const fmtWkTag = wks => wks.length > 1 ? `WEEKS ${wks[0]}–${wks[wks.length - 1]}` : `WEEK ${wks[0]}`;
+  let sf1, sf2, champ, third;
+  const qfSeriesList = [], byeTeams = [];
 
+  if (isFourTeam) {
+    grid.className = "bracket-grid two-col";
+    sf1 = resolveSeries("sf1", seeded[0], seeded[3], 0);
+    sf2 = resolveSeries("sf2", seeded[1], seeded[2], 0);
+    champ = resolveSeries("champ", sf1.winner, sf2.winner, 1);
+    third = resolveSeries("third", sf1.loser, sf2.loser, 1);
+
+    grid.innerHTML = `
+      <div class="bracket-col">
+        <div class="bracket-col-hdr">
+          <div><div style="font-size:13px;font-weight:800;">ROUND 1: SEMIFINALS (4-TEAM)</div><div style="font-size:11px;color:var(--text-muted);">${fmtWkTag(roundWeeks[0])} • Top 4 Seeds Qualify</div></div>
+          <span class="badge badge-purple">${fmtWkTag(roundWeeks[0])}</span>
+        </div>
+        ${renderMatchupCardHTML("SEMIFINAL 1 (#1 VS #4)", sf1)}
+        ${renderMatchupCardHTML("SEMIFINAL 2 (#2 VS #3)", sf2)}
+      </div>
+      <div class="bracket-col">
+        <div class="bracket-col-hdr">
+          <div><div style="font-size:13px;font-weight:800;color:var(--good);">ROUND 2: CHAMPIONSHIP FINALS</div><div style="font-size:11px;color:var(--text-muted);">${fmtWkTag(roundWeeks[1])} • League Title & 3rd Place</div></div>
+          <span class="badge badge-green">${fmtWkTag(roundWeeks[1])}</span>
+        </div>
+        ${renderMatchupCardHTML(`LEAGUE CHAMPIONSHIP (#${sf1.winner.seed} VS #${sf2.winner.seed})`, champ)}
+        <div class="champ-callout">
+          <div style="font-size:10px;font-weight:800;color:var(--good);letter-spacing:0.8px;">PROJECTED 2026 LEAGUE CHAMPION</div>
+          <div style="font-size:17px;font-weight:900;margin-top:4px;">#${champ.winner.seed} ${champ.winner.teamName.split(" (")[0]}</div>
+          <div style="font-size:11px;color:var(--text-muted);margin-top:2px;">Finals Projection: <b style="color:var(--good);">${(champ.winner.roundScores[1] || 0).toFixed(2)} pts</b> • Core: ${champ.winner.coreNames}</div>
+        </div>
+        ${renderMatchupCardHTML(`3RD PLACE GAME (#${sf1.loser.seed} VS #${sf2.loser.seed})`, third)}
+      </div>`;
+  } else {
+    grid.className = "bracket-grid";
+    if (pTeams === 6) {
+      byeTeams.push(seeded[0], seeded[1]);
+      qfSeriesList.push(
+        { label: "QUARTERFINAL 1 (#4 VS #5)", series: resolveSeries("qf1", seeded[3], seeded[4], 0) },
+        { label: "QUARTERFINAL 2 (#3 VS #6)", series: resolveSeries("qf2", seeded[2], seeded[5], 0) }
+      );
+    } else if (pTeams === 7) {
+      byeTeams.push(seeded[0]);
+      qfSeriesList.push(
+        { label: "QUARTERFINAL 1 (#4 VS #5)", series: resolveSeries("qf1", seeded[3], seeded[4], 0) },
+        { label: "QUARTERFINAL 2 (#3 VS #6)", series: resolveSeries("qf2", seeded[2], seeded[5], 0) },
+        { label: "QUARTERFINAL 3 (#2 VS #7)", series: resolveSeries("qf3", seeded[1], seeded[6], 0) }
+      );
+    } else {
+      qfSeriesList.push(
+        { label: "QUARTERFINAL 1 (#1 VS #8)", series: resolveSeries("qf1", seeded[0], seeded[7], 0) },
+        { label: "QUARTERFINAL 2 (#4 VS #5)", series: resolveSeries("qf2", seeded[3], seeded[4], 0) },
+        { label: "QUARTERFINAL 3 (#3 VS #6)", series: resolveSeries("qf3", seeded[2], seeded[5], 0) },
+        { label: "QUARTERFINAL 4 (#2 VS #7)", series: resolveSeries("qf4", seeded[1], seeded[6], 0) }
+      );
+    }
+
+    const qfWinners = qfSeriesList.map(q => q.series.winner);
+    const semiPool = [...byeTeams, ...qfWinners];
+    let sf1Pair, sf2Pair;
+    if (reseedMode === "RESEED") {
+      const sp = [...semiPool].sort((a, b) => a.seed - b.seed);
+      sf1Pair = [sp[0], sp[3]]; sf2Pair = [sp[1], sp[2]];
+    } else {
+      if (pTeams === 6) { sf1Pair = [seeded[0], qfWinners[0]]; sf2Pair = [seeded[1], qfWinners[1]]; }
+      else if (pTeams === 7) { sf1Pair = [seeded[0], qfWinners[0]]; sf2Pair = [qfWinners[2], qfWinners[1]]; }
+      else { sf1Pair = [qfWinners[0], qfWinners[1]]; sf2Pair = [qfWinners[3], qfWinners[2]]; }
+    }
+
+    sf1 = resolveSeries("sf1", sf1Pair[0], sf1Pair[1], 1);
+    sf2 = resolveSeries("sf2", sf2Pair[0], sf2Pair[1], 1);
+    champ = resolveSeries("champ", sf1.winner, sf2.winner, 2);
+    third = resolveSeries("third", sf1.loser, sf2.loser, 2);
+
+    const byeCardHTML = byeTeams.length ? `
       <div class="bracket-match-card">
-        <div class="bracket-match-hdr">
-          <span>FIRST-ROUND BYES (ADVANCE TO WK 16)</span>
-          <span style="color:var(--accent);">AUTO-ADVANCE</span>
-        </div>
-        <div class="bracket-slot bye-slot">
-          <div style="display:flex;align-items:center;gap:8px;min-width:0;flex:1;">
-            <span class="seed-pill top-seed">#1</span>
-            <div style="min-width:0;flex:1;">
-              <div style="font-weight:800;font-size:13px;color:var(--text-main);">${s1.teamName.split(" (")[0]}</div>
-              <div style="font-size:10px;color:var(--text-muted);">Record: ${s1.wins}-${s1.losses} • PF: ${s1.pf.toFixed(1)}</div>
+        <div class="bracket-match-hdr"><span>FIRST-ROUND BYE${byeTeams.length > 1 ? 'S' : ''}</span><span style="color:var(--accent);">AUTO-ADVANCE</span></div>
+        ${byeTeams.map(bt => `
+          <div class="bracket-slot bye-slot">
+            <div style="display:flex;align-items:center;gap:8px;min-width:0;flex:1;">
+              <span class="seed-pill top-seed">#${bt.seed}</span>
+              <div style="min-width:0;flex:1;"><div style="font-weight:800;font-size:13px;">${bt.teamName.split(" (")[0]}</div><div style="font-size:10px;color:var(--text-muted);">Record: ${bt.wins}-${bt.losses} • PF: ${bt.pf.toFixed(1)}</div></div>
             </div>
-          </div>
-          <span class="badge badge-blue">WK 15 BYE</span>
+            <span class="badge badge-blue">ROUND 1 BYE</span>
+          </div>`).join("")}
+      </div>` : "";
+
+    const qfLosersHTML = qfSeriesList.map(q => `#${q.series.loser.seed} ${q.series.loser.teamName.split(" (")[0]} (${(q.series.loser.roundScores[0] || 0).toFixed(1)})`).join(" • ");
+
+    grid.innerHTML = `
+      <div class="bracket-col">
+        <div class="bracket-col-hdr">
+          <div><div style="font-size:13px;font-weight:800;">ROUND 1: QUARTERFINALS (${pTeams}-TEAM)</div><div style="font-size:11px;color:var(--text-muted);">${fmtWkTag(roundWeeks[0])} • ${byeTeams.length ? `Top ${byeTeams.length} Seed(s) on Bye` : 'All 8 Seeds Active'}</div></div>
+          <span class="badge badge-blue">${fmtWkTag(roundWeeks[0])}</span>
         </div>
-        <div class="bracket-slot bye-slot">
-          <div style="display:flex;align-items:center;gap:8px;min-width:0;flex:1;">
-            <span class="seed-pill top-seed">#2</span>
-            <div style="min-width:0;flex:1;">
-              <div style="font-weight:800;font-size:13px;color:var(--text-main);">${s2.teamName.split(" (")[0]}</div>
-              <div style="font-size:10px;color:var(--text-muted);">Record: ${s2.wins}-${s2.losses} • PF: ${s2.pf.toFixed(1)}</div>
-            </div>
-          </div>
-          <span class="badge badge-blue">WK 15 BYE</span>
+        ${byeCardHTML}
+        ${qfSeriesList.map(q => renderMatchupCardHTML(q.label, q.series)).join("")}
+      </div>
+      <div class="bracket-col">
+        <div class="bracket-col-hdr">
+          <div><div style="font-size:13px;font-weight:800;">ROUND 2: SEMIFINALS</div><div style="font-size:11px;color:var(--text-muted);">${fmtWkTag(roundWeeks[1])} • ${reseedText}</div></div>
+          <span class="badge badge-purple">${fmtWkTag(roundWeeks[1])}</span>
+        </div>
+        ${renderMatchupCardHTML(`SEMIFINAL 1 (#${sf1.teamA.seed} VS #${sf1.teamB.seed})`, sf1)}
+        ${renderMatchupCardHTML(`SEMIFINAL 2 (#${sf2.teamA.seed} VS #${sf2.teamB.seed})`, sf2)}
+        <div class="bracket-match-card" style="margin-top:auto;">
+          <div class="bracket-match-hdr"><span>QUARTERFINAL EXITS</span><span>CONSOLATION</span></div>
+          <div style="font-size:11px;color:var(--text-muted);line-height:1.5;padding:2px;">${qfLosersHTML}</div>
         </div>
       </div>
-
-      ${renderMatchupCardHTML("qf1", "QUARTERFINAL 1 (#4 VS #5)", 15, s4, s5, s4.wk15Proj, s5.wk15Proj, qf1Prob4, qf1Winner)}
-      ${renderMatchupCardHTML("qf2", "QUARTERFINAL 2 (#3 VS #6)", 15, s3, s6, s3.wk15Proj, s6.wk15Proj, qf2Prob3, qf2Winner)}
-    </div>
-
-    <!-- COLUMN 2: WEEK 16 SEMIFINALS -->
-    <div class="bracket-col">
-      <div class="bracket-col-hdr">
-        <div>
-          <div style="font-size:13px;font-weight:800;color:var(--text-main);">ROUND 2: SEMIFINALS</div>
-          <div style="font-size:11px;color:var(--text-muted);">Week 16 • ${reseedMode === "RESEED" ? "NFL Re-Seeded Matchups" : "Fixed Bracket Draw"}</div>
+      <div class="bracket-col">
+        <div class="bracket-col-hdr">
+          <div><div style="font-size:13px;font-weight:800;color:var(--good);">ROUND 3: FINALS</div><div style="font-size:11px;color:var(--text-muted);">${fmtWkTag(roundWeeks[2])} • Championship & 3rd Place</div></div>
+          <span class="badge badge-green">${fmtWkTag(roundWeeks[2])}</span>
         </div>
-        <span class="badge badge-purple">WEEK 16</span>
-      </div>
-
-      ${renderMatchupCardHTML("sf1", `SEMIFINAL 1 (#1 VS #${sf1Opp.seed})`, 16, s1, sf1Opp, s1.wk16Proj, sf1Opp.wk16Proj, sf1Prob1, sf1Winner)}
-      ${renderMatchupCardHTML("sf2", `SEMIFINAL 2 (#2 VS #${sf2Opp.seed})`, 16, s2, sf2Opp, s2.wk16Proj, sf2Opp.wk16Proj, sf2Prob2, sf2Winner)}
-
-      <div class="bracket-match-card" style="margin-top:auto;">
-        <div class="bracket-match-hdr">
-          <span>ELIMINATED IN QUARTERFINALS (5TH/6TH)</span>
-          <span>WEEK 15 EXIT</span>
+        ${renderMatchupCardHTML(`LEAGUE CHAMPIONSHIP (#${sf1.winner.seed} VS #${sf2.winner.seed})`, champ)}
+        <div class="champ-callout">
+          <div style="font-size:10px;font-weight:800;color:var(--good);letter-spacing:0.8px;">PROJECTED 2026 LEAGUE CHAMPION</div>
+          <div style="font-size:17px;font-weight:900;margin-top:4px;">#${champ.winner.seed} ${champ.winner.teamName.split(" (")[0]}</div>
+          <div style="font-size:11px;color:var(--text-muted);margin-top:2px;">Finals Projection: <b style="color:var(--good);">${(champ.winner.roundScores[2] || 0).toFixed(2)} pts</b> • Core: ${champ.winner.coreNames}</div>
         </div>
-        <div style="font-size:12px;color:var(--text-muted);display:flex;justify-content:space-between;padding:4px 2px;">
-          <span>#${qf1Loser.seed} ${qf1Loser.teamName.split(" (")[0]} (${qf1Loser.wk15Proj.toFixed(1)} pts)</span>
-          <span>#${qf2Loser.seed} ${qf2Loser.teamName.split(" (")[0]} (${qf2Loser.wk15Proj.toFixed(1)} pts)</span>
-        </div>
-      </div>
-    </div>
+        ${renderMatchupCardHTML(`3RD PLACE GAME (#${sf1.loser.seed} VS #${sf2.loser.seed})`, third)}
+      </div>`;
+  }
 
-    <!-- COLUMN 3: WEEK 17 CHAMPIONSHIP & 3RD PLACE -->
-    <div class="bracket-col">
-      <div class="bracket-col-hdr">
-        <div>
-          <div style="font-size:13px;font-weight:800;color:var(--good);">ROUND 3: FINALS WEEK</div>
-          <div style="font-size:11px;color:var(--text-muted);">Week 17 • League Championship & 3rd Place</div>
-        </div>
-        <span class="badge badge-green">WEEK 17</span>
-      </div>
-
-      ${renderMatchupCardHTML("champ", `LEAGUE CHAMPIONSHIP (#${sf1Winner.seed} VS #${sf2Winner.seed})`, 17, sf1Winner, sf2Winner, sf1Winner.wk17Proj, sf2Winner.wk17Proj, champProbA, champWinner)}
-
-      <div class="champ-callout">
-        <div style="font-size:10px;font-weight:800;color:var(--good);letter-spacing:0.8px;">PROJECTED 2026 LEAGUE CHAMPION</div>
-        <div style="font-size:17px;font-weight:900;color:var(--text-main);margin-top:4px;">
-          #${champWinner.seed} ${champWinner.teamName.split(" (")[0]}
-        </div>
-        <div style="font-size:11px;color:var(--text-muted);margin-top:2px;">
-          Week 17 Finals Projection: <b style="color:var(--good);">${champWinner.wk17Proj.toFixed(2)} pts</b> • Core: ${champWinner.coreNames}
-        </div>
-      </div>
-
-      ${renderMatchupCardHTML("third", `3RD PLACE GAME (#${sf1Loser.seed} VS #${sf2Loser.seed})`, 17, sf1Loser, sf2Loser, sf1Loser.wk17Proj, sf2Loser.wk17Proj, thirdProbA, thirdWinner)}
-    </div>`;
-
-  // Attach click handlers so users can click any slot to force an upset and watch downstream rounds update
   grid.querySelectorAll(".bracket-slot[data-mkey]").forEach(slotEl => {
     slotEl.onclick = () => {
       const mkey = slotEl.dataset.mkey;
-      const rid = parseInt(slotEl.dataset.rid, 10);
-      state.bracketOverrides[mkey] = rid;
-      if (mkey === "qf1" || mkey === "qf2") {
-        state.bracketOverrides.sf1 = null;
-        state.bracketOverrides.sf2 = null;
-        state.bracketOverrides.champ = null;
-        state.bracketOverrides.third = null;
-      } else if (mkey === "sf1" || mkey === "sf2") {
-        state.bracketOverrides.champ = null;
-        state.bracketOverrides.third = null;
-      }
+      state.bracketOverrides[mkey] = parseInt(slotEl.dataset.rid, 10);
+      if (mkey.startsWith("qf")) { delete state.bracketOverrides.sf1; delete state.bracketOverrides.sf2; delete state.bracketOverrides.champ; delete state.bracketOverrides.third; }
+      else if (mkey.startsWith("sf")) { delete state.bracketOverrides.champ; delete state.bracketOverrides.third; }
       renderPlayoffBracketTab();
     };
   });
 
-  // Compute exact analytical round-by-round probabilities for all 6 seeds + #7/#8 bubble teams
-  oddsTbl.innerHTML = `
-    <thead>
-      <tr>
-        <th style="width:70px;">Seed</th>
-        <th style="text-align:left;">Team / Manager</th>
-        <th>Current Record</th>
-        <th>Proj Final (Wk 14)</th>
-        <th>Wk 15 Quarters</th>
-        <th>Wk 16 Semis</th>
-        <th>Wk 17 Finals</th>
-        <th>Semi Win %</th>
-        <th>Title Odds %</th>
-        <th>Action</th>
-      </tr>
-    </thead>
-    <tbody></tbody>`;
+  const roundHeadersHTML = roundWeeks.map((wks, idx) => {
+    const lbl = isFourTeam ? (idx === 0 ? "Semifinals" : "Finals") : (idx === 0 ? "Quarters" : (idx === 1 ? "Semis" : "Finals"));
+    return `<th>${lbl} (${wks.length > 1 ? 'W' + wks[0] + '–' + wks[wks.length - 1] : 'W' + wks[0]})</th>`;
+  }).join("");
+
+  oddsTbl.innerHTML = `<thead><tr><th style="width:80px;">Seed</th><th style="text-align:left;">Team / Manager</th><th>Current Record</th><th>Proj Final</th>${roundHeadersHTML}<th>Finals Berth %</th><th>Title Odds %</th><th>Action</th></tr></thead><tbody></tbody>`;
   const tbody = oddsTbl.querySelector("tbody");
 
-  seeded.forEach((tm, idx) => {
-    const isBubble = tm.seed > 6;
-    let qfAdvanceProb = 0, sfWinProb = 0, titleProb = 0;
+  const byeSeedsSet = new Set(byeTeams.map(b => b.seed));
+  const qfProbBySeed = {};
+  qfSeriesList.forEach(q => {
+    qfProbBySeed[q.series.teamA.seed] = q.series.probA;
+    qfProbBySeed[q.series.teamB.seed] = 100 - q.series.probA;
+  });
 
-    if (tm.seed === 1) {
-      qfAdvanceProb = 100;
-      sfWinProb = sf1Prob1;
-      titleProb = (sf1Prob1 / 100) * (computeHeadToHeadWinProb(tm.wk17Proj, sf2Winner.wk17Proj));
-    } else if (tm.seed === 2) {
-      qfAdvanceProb = 100;
-      sfWinProb = sf2Prob2;
-      titleProb = (sf2Prob2 / 100) * (computeHeadToHeadWinProb(tm.wk17Proj, sf1Winner.wk17Proj));
-    } else if (tm.seed === 3) {
-      qfAdvanceProb = qf2Prob3;
-      const semiOpp = (reseedMode === "RESEED" && qf1Winner.seed > 3) ? s2 : s2;
-      const w16P = computeHeadToHeadWinProb(tm.wk16Proj, semiOpp.wk16Proj);
-      sfWinProb = (qfAdvanceProb / 100) * w16P;
-      titleProb = (sfWinProb / 100) * computeHeadToHeadWinProb(tm.wk17Proj, s1.wk17Proj);
-    } else if (tm.seed === 4) {
-      qfAdvanceProb = qf1Prob4;
-      const w16P = computeHeadToHeadWinProb(tm.wk16Proj, s1.wk16Proj);
-      sfWinProb = (qfAdvanceProb / 100) * w16P;
-      titleProb = (sfWinProb / 100) * computeHeadToHeadWinProb(tm.wk17Proj, s2.wk17Proj);
-    } else if (tm.seed === 5) {
-      qfAdvanceProb = 100 - qf1Prob4;
-      const w16P = computeHeadToHeadWinProb(tm.wk16Proj, s1.wk16Proj);
-      sfWinProb = (qfAdvanceProb / 100) * w16P;
-      titleProb = (sfWinProb / 100) * computeHeadToHeadWinProb(tm.wk17Proj, s2.wk17Proj);
-    } else if (tm.seed === 6) {
-      qfAdvanceProb = 100 - qf2Prob3;
-      const semiOpp = reseedMode === "RESEED" ? s1 : s2;
-      const w16P = computeHeadToHeadWinProb(tm.wk16Proj, semiOpp.wk16Proj);
-      sfWinProb = (qfAdvanceProb / 100) * w16P;
-      titleProb = (sfWinProb / 100) * computeHeadToHeadWinProb(tm.wk17Proj, (semiOpp.rosterId === s1.rosterId ? s2 : s1).wk17Proj);
+  seeded.forEach(tm => {
+    const isBubble = tm.seed > pTeams;
+    const hasBye = byeSeedsSet.has(tm.seed);
+    let r1Advance = 0, finalsBerthPct = 0, titlePct = 0;
+
+    if (!isBubble) {
+      if (isFourTeam) {
+        r1Advance = 100;
+        const semiSeries = (tm.seed === 1 || tm.seed === 4) ? sf1 : sf2;
+        const otherSemiWinner = (tm.seed === 1 || tm.seed === 4) ? sf2.winner : sf1.winner;
+        finalsBerthPct = semiSeries.teamA.rosterId === tm.rosterId ? semiSeries.probA : (100 - semiSeries.probA);
+        titlePct = (finalsBerthPct / 100) * computeHeadToHeadWinProb(tm.roundScores[1], otherSemiWinner.roundScores[1], roundWeeks[1].length);
+      } else {
+        r1Advance = hasBye ? 100 : (qfProbBySeed[tm.seed] || 50);
+        const refSemiOpp = tm.seed === 1 ? sf1.teamB : (tm.seed === 2 ? sf2.teamB : seeded[0]);
+        const semiWinCond = computeHeadToHeadWinProb(tm.roundScores[1], refSemiOpp.roundScores[1], roundWeeks[1].length);
+        finalsBerthPct = (r1Advance / 100) * semiWinCond;
+        const refFinalsOpp = tm.seed === 1 ? seeded[1] : seeded[0];
+        titlePct = (finalsBerthPct / 100) * computeHeadToHeadWinProb(tm.roundScores[2], refFinalsOpp.roundScores[2], roundWeeks[2].length);
+      }
     }
 
-    const seedBadge = isBubble
-      ? `<span class="badge badge-yellow">#${tm.seed} BUBBLE</span>`
-      : (tm.seed <= 2 ? `<span class="badge badge-blue">#${tm.seed} BYE</span>` : `<span class="badge badge-green">#${tm.seed} SEED</span>`);
+    const seedBadge = isBubble ? `<span class="badge badge-yellow">#${tm.seed} BUBBLE</span>` : (hasBye ? `<span class="badge badge-blue">#${tm.seed} BYE</span>` : `<span class="badge badge-green">#${tm.seed} SEED</span>`);
+    const roundScoreCells = tm.roundScores.map((sc, idx) => {
+      if (idx === 0 && hasBye && !isFourTeam) return `<td style="font-weight:700;color:var(--accent);">BYE (${sc.toFixed(1)})</td>`;
+      return `<td style="font-weight:700;color:${idx === tm.roundScores.length - 1 ? 'var(--good)' : 'var(--text-main)'};">${sc.toFixed(1)} pts</td>`;
+    }).join("");
 
     const tr = document.createElement("tr");
     tr.className = "table-row-hover";
     tr.innerHTML = `
       <td>${seedBadge}</td>
-      <td style="text-align:left;">
-        <div style="font-weight:800;color:var(--text-main);">${tm.teamName}</div>
-        <div style="font-size:11px;color:var(--text-muted);">Core Starters: ${tm.coreNames} • Power Score: ${tm.power.toFixed(1)}</div>
-      </td>
+      <td style="text-align:left;"><div style="font-weight:800;">${tm.teamName}</div><div style="font-size:11px;color:var(--text-muted);">Core: ${tm.coreNames} • Power: ${tm.power.toFixed(1)}</div></td>
       <td style="font-weight:700;">${tm.wins} - ${tm.losses} (${tm.pf.toFixed(1)} PF)</td>
       <td style="color:var(--accent);font-weight:700;">${tm.projW} - ${tm.projL}</td>
-      <td style="font-weight:700;color:${tm.seed <= 2 ? 'var(--accent)' : 'var(--text-main)'};">${tm.seed <= 2 ? 'BYE (' + tm.wk15Proj.toFixed(1) + ')' : tm.wk15Proj.toFixed(1) + ' pts'}</td>
-      <td style="font-weight:700;">${tm.wk16Proj.toFixed(1)} pts</td>
-      <td style="font-weight:700;color:var(--good);">${tm.wk17Proj.toFixed(1)} pts</td>
-      <td style="font-weight:700;color:${isBubble ? 'var(--text-muted)' : 'var(--text-main)'};">${isBubble ? '--' : sfWinProb.toFixed(1) + '%'}</td>
-      <td><span class="badge ${titleProb >= 22 ? 'badge-green' : (titleProb >= 10 ? 'badge-blue' : 'badge-yellow')}">${isBubble ? 'Out of Top 6' : titleProb.toFixed(1) + '%'}</span></td>
-      <td><button class="btn-builder-action" onclick="openMatchupInSimulator(${tm.rosterId}, ${s1.rosterId === tm.rosterId ? s2.rosterId : s1.rosterId})">Sim vs #1</button></td>`;
+      ${roundScoreCells}
+      <td style="font-weight:700;color:${isBubble ? 'var(--text-muted)' : 'var(--text-main)'};">${isBubble ? '--' : finalsBerthPct.toFixed(1) + '%'}</td>
+      <td><span class="badge ${titlePct >= 22 ? 'badge-green' : (titlePct >= 10 ? 'badge-blue' : 'badge-yellow')}">${isBubble ? `Outside Top ${pTeams}` : titlePct.toFixed(1) + '%'}</span></td>
+      <td><button class="btn-builder-action" onclick="openMatchupInSimulator(${tm.rosterId}, ${seeded[0].rosterId === tm.rosterId ? seeded[1].rosterId : seeded[0].rosterId})">Sim vs #1</button></td>`;
     tbody.appendChild(tr);
   });
 }
@@ -3074,35 +2762,25 @@ function renderMatchupSim() {
   slots.forEach((sl, i) => {
     const pA = state.players[tmA.starters[i]] || { name:"Empty Slot", position:sl, team:"FA", projectedPoints:0 };
     const pB = state.players[tmB.starters[i]] || { name:"Empty Slot", position:sl, team:"FA", projectedPoints:0 };
-    totA += (pA.projectedPoints || 0);
-    totB += (pB.projectedPoints || 0);
+    totA += (pA.projectedPoints || 0); totB += (pB.projectedPoints || 0);
     const edge = Math.abs((pA.projectedPoints || 0) - (pB.projectedPoints || 0));
-
     const aWins = (pA.projectedPoints || 0) > (pB.projectedPoints || 0);
     const bWins = (pB.projectedPoints || 0) > (pA.projectedPoints || 0);
-
-    const styleA = aWins ? "border: 1.5px solid var(--good); background-color: var(--good-bg);" : "border: 1px solid var(--border);";
-    const styleB = bWins ? "border: 1.5px solid var(--good); background-color: var(--good-bg);" : "border: 1px solid var(--border);";
-    const colorA = aWins ? "var(--good)" : "var(--text-main)";
-    const colorB = bWins ? "var(--good)" : "var(--text-main)";
+    const styleA = aWins ? "border:1.5px solid var(--good); background:var(--good-bg);" : "border:1px solid var(--border);";
+    const styleB = bWins ? "border:1.5px solid var(--good); background:var(--good-bg);" : "border:1px solid var(--border);";
 
     const row = document.createElement("div");
-    row.className = "opt-row";
-    row.style.height = "68px";
+    row.className = "opt-row"; row.style.height = "68px";
     row.innerHTML = `
-      <div class="p-card" style="height:60px; ${styleA}"><img class="avatar" src="${avatarUrl(pA)}" onerror="this.style.display='none'" /><div style="flex:1;"><b style="color:#F2F4F8;"><img class="team-logo-sm" src="${teamLogoUrl(pA.team)}" onerror="this.style.display='none'"/>${pA.name}</b><div style="font-size:11px;color:var(--text-muted);">${pA.position} - ${pA.team}</div></div><b style="color:${colorA};">${(pA.projectedPoints||0).toFixed(2)} pts</b></div>
-      <div style="background-color:var(--bg-card);color:var(--accent);border:1px solid var(--border);border-radius:10px;text-align:center;font-weight:800;font-size:11px;padding:8px;">${sl}<br>+${edge.toFixed(1)}</div>
-      <div class="p-card" style="height:60px; ${styleB}"><img class="avatar" src="${avatarUrl(pB)}" onerror="this.style.display='none'" /><div style="flex:1;"><b style="color:#F2F4F8;"><img class="team-logo-sm" src="${teamLogoUrl(pB.team)}" onerror="this.style.display='none'"/>${pB.name}</b><div style="font-size:11px;color:var(--text-muted);">${pB.position} - ${pB.team}</div></div><b style="color:${colorB};">${(pB.projectedPoints||0).toFixed(2)} pts</b></div>`;
+      <div class="p-card" style="height:60px; ${styleA}"><img class="avatar" src="${avatarUrl(pA)}" onerror="this.style.display='none'" /><div style="flex:1;"><b style="color:#F2F4F8;"><img class="team-logo-sm" src="${teamLogoUrl(pA.team)}" onerror="this.style.display='none'"/>${pA.name}</b><div style="font-size:11px;color:var(--text-muted);">${pA.position} - ${pA.team}</div></div><b style="color:${aWins ? 'var(--good)' : 'var(--text-main)'};">${(pA.projectedPoints||0).toFixed(2)} pts</b></div>
+      <div style="background:var(--bg-card);color:var(--accent);border:1px solid var(--border);border-radius:10px;text-align:center;font-weight:800;font-size:11px;padding:8px;">${sl}<br>+${edge.toFixed(1)}</div>
+      <div class="p-card" style="height:60px; ${styleB}"><img class="avatar" src="${avatarUrl(pB)}" onerror="this.style.display='none'" /><div style="flex:1;"><b style="color:#F2F4F8;"><img class="team-logo-sm" src="${teamLogoUrl(pB.team)}" onerror="this.style.display='none'"/>${pB.name}</b><div style="font-size:11px;color:var(--text-muted);">${pB.position} - ${pB.team}</div></div><b style="color:${bWins ? 'var(--good)' : 'var(--text-main)'};">${(pB.projectedPoints||0).toFixed(2)} pts</b></div>`;
     rowsEl.appendChild(row);
   });
 
-  const margin = (totA || 0) - (totB || 0);
-  const z = margin / 22.5;
-  let winA = 50.0;
-  if (!isNaN(z) && margin !== 0) {
-    winA = Math.min(99.9, Math.max(0.1, 0.5 * (1 + erf(z / Math.sqrt(2))) * 100));
-  }
-  const winB = 100.0 - winA;
+  const margin = totA - totB;
+  const winA = computeHeadToHeadWinProb(totA, totB, 1);
+  const winB = 100 - winA;
 
   document.getElementById("simBannerA").textContent = `${tmA.teamName.split(" (")[0]} Win Prob: ${winA.toFixed(1)}%`;
   document.getElementById("simBannerA").style.color = winA >= winB ? "var(--good)" : "var(--bad)";
@@ -3114,18 +2792,12 @@ function renderMatchupSim() {
 }
 
 function renderAllViews(teamIdx) {
-  renderRosterTab(teamIdx);
-  renderPowerTab();
-  renderTradeBuilderSide(true);
-  renderTradeBuilderSide(false);
-  updateTradeEvaluation();
-  renderTradeFinder();
-  renderOptimizerTab(teamIdx);
-  renderWaiversTab();
-  renderMatchupSim();
-  drawSingleAnalyticsChart();
-  renderSosTab();
-  renderPlayoffBracketTab();
+  renderRosterTab(teamIdx); renderPowerTab();
+  renderTradeBuilderSide(true); renderTradeBuilderSide(false);
+  updateTradeEvaluation(); renderTradeFinder();
+  renderOptimizerTab(teamIdx); renderWaiversTab();
+  renderMatchupSim(); drawSingleAnalyticsChart();
+  renderSosTab(); renderPlayoffBracketTab();
 }
 
 document.querySelectorAll(".nav-btn").forEach(btn => {
@@ -3138,16 +2810,11 @@ document.querySelectorAll(".nav-btn").forEach(btn => {
   };
 });
 
-document.querySelectorAll(".seg-btn").forEach(btn => {
-  btn.onclick = () => switchTradeMode(parseInt(btn.dataset.tmode, 10));
-});
-
+document.querySelectorAll(".seg-btn").forEach(btn => { btn.onclick = () => switchTradeMode(parseInt(btn.dataset.tmode, 10)); });
 document.querySelectorAll(".sos-mode-btn").forEach(btn => {
   btn.onclick = () => {
     document.querySelectorAll(".sos-mode-btn").forEach(b => b.classList.remove("active"));
-    btn.classList.add("active");
-    state.sosWindowMode = btn.dataset.sosmode;
-    renderSosTab();
+    btn.classList.add("active"); state.sosWindowMode = btn.dataset.sosmode; renderSosTab();
   };
 });
 
@@ -3174,32 +2841,19 @@ document.getElementById("dbPosFilter").onchange = renderTradeDatabase;
 document.getElementById("dbSrcFilter").onchange = renderTradeDatabase;
 document.getElementById("finderPos").onchange = renderTradeFinder;
 document.getElementById("finderPkgType").onchange = renderTradeFinder;
+document.getElementById("finderSosBoost").onchange = renderTradeFinder;
 document.getElementById("finderStrat").onchange = renderTradeFinder;
 document.getElementById("waiverPos").onchange = renderWaiversTab;
 document.getElementById("waiverChartMode").onchange = drawWaiverChart;
-document.getElementById("analyticsPos").onchange = () => {
-  updateAnalyticsDropdownOptions();
-  drawSingleAnalyticsChart();
-};
+document.getElementById("analyticsPos").onchange = () => { updateAnalyticsDropdownOptions(); drawSingleAnalyticsChart(); };
 document.getElementById("analyticsGraphSelect").onchange = drawSingleAnalyticsChart;
 document.getElementById("sosPos").onchange = renderSosTab;
 document.getElementById("sosScope").onchange = renderSosTab;
 document.getElementById("sosSort").onchange = renderSosTab;
-document.getElementById("bracketSeedMode").onchange = () => {
-  state.bracketOverrides = { qf1: null, qf2: null, sf1: null, sf2: null, champ: null, third: null };
-  renderPlayoffBracketTab();
-};
-document.getElementById("bracketReseedMode").onchange = () => {
-  state.bracketOverrides.sf1 = null;
-  state.bracketOverrides.sf2 = null;
-  state.bracketOverrides.champ = null;
-  state.bracketOverrides.third = null;
-  renderPlayoffBracketTab();
-};
-document.getElementById("resetBracketBtn").onclick = () => {
-  state.bracketOverrides = { qf1: null, qf2: null, sf1: null, sf2: null, champ: null, third: null };
-  renderPlayoffBracketTab();
-};
+document.getElementById("bracketTeamsOverride").onchange = () => { state.bracketOverrides = {}; renderPlayoffBracketTab(); renderSosTab(); renderTradeFinder(); };
+document.getElementById("bracketSeedMode").onchange = () => { state.bracketOverrides = {}; renderPlayoffBracketTab(); };
+document.getElementById("bracketReseedMode").onchange = () => { delete state.bracketOverrides.sf1; delete state.bracketOverrides.sf2; delete state.bracketOverrides.champ; delete state.bracketOverrides.third; renderPlayoffBracketTab(); };
+document.getElementById("resetBracketBtn").onclick = () => { state.bracketOverrides = {}; renderPlayoffBracketTab(); };
 document.getElementById("simTeamA").onchange = renderMatchupSim;
 document.getElementById("simTeamB").onchange = renderMatchupSim;
 document.getElementById("shareBtn").onclick = () => {
