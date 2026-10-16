@@ -92,7 +92,7 @@
   .sup-title { font-size: 11px; font-weight: 800; color: var(--text-muted); letter-spacing: 0.6px; width: 155px; }
   .sup-item { font-size: 12px; font-weight: 700; flex: 1; min-width: 190px; color: var(--text-main); }
 
-  /* Positional Grade Strip (Trade Finder & Needs Blueprint) */
+  /* Positional Grade Strip */
   .grade-grid {
     display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px;
   }
@@ -138,11 +138,11 @@
     border: 1px solid var(--border); border-radius: 12px; display: block;
   }
 
-  /* Trade Center Segmented Bar & Builder */
-  .seg-bar-container { background-color: var(--bg-card); border: 1px solid var(--border); border-radius: 10px; padding: 4px; display: inline-flex; gap: 4px; }
-  .seg-btn { background: transparent; color: var(--text-muted); padding: 8px 18px; border-radius: 7px; font-size: 12px; font-weight: 600; border: none; cursor: pointer; }
-  .seg-btn:hover { color: var(--text-main); background-color: rgba(255, 255, 255, 0.06); }
-  .seg-btn.active { background-color: var(--accent); color: #FFFFFF; font-weight: 800; }
+  /* Segmented Bars & Trade Builder */
+  .seg-bar-container { background-color: var(--bg-card); border: 1px solid var(--border); border-radius: 10px; padding: 4px; display: inline-flex; gap: 4px; flex-wrap: wrap; }
+  .seg-btn, .sos-mode-btn { background: transparent; color: var(--text-muted); padding: 8px 16px; border-radius: 7px; font-size: 12px; font-weight: 600; border: none; cursor: pointer; }
+  .seg-btn:hover, .sos-mode-btn:hover { color: var(--text-main); background-color: rgba(255, 255, 255, 0.06); }
+  .seg-btn.active, .sos-mode-btn.active { background-color: var(--accent); color: #FFFFFF; font-weight: 800; }
   .trade-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; }
   .scroll-list { max-height: 420px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding-right: 4px; }
   .p-card {
@@ -179,6 +179,53 @@
   .sos-tough { background-color: rgba(255, 214, 10, 0.14); border: 1px solid rgba(255, 214, 10, 0.35); color: #FFD60A; }
   .sos-avoid { background-color: rgba(255, 69, 58, 0.22); border: 1px solid rgba(255, 69, 58, 0.55); color: #FF453A; }
   .sos-bye   { background-color: #12141C; border: 1px dashed #3A4256; color: #8E96AA; }
+  .dome-tag  {
+    font-size: 9px; font-weight: 800; padding: 1px 5px; border-radius: 4px;
+    background-color: rgba(100, 210, 255, 0.16); color: #64D2FF; margin-left: 3px;
+  }
+
+  /* 6-Team Playoff Bracket Grid & Matchup Cards */
+  .bracket-grid {
+    display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; align-items: stretch;
+  }
+  .bracket-col {
+    background-color: var(--bg-card); border: 1px solid var(--border); border-radius: 12px;
+    padding: 14px; display: flex; flex-direction: column; gap: 12px;
+  }
+  .bracket-col-hdr {
+    display: flex; justify-content: space-between; align-items: center;
+    padding-bottom: 8px; border-bottom: 1px solid var(--border);
+  }
+  .bracket-match-card {
+    background-color: #131620; border: 1px solid var(--border); border-radius: 10px;
+    padding: 10px 12px; display: flex; flex-direction: column; gap: 8px;
+  }
+  .bracket-match-hdr {
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: 11px; font-weight: 800; color: var(--text-muted); letter-spacing: 0.4px;
+  }
+  .bracket-slot {
+    background-color: #181C26; border: 1px solid #262B38; border-radius: 8px;
+    padding: 8px 10px; display: flex; align-items: center; justify-content: space-between;
+    gap: 10px; cursor: pointer; transition: border-color 0.15s ease, background-color 0.15s ease; user-select: none;
+  }
+  .bracket-slot:hover { border-color: var(--accent); background-color: #1E2330; }
+  .bracket-slot.winner {
+    border: 1.5px solid var(--good); background-color: rgba(48, 209, 88, 0.11);
+  }
+  .bracket-slot.bye-slot {
+    cursor: default; border: 1px dashed rgba(10, 132, 255, 0.45); background-color: rgba(10, 132, 255, 0.08);
+  }
+  .seed-pill {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 26px; height: 24px; border-radius: 6px; font-size: 11px; font-weight: 900;
+    background-color: #232834; color: var(--text-main); flex-shrink: 0;
+  }
+  .seed-pill.top-seed { background-color: var(--accent-bg); color: #64D2FF; border: 1px solid rgba(10, 132, 255, 0.4); }
+  .champ-callout {
+    background: linear-gradient(135deg, rgba(48, 209, 88, 0.18), rgba(10, 132, 255, 0.16));
+    border: 1.5px solid var(--good); border-radius: 10px; padding: 12px 14px; text-align: center;
+  }
 
   /* Optimizer Rows */
   .opt-row {
@@ -190,6 +237,7 @@
 
   @media (max-width: 1024px) {
     .grade-grid { grid-template-columns: repeat(2, 1fr); }
+    .bracket-grid { grid-template-columns: 1fr; }
   }
   @media (max-width: 960px) {
     .body-layout { flex-direction: column; }
@@ -232,6 +280,7 @@
     <button class="nav-btn" data-tab="tab-waiver">Waiver Wire</button>
     <button class="nav-btn" data-tab="tab-analytics">Player Analytics</button>
     <button class="nav-btn" data-tab="tab-sos">SOS Heat-Map</button>
+    <button class="nav-btn" data-tab="tab-bracket">Playoff Bracket</button>
     <button class="nav-btn" data-tab="tab-matchup">Matchup Simulator</button>
   </div>
 
@@ -351,7 +400,6 @@
 
       <!-- SUB-MODE 2: TRADE FINDER & POSITIONAL NEEDS ANALYSIS (TABULAR) -->
       <div id="tmode-2" style="display:none; flex-direction:column; gap:12px;">
-        <!-- Roster Positional Grades & Needs Diagnostic Card -->
         <div class="card-banner" style="gap:10px;">
           <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
             <div style="font-size:13px; font-weight:800; color:var(--text-main); letter-spacing:0.4px;">
@@ -367,7 +415,6 @@
           </div>
         </div>
 
-        <!-- Trade Finder Filter Bar -->
         <div class="card-banner" style="padding:12px 16px;">
           <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
             <label style="font-size:12px; color:var(--text-muted);">Target Upgrade:</label>
@@ -461,11 +508,11 @@
       <div class="table-wrap"><table id="analyticsTable"></table></div>
     </div>
 
-    <!-- TAB 7: STRENGTH OF SCHEDULE (SOS) HEAT-MAP -->
+    <!-- TAB 7: STRENGTH OF SCHEDULE (SOS) HEAT-MAP WITH PLAYOFF TOGGLE -->
     <div id="tab-sos" class="tab-page">
       <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
         <div>
-          <div id="sosTitleHdr" style="font-size:15px; font-weight:800;">UPCOMING 4-WEEK POSITIONAL STRENGTH OF SCHEDULE (SOS) HEAT-MAP</div>
+          <div id="sosTitleHdr" style="font-size:15px; font-weight:800;">POSITIONAL STRENGTH OF SCHEDULE (SOS) HEAT-MAP</div>
           <div style="font-size:12px; color:var(--text-muted); margin-top:2px;">
             Defense vs. Position (DvP) Rank: <span style="color:var(--good);font-weight:700;">#25–#32 Smash (Green)</span> •
             <span style="color:#86EFAC;font-weight:700;">#18–#24 Favorable</span> •
@@ -474,34 +521,80 @@
             <span style="color:var(--bad);font-weight:700;">#1–#5 Shutdown (Red)</span>
           </div>
         </div>
-        <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
-          <label style="font-size:12px; color:var(--text-muted);">Position:</label>
-          <select id="sosPos" style="width:auto; min-width:175px;">
-            <option value="QB">Quarterbacks (vs QB)</option>
-            <option value="RB">Running Backs (vs RB)</option>
-            <option value="WR">Wide Receivers (vs WR)</option>
-            <option value="TE">Tight Ends (vs TE)</option>
-            <option value="DEF">Team Defense (vs Opp Off)</option>
-          </select>
-          <label style="font-size:12px; color:var(--text-muted);">Scope:</label>
-          <select id="sosScope" style="width:auto; min-width:215px;">
-            <option value="ALL">All 32 NFL Teams</option>
-            <option value="ROSTER">My Selected Roster Players</option>
-            <option value="WAIVER">Top Available Waiver Targets</option>
-          </select>
-          <label style="font-size:12px; color:var(--text-muted);">Sort:</label>
-          <select id="sosSort" style="width:auto; min-width:190px;">
-            <option value="EASIEST">Easiest 4-Wk Slate First</option>
-            <option value="HARDEST">Toughest 4-Wk Slate First</option>
-          </select>
+        <div class="seg-bar-container">
+          <button class="sos-mode-btn active" data-sosmode="NEXT4">Upcoming 4 Weeks</button>
+          <button class="sos-mode-btn" data-sosmode="PLAYOFFS">Fantasy Playoffs (Weeks 15–17)</button>
+          <button class="sos-mode-btn" data-sosmode="PUSH">Playoff Push + Playoffs (Weeks 14–17)</button>
         </div>
       </div>
+
+      <div class="card-banner" style="padding:12px 16px;">
+        <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; justify-content:space-between;">
+          <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+            <label style="font-size:12px; color:var(--text-muted);">Position:</label>
+            <select id="sosPos" style="width:auto; min-width:180px;">
+              <option value="QB">Quarterbacks (vs QB)</option>
+              <option value="RB">Running Backs (vs RB)</option>
+              <option value="WR">Wide Receivers (vs WR)</option>
+              <option value="TE">Tight Ends (vs TE)</option>
+              <option value="DEF">Team Defense (vs Opp Off)</option>
+            </select>
+            <label style="font-size:12px; color:var(--text-muted);">Scope:</label>
+            <select id="sosScope" style="width:auto; min-width:255px;">
+              <option value="ALL">All 32 NFL Teams</option>
+              <option value="TOP_PLAYERS">Top 36 Positional Players (Trade Targets)</option>
+              <option value="ROSTER">My Selected Roster Players</option>
+              <option value="WAIVER">Top Available Waiver Targets</option>
+            </select>
+            <label style="font-size:12px; color:var(--text-muted);">Sort:</label>
+            <select id="sosSort" style="width:auto; min-width:195px;">
+              <option value="EASIEST">Easiest Slate First (Target)</option>
+              <option value="HARDEST">Toughest Slate First (Fade/Sell)</option>
+            </select>
+          </div>
+          <span id="sosWindowBadge" class="badge badge-blue">UPCOMING 4-WEEK SLATE</span>
+        </div>
+      </div>
+
       <div class="table-wrap">
         <table id="sosTable"></table>
       </div>
     </div>
 
-    <!-- TAB 8: MATCHUP SIMULATOR -->
+    <!-- TAB 8: 6-TEAM FANTASY PLAYOFF BRACKET SIMULATOR (WEEKS 15–17) -->
+    <div id="tab-bracket" class="tab-page">
+      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+        <div>
+          <div style="font-size:15px; font-weight:800;">6-TEAM FANTASY PLAYOFF BRACKET SIMULATOR (WEEKS 15–17)</div>
+          <div style="font-size:12px; color:var(--text-muted); margin-top:2px;">
+            Projections factor in optimal starting lineups + NFL opponent DvP & Dome environments for Weeks 15, 16, and 17. Click any team card to manually force an upset.
+          </div>
+        </div>
+        <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+          <label style="font-size:12px; color:var(--text-muted);">Seeding Basis:</label>
+          <select id="bracketSeedMode" style="width:auto; min-width:255px;">
+            <option value="CURRENT">Current Standings (Record → PF → PA)</option>
+            <option value="PROJ">Projected Week 14 Final Standings</option>
+            <option value="POWER">Power Rankings Top 6 Contenders</option>
+          </select>
+          <label style="font-size:12px; color:var(--text-muted);">Bracket Rule:</label>
+          <select id="bracketReseedMode" style="width:auto; min-width:235px;">
+            <option value="FIXED">Sleeper Default Fixed (#1 vs #4/#5)</option>
+            <option value="RESEED">NFL Re-Seeded (#1 vs Lowest Seed)</option>
+          </select>
+          <button id="resetBracketBtn" style="background:#232834; font-size:12px; padding:7px 14px;">Reset Picks</button>
+        </div>
+      </div>
+
+      <div id="bracketGridContainer" class="bracket-grid"></div>
+
+      <div class="sec-hdr" style="color:var(--good);">PLAYOFF FIELD & BUBBLE CHAMPIONSHIP ODDS BREAKDOWN</div>
+      <div class="table-wrap">
+        <table id="bracketOddsTable"></table>
+      </div>
+    </div>
+
+    <!-- TAB 9: MATCHUP SIMULATOR -->
     <div id="tab-matchup" class="tab-page">
       <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
         <div style="font-size:15px; font-weight:800;">HEAD-TO-HEAD MATCHUP & WIN-PROBABILITY SIMULATOR</div>
@@ -539,6 +632,8 @@ const NFL_TEAM_NAMES = {
   NYJ:"New York Jets", PHI:"Philadelphia Eagles", PIT:"Pittsburgh Steelers", SF:"San Francisco 49ers",
   SEA:"Seattle Seahawks", TB:"Tampa Bay Buccaneers", TEN:"Tennessee Titans", WAS:"Washington Commanders"
 };
+
+const DOME_TEAMS = new Set(["ARI","ATL","DAL","DET","HOU","IND","LAC","LAR","LV","MIN","NO"]);
 
 const logoImgCache = {};
 let logoRedrawTimer = null;
@@ -581,83 +676,82 @@ const BYE_2026 = {
   ATL:11, CLE:11, GB:11, LAR:11, LA:11, NE:11, SEA:11, BAL:13, IND:13, LV:13, NYJ:13, ARI:14, DAL:14
 };
 
-// Complete, verified 18-Week 2026 NFL Regular Season Schedule (Zero repeated weeks or duplicate pairings)
+// Verified 18-Week 2026 NFL Regular Season Schedule
 const NFL_2026_SCHEDULE = (() => {
   const teams = Object.keys(NFL_TEAM_NAMES);
   const sched = {};
   teams.forEach(t => sched[t] = {});
 
-  // Each entry is [AwayTeam, HomeTeam] for Weeks 1 to 18 of the 2026 NFL season
   const fullSeasonPairs = {
     1: [
-      ["SF","LAR"],["CHI","CAR"],["TB","CIN"],["NO","DET"],["BUF","HOU"],["BAL","IND"],["CLE","JAX"],["NE","NYJ"],
-      ["TEN","PIT"],["ATL","SEA"],["ARI","LAC"],["GB","MIN"],["MIA","LV"],["WAS","PHI"],["DAL","NYG"],["DEN","KC"]
+      ["NE","SEA"],["SF","LAR"],["ATL","PIT"],["BAL","IND"],["BUF","HOU"],["CHI","CAR"],["CLE","JAX"],["NO","DET"],
+      ["NYJ","TEN"],["TB","CIN"],["ARI","LAC"],["GB","MIN"],["MIA","LV"],["WAS","PHI"],["DAL","NYG"],["DEN","KC"]
     ],
     2: [
-      ["ATL","CAR"],["NO","BAL"],["MIN","CHI"],["CIN","HOU"],["PIT","NE"],["GB","NYJ"],["CLE","TB"],["PHI","TEN"],
-      ["JAX","DEN"],["LV","LAC"],["SEA","ARI"],["WAS","DAL"],["MIA","SF"],["IND","KC"],["NYG","LAR"],["BUF","DET"]
+      ["DET","BUF"],["CAR","ATL"],["CIN","HOU"],["CLE","TB"],["GB","NYJ"],["MIN","CHI"],["NO","BAL"],["PHI","TEN"],
+      ["PIT","NE"],["JAX","DEN"],["LV","LAC"],["MIA","SF"],["SEA","ARI"],["WAS","DAL"],["IND","KC"],["NYG","LAR"]
     ],
     3: [
-      ["NE","JAX"],["BAL","DAL"],["IND","TEN"],["HOU","MIN"],["CAR","LV"],["MIA","SEA"],["DET","ARI"],["LAC","PIT"],
-      ["CHI","IND"],["CLE","NYG"],["GB","NO"],["SF","LAR"],["PHI","TB"],["KC","ATL"],["WAS","CIN"],["NYJ","BUF"]
+      ["ATL","GB"],["CAR","CLE"],["CIN","PIT"],["HOU","IND"],["KC","MIA"],["LAC","BUF"],["NE","JAX"],["NYJ","DET"],
+      ["SEA","WAS"],["TEN","NYG"],["ARI","SF"],["MIN","TB"],["BAL","DAL"],["LV","NO"],["LAR","DEN"],["PHI","CHI"]
     ],
     4: [
-      ["SEA","WAS"],["NE","BUF"],["DAL","HOU"],["LAR","PHI"],["GB","TB"],["NYJ","CHI"],["MIA","MIN"],["DEN","SF"],
-      ["LAC","SEA"],["KC","LV"],["DET","CAR"],["JAX","CIN"],["CLE","ATL"],["TEN","NO"],["IND","PIT"],["ARI","NYG"]
+      ["PIT","CLE"],["IND","WAS"],["ARI","NYG"],["DAL","HOU"],["GB","TB"],["JAX","CIN"],["LAR","PHI"],["NE","BUF"],
+      ["NYJ","CHI"],["TEN","BAL"],["MIA","MIN"],["DEN","SF"],["KC","LV"],["LAC","SEA"],["DET","CAR"],["ATL","NO"]
     ],
-    5: [ // Byes: CAR, KC
+    5: [
       ["TB","DAL"],["PHI","JAX"],["NYG","WAS"],["CLE","NYJ"],["IND","PIT"],["HOU","TEN"],["MIN","NO"],["LV","NE"],
       ["CIN","MIA"],["CHI","GB"],["DEN","LAC"],["DET","ARI"],["SF","SEA"],["BAL","ATL"],["BUF","LAR"]
     ],
-    6: [ // Byes: CIN, DET, MIA, MIN
+    6: [
       ["SEA","DEN"],["HOU","JAX"],["NYJ","NE"],["CAR","PHI"],["PIT","TB"],["BAL","CLE"],["CHI","ATL"],["NO","NYG"],
       ["TEN","IND"],["ARI","LAR"],["LAC","KC"],["BUF","LV"],["DAL","GB"],["WAS","SF"]
     ],
-    7: [ // Byes: BUF, JAX, LAC, WAS
+    7: [
       ["NE","CHI"],["PIT","NO"],["TB","CAR"],["MIA","NYJ"],["NYG","HOU"],["CIN","BAL"],["CLE","TEN"],["IND","MIN"],
       ["SF","ATL"],["DEN","ARI"],["GB","DET"],["LAR","LV"],["KC","SEA"],["DAL","PHI"]
     ],
-    8: [ // Byes: HOU, NO, NYG, SF
+    8: [
       ["CAR","GB"],["TEN","CIN"],["IND","JAX"],["CLE","PIT"],["BAL","BUF"],["ATL","TB"],["MIN","DET"],["LV","NYJ"],
       ["KC","DEN"],["NE","MIA"],["PHI","WAS"],["CHI","SEA"],["ARI","DAL"],["LAR","LAC"]
     ],
-    9: [ // Byes: PIT, TEN
+    9: [
       ["JAX","BAL"],["CIN","ATL"],["NYJ","KC"],["CLE","NO"],["DEN","CAR"],["DAL","IND"],["DET","MIA"],["GB","NE"],
       ["ARI","SEA"],["TB","CHI"],["BUF","MIN"],["HOU","NYG"],["SF","LAR"],["LV","LAC"]
     ],
-    10: [ // Byes: CHI, DEN, PHI, TB
+    10: [
       ["WAS","NYG"],["NE","DET"],["BUF","NYJ"],["MIA","IND"],["KC","ATL"],["MIN","GB"],["JAX","TEN"],["PIT","CIN"],
       ["LAC","BAL"],["LAR","ARI"],["SEA","LV"],["SF","DAL"],["NO","CAR"],["HOU","CLE"]
     ],
-    11: [ // Byes: ATL, CLE, GB, LAR, NE, SEA
+    11: [
       ["IND","HOU"],["MIA","BUF"],["BAL","CAR"],["NO","CHI"],["TEN","DAL"],["TB","DET"],["ARI","KC"],["JAX","NYG"],
       ["NYJ","LAC"],["LV","DEN"],["PIT","PHI"],["MIN","SF"],["CIN","WAS"]
     ],
-    12: [ // No Byes
+    12: [
       ["GB","LAR"],["CHI","DET"],["PHI","DAL"],["KC","BUF"],["DEN","PIT"],["NO","CIN"],["LV","CLE"],["BAL","HOU"],
       ["WAS","ARI"],["SEA","SF"],["NE","LAC"],["CAR","TB"],["NYJ","MIA"],["TEN","JAX"],["MIN","ATL"],["IND","NYG"]
     ],
-    13: [ // Byes: BAL, IND, LV, NYJ
+    13: [
       ["KC","LAR"],["HOU","PIT"],["DAL","SEA"],["SF","NYG"],["GB","NO"],["JAX","CHI"],["PHI","ARI"],["MIA","DEN"],
       ["CAR","MIN"],["BUF","NE"],["CLE","TEN"],["TB","ATL"],["DET","WAS"],["CIN","LAC"]
     ],
-    14: [ // Byes: ARI, DAL
+    14: [
       ["MIN","NE"],["BUF","GB"],["PIT","JAX"],["IND","PHI"],["TB","BAL"],["NO","CAR"],["ATL","CLE"],["TEN","DET"],
       ["CHI","MIA"],["LAC","LV"],["KC","CIN"],["LAR","SF"],["NYG","SEA"],["DEN","HOU"],["NYJ","WAS"]
     ],
-    15: [ // No Byes
-      ["SF","LAC"],["DET","MIN"],["NE","KC"],["SEA","PHI"],["CHI","BUF"],["CIN","CAR"],["MIA","GB"],["JAX","HOU"],
-      ["ATL","WAS"],["NYJ","ARI"],["DAL","LAR"],["DEN","LV"],["BAL","PIT"],["CLE","NO"],["IND","TEN"],["TB","NYG"]
+    15: [
+      ["SF","LAC"],["DAL","LAR"],["CIN","CAR"],["CHI","BUF"],["ATL","WAS"],["DET","MIN"],["NO","TB"],["SEA","PHI"],
+      ["NE","KC"],["CLE","NYG"],["IND","TEN"],["MIA","GB"],["BAL","PIT"],["JAX","HOU"],["NYJ","ARI"],["DEN","LV"]
     ],
-    16: [ // No Byes
-      ["HOU","PHI"],["JAX","DAL"],["NYG","DET"],["LAR","SEA"],["NE","NYJ"],["CLE","BAL"],["LAC","MIA"],["ARI","LV"],
-      ["SF","KC"],["CAR","TB"],["ATL","NO"],["CIN","PIT"],["GB","CHI"],["MIN","WAS"],["BUF","DEN"],["TEN","IND"]
+    16: [
+      ["CIN","IND"],["JAX","DAL"],["NYG","DET"],["LAR","SEA"],["SF","KC"],["ATL","TB"],["WAS","MIN"],["GB","CHI"],
+      ["ARI","NO"],["LAC","MIA"],["BUF","DEN"],["TEN","LV"],["NE","NYJ"],["CLE","BAL"],["HOU","PHI"],["CAR","PIT"]
     ],
-    17: [ // No Byes
-      ["BAL","CIN"],["SEA","CAR"],["IND","CLE"],["NYG","DAL"],["LV","ARI"],["DET","CHI"],["PHI","SF"],["LAR","TB"],
-      ["WAS","JAX"],["ATL","NO"],["MIA","NE"],["NYJ","BUF"],["TEN","HOU"],["MIN","GB"],["KC","LAC"],["PIT","DEN"]
+    17: [
+      ["BAL","CIN"],["DET","CHI"],["WAS","JAX"],["NYG","DAL"],["NO","ATL"],["LAR","TB"],["KC","LAC"],["PHI","SF"],
+      ["LV","ARI"],["BUF","MIA"],["MIN","NYJ"],["DEN","NE"],["SEA","CAR"],["HOU","GB"],["PIT","TEN"],["IND","CLE"]
     ],
-    18: [ // Divisional Finale Week
+    18: [
       ["SEA","LAR"],["ARI","SF"],["DAL","WAS"],["PHI","NYG"],["CHI","GB"],["DET","MIN"],["TB","ATL"],["CAR","NO"],
       ["PIT","BAL"],["CIN","CLE"],["HOU","IND"],["JAX","TEN"],["BUF","NE"],["MIA","NYJ"],["KC","LV"],["DEN","LAC"]
     ]
@@ -675,9 +769,8 @@ const NFL_2026_SCHEDULE = (() => {
   return sched;
 })();
 
-// Live ESPN Scoreboard Sync: Refreshes any flexed or updated 2026 NFL weekly games automatically
-async function syncLiveEspnSchedule(startWeek) {
-  const weeks = [startWeek, startWeek + 1, startWeek + 2, startWeek + 3].filter(w => w >= 1 && w <= 18);
+async function syncLiveEspnSchedule(weeksToSync) {
+  const weeks = weeksToSync.filter(w => w >= 1 && w <= 18);
   let updated = false;
   await Promise.all(weeks.map(async wk => {
     try {
@@ -705,12 +798,12 @@ async function syncLiveEspnSchedule(startWeek) {
       }
     } catch {}
   }));
-  if (updated && document.getElementById("tab-sos").classList.contains("active")) {
-    renderSosTab();
+  if (updated) {
+    if (document.getElementById("tab-sos").classList.contains("active")) renderSosTab();
+    if (document.getElementById("tab-bracket").classList.contains("active")) renderPlayoffBracketTab();
   }
 }
 
-// Positional Defense vs. Position (DvP) Rankings (1 = Toughest Shutdown Defense, 32 = Easiest Smash Matchup)
 const DVP_RANKS_2026 = (() => {
   const teams = Object.keys(NFL_TEAM_NAMES);
   const posList = ["QB", "RB", "WR", "TE", "DEF"];
@@ -760,7 +853,8 @@ const state = {
   season: "2026", week: 6, userId: "", leagues: [], activeLeague: null,
   players: {}, rawProj: {}, rawStats: {}, managers: [],
   tradeSideA: [], tradeSideB: [], dbTrades: [], waiverTargets: [],
-  weakestPosByTeam: {}
+  weakestPosByTeam: {}, sosWindowMode: "NEXT4",
+  bracketOverrides: { qf1: null, qf2: null, sf1: null, sf2: null, champ: null, third: null }
 };
 
 const weekSelect = document.getElementById("weekSelect");
@@ -889,6 +983,40 @@ function openTradeInBuilder(aIds, bIds, teamAIdx = null, teamBIdx = null) {
   renderTradeBuilderSide(false);
   updateTradeEvaluation();
   switchTradeMode(0);
+}
+
+function targetPlayerFromSos(playerId, pos) {
+  document.querySelectorAll(".nav-btn").forEach(b => b.classList.remove("active"));
+  document.querySelectorAll(".tab-page").forEach(p => p.classList.remove("active"));
+  const tradeNavBtn = document.querySelector('.nav-btn[data-tab="tab-trade"]');
+  if (tradeNavBtn) tradeNavBtn.classList.add("active");
+  document.getElementById("tab-trade").classList.add("active");
+
+  if (["QB","RB","WR","TE"].includes(pos)) {
+    document.getElementById("finderPos").value = pos;
+  }
+  const ownerIdx = state.managers.findIndex(m => m.players.includes(playerId));
+  const myIdx = parseInt(document.getElementById("tradeTeamA").value || "0", 10);
+  if (ownerIdx >= 0 && ownerIdx !== myIdx) {
+    openTradeInBuilder([], [playerId], myIdx, ownerIdx);
+  } else {
+    renderTradeFinder();
+    switchTradeMode(2);
+  }
+}
+
+function openMatchupInSimulator(rosterIdA, rosterIdB) {
+  const idxA = state.managers.findIndex(m => m.rosterId === rosterIdA);
+  const idxB = state.managers.findIndex(m => m.rosterId === rosterIdB);
+  if (idxA < 0 || idxB < 0) return;
+  document.getElementById("simTeamA").value = idxA;
+  document.getElementById("simTeamB").value = idxB;
+  renderMatchupSim();
+  document.querySelectorAll(".nav-btn").forEach(b => b.classList.remove("active"));
+  document.querySelectorAll(".tab-page").forEach(p => p.classList.remove("active"));
+  const simBtn = document.querySelector('.nav-btn[data-tab="tab-matchup"]');
+  if (simBtn) simBtn.classList.add("active");
+  document.getElementById("tab-matchup").classList.add("active");
 }
 
 function isPosEligible(pos, slot) {
@@ -1067,6 +1195,49 @@ function calcOptimalLineup(rosterIds, useRos = true) {
   return { slots, filled, total };
 }
 
+// Calculates a team's optimal lineup projection for a specific Playoff Week (15, 16, or 17) factoring in NFL DvP & Dome environment
+function calcPlayoffWeekProjection(rosterIds, weekNum) {
+  let slots = (state.activeLeague?.rosterPositions || []).filter(s => !["BN","IR","TAXI"].includes(s));
+  if (!slots.length) slots = ["QB","RB","RB","WR","WR","TE","FLEX","K","DEF"];
+
+  const avail = rosterIds.map(id => state.players[id]).filter(Boolean).map(m => {
+    if (BYE_2026[m.team] === weekNum) return { m, score: 0 };
+    const base = m.projectedPoints > 0.1 ? (m.projectedPoints * 0.62 + m.seasonPpg * 0.38) : m.seasonPpg;
+    let normTeam = (m.team || "").toUpperCase().trim();
+    if (normTeam === "JAC") normTeam = "JAX"; if (normTeam === "LA") normTeam = "LAR";
+    const matchInfo = NFL_2026_SCHEDULE[normTeam]?.[weekNum];
+    let mult = 1.0;
+    if (matchInfo) {
+      const posKey = ["QB","RB","WR","TE","DEF"].includes(m.position) ? m.position : "WR";
+      const dvp = DVP_RANKS_2026[posKey]?.[matchInfo.opp] || 16.5;
+      // Up to +9% boost for #32 smash matchup, down to -9% penalty for #1 shutdown defense
+      mult += ((dvp - 16.5) / 15.5) * 0.09;
+      const venue = matchInfo.isHome ? normTeam : matchInfo.opp;
+      if (DOME_TEAMS.has(venue)) mult += 0.02;
+    }
+    return { m, score: Math.max(0, base * mult) };
+  }).sort((a, b) => b.score - a.score);
+
+  const filled = new Array(slots.length).fill(null);
+  const used = new Set();
+  const flexNames = ["FLEX","SUPER_FLEX","WR/RB","REC_FLEX","W/R/T","WRRB_FLEX","Q/W/R/T","IDP_FLEX"];
+  slots.forEach((sl, i) => {
+    if (flexNames.includes(sl)) return;
+    for (const c of avail) {
+      if (!used.has(c.m.id) && isPosEligible(c.m.position, sl)) { filled[i] = c; used.add(c.m.id); break; }
+    }
+  });
+  slots.forEach((sl, i) => {
+    if (filled[i]) return;
+    for (const c of avail) {
+      if (!used.has(c.m.id) && isPosEligible(c.m.position, sl)) { filled[i] = c; used.add(c.m.id); break; }
+    }
+  });
+  const total = filled.reduce((acc, c) => acc + (c ? c.score : 0), 0);
+  const topNames = filled.filter(Boolean).sort((a, b) => b.score - a.score).slice(0, 3).map(c => c.m.name.split(" ").pop());
+  return { total, topNames };
+}
+
 async function initApp() {
   updateAnalyticsDropdownOptions();
   try {
@@ -1076,7 +1247,7 @@ async function initApp() {
     weekSelect.value = state.week;
   } catch {}
 
-  syncLiveEspnSchedule(state.week);
+  syncLiveEspnSchedule([state.week, state.week + 1, state.week + 2, state.week + 3, 15, 16, 17]);
 
   let rawPlayers = await getCachedPlayers();
   if (!rawPlayers) {
@@ -1115,6 +1286,7 @@ async function initApp() {
   buildTradeDatabase();
   drawSingleAnalyticsChart();
   renderSosTab();
+  renderPlayoffBracketTab();
   setStatus(`Ready | ${Object.keys(state.players).length.toLocaleString()} NFL profiles loaded`);
 
   const params = new URLSearchParams(location.search);
@@ -1169,6 +1341,7 @@ async function syncUserAccount() {
 async function loadLeague(idx) {
   state.activeLeague = state.leagues[idx];
   if (!state.activeLeague) return;
+  state.bracketOverrides = { qf1: null, qf2: null, sf1: null, sf2: null, champ: null, third: null };
   document.getElementById("tradeFormatBadge").textContent =
     state.activeLeague.leagueType === 2 ? "DYNASTY MODE" : (state.activeLeague.leagueType === 1 ? "KEEPER MODE" : "REDRAFT MODE");
 
@@ -1618,7 +1791,6 @@ function computeLeaguePositionalGrades(myIdx) {
   if (slots.filter(s => s === "QB").length >= 2 || slots.some(s => ["SUPER_FLEX","Q/W/R/T"].includes(s))) slotCounts.QB = 2;
   if (slots.filter(s => s === "WR").length >= 3) slotCounts.WR = 3;
 
-  // Score every manager in the league across QB, RB, WR, TE, and FLEX/BENCH DEPTH
   const unitKeys = ["QB", "RB", "WR", "TE", "DEPTH"];
   const scoresByUnit = { QB: [], RB: [], WR: [], TE: [], DEPTH: [] };
 
@@ -1640,7 +1812,6 @@ function computeLeaguePositionalGrades(myIdx) {
       scoresByUnit[pos].push({ mIdx, score: stScore + bkScore, stPpg, topPlayers: byPos[pos].slice(0, 3) });
     });
 
-    // Depth score: #3-#6 flex skill players (RB/WR/TE beyond core starters)
     const flexPool = [...byPos.RB.slice(slotCounts.RB), ...byPos.WR.slice(slotCounts.WR), ...byPos.TE.slice(slotCounts.TE)]
       .sort((a, b) => b.baseValue - a.baseValue).slice(0, 4);
     const depthScore = flexPool.reduce((s, p) => s + p.baseValue + p.seasonPpg * 120, 0);
@@ -1666,9 +1837,8 @@ function computeLeaguePositionalGrades(myIdx) {
     myGrades[u] = { unit: u, rank: rk, totalTeams, letter, badgeCls, pct, stPpg: mine.stPpg, topPlayers: mine.topPlayers };
   });
 
-  // Identify #1 Priority Need (lowest rank among QB, RB, WR, TE) and #1 Tradeable Surplus (highest rank among RB, WR, TE, QB)
   const coreUnits = ["QB", "RB", "WR", "TE"].map(k => myGrades[k]);
-  coreUnits.sort((a, b) => b.rank - a.rank); // Highest rank number = weakest unit
+  coreUnits.sort((a, b) => b.rank - a.rank);
   const weakest = coreUnits[0];
   const secondWeakest = coreUnits[1];
   const strongest = [...coreUnits].sort((a, b) => a.rank - b.rank)[0];
@@ -1883,7 +2053,6 @@ function renderTradeDatabase() {
   document.getElementById("dbCountLbl").textContent = `${shown} trades shown`;
 }
 
-// --- Multi-Player Trade Finder (Supports 1-for-1, 2-for-1, 1-for-2, and 2-for-2 Deals) ---
 function renderTradeFinder() {
   const myIdx = parseInt(document.getElementById("tradeTeamA").value, 10) || 0;
   const myTm = state.managers[myIdx];
@@ -1909,7 +2078,6 @@ function renderTradeFinder() {
     return;
   }
 
-  // Compute positional grades and determine user's #1 weakest position
   const diag = computeLeaguePositionalGrades(myIdx);
   const rawPosSel = document.getElementById("finderPos").value;
   const targetPos = rawPosSel === "AUTO" ? diag.weakestPos : rawPosSel;
@@ -1928,7 +2096,6 @@ function renderTradeFinder() {
     const key = [...giveIds].sort().join(",") + "|" + [...getIds].sort().join(",");
     if (seenKeys.has(key)) return;
 
-    // Ensure the incoming package actually contains the target position (or upgrades it)
     const getObjs = getIds.map(id => state.players[id]).filter(Boolean);
     const giveObjs = giveIds.map(id => state.players[id]).filter(Boolean);
     if (targetPos !== "ALL") {
@@ -1976,7 +2143,6 @@ function renderTradeFinder() {
       .filter(p => p && p.isCurrentNfl && ["QB","RB","WR","TE"].includes(p.position) && p.baseValue >= 900)
       .sort((a, b) => b.baseValue - a.baseValue);
 
-    // 1. 2-for-1 Stud Consolidations (You send 2 depth/starters -> Receive 1 Elite Stud)
     if (pkgTypeFilter === "ALL" || pkgTypeFilter === "MULTI" || pkgTypeFilter === "2FOR1") {
       thPl.slice(0, 7).forEach(stud => {
         if (targetPos !== "ALL" && stud.position !== targetPos) return;
@@ -1995,13 +2161,11 @@ function renderTradeFinder() {
       });
     }
 
-    // 2. 2-for-2 Cross-Positional Package Swaps (Upgrade primary target position + balance with secondary piece)
     if (pkgTypeFilter === "ALL" || pkgTypeFilter === "MULTI" || pkgTypeFilter === "2FOR2") {
       thPl.slice(0, 7).forEach(t1 => {
         if (targetPos !== "ALL" && t1.position !== targetPos) return;
         for (let m1 = 0; m1 < Math.min(8, myPl.length); m1++) {
           const g1 = myPl[m1];
-          // g1 should be smaller than t1 (we are upgrading to t1)
           if (g1.baseValue >= t1.baseValue * 0.92 || g1.baseValue < t1.baseValue * 0.45) continue;
           for (let m2 = 0; m2 < Math.min(9, myPl.length); m2++) {
             if (m2 === m1) continue;
@@ -2009,7 +2173,6 @@ function renderTradeFinder() {
             for (let ti2 = 1; ti2 < Math.min(10, thPl.length); ti2++) {
               const t2 = thPl[ti2];
               if (t2.id === t1.id) continue;
-              // g2 should be larger than t2 to balance the gap
               if (g2.baseValue <= t2.baseValue) continue;
               evaluateAndPushCandidate(
                 part, tIdx, partBase,
@@ -2023,11 +2186,9 @@ function renderTradeFinder() {
       });
     }
 
-    // 3. 1-for-2 Depth Expansions (Send 1 high-value surplus stud -> Receive 2 starting upgrades)
     if (pkgTypeFilter === "ALL" || pkgTypeFilter === "MULTI") {
       myPl.slice(0, 4).forEach(myStud => {
         if (myStud.baseValue < 3200) return;
-        // Avoid trading away our only elite player at our target upgrade position
         if (targetPos !== "ALL" && myStud.position === targetPos) return;
         for (let t1 = 0; t1 < Math.min(8, thPl.length); t1++) {
           if (thPl[t1].baseValue >= myStud.baseValue * 0.90) continue;
@@ -2043,7 +2204,6 @@ function renderTradeFinder() {
       });
     }
 
-    // 4. 1-for-1 Positional Swaps
     if (pkgTypeFilter === "ALL" || pkgTypeFilter === "1FOR1") {
       myPl.slice(0, 10).forEach(gP => {
         thPl.slice(0, 10).forEach(rP => {
@@ -2060,7 +2220,6 @@ function renderTradeFinder() {
     }
   });
 
-  // Sort proposals so multi-player & high-PPG-impact deals surface cleanly
   props.sort((a, b) => {
     if (strat === 1) return b.dMy - a.dMy;
     if (strat === 2) return b.match - a.match;
@@ -2346,8 +2505,8 @@ function drawSingleAnalyticsChart() {
   ctx.textAlign = "left";
 }
 
-// --- Strength of Schedule (SOS) 4-Week Heat-Map Renderer ---
-function renderSosCellHTML(teamAbbr, weekNum, pos) {
+// --- Strength of Schedule (SOS) Heat-Map Renderer ---
+function renderSosCellHTML(teamAbbr, weekNum, pos, showDomeBadge = false) {
   let normTeam = (teamAbbr || "").toUpperCase().trim();
   if (normTeam === "JAC") normTeam = "JAX";
   if (normTeam === "LA") normTeam = "LAR";
@@ -2368,26 +2527,33 @@ function renderSosCellHTML(teamAbbr, weekNum, pos) {
   else if (dvpRank <= 11) { cls = "sos-tough"; tierTxt = "Tough"; }
 
   const prefix = m.isHome ? "vs" : "@";
+  const venueTeam = m.isHome ? normTeam : opp;
+  const isDome = DOME_TEAMS.has(venueTeam);
+  const envBadge = (showDomeBadge && isDome) ? `<span class="dome-tag" title="Indoor / Dome Game">DOME</span>` : "";
+
   return `
     <div class="sos-cell ${cls}">
       <div style="display:flex;align-items:center;gap:4px;font-weight:800;font-size:12px;">
         <img class="team-logo-sm" style="margin-right:2px;" src="${teamLogoUrl(opp)}" onerror="this.style.display='none'"/>
         <span>${prefix} ${opp}</span>
+        ${envBadge}
       </div>
       <div style="font-size:10px;font-weight:700;opacity:0.92;">DvP #${dvpRank} • ${tierTxt}</div>
     </div>`;
 }
 
-function computeFourWeekSosMetrics(teamAbbr, weeks, pos) {
+function computeSosWindowMetrics(teamAbbr, weeks, pos) {
   let normTeam = (teamAbbr || "").toUpperCase().trim();
   if (normTeam === "JAC") normTeam = "JAX";
   if (normTeam === "LA") normTeam = "LAR";
 
-  let sumRank = 0, activeGames = 0, smashCount = 0, hasBye = false;
+  let sumRank = 0, activeGames = 0, smashCount = 0, domeCount = 0, hasBye = false;
   weeks.forEach(w => {
     if (BYE_2026[normTeam] === w) { hasBye = true; return; }
     const m = NFL_2026_SCHEDULE[normTeam]?.[w];
     const r = m ? (DVP_RANKS_2026[pos]?.[m.opp] || 16) : 16;
+    const venueTeam = m ? (m.isHome ? normTeam : m.opp) : "";
+    if (DOME_TEAMS.has(venueTeam)) domeCount++;
     sumRank += r;
     activeGames++;
     if (r >= 24) smashCount++;
@@ -2401,33 +2567,60 @@ function computeFourWeekSosMetrics(teamAbbr, weeks, pos) {
   else if (avgRank >= 9.5) { grade = "D (Tough Slate)"; badgeCls = "badge-yellow"; }
   else { grade = "F (Brutal Slate)"; badgeCls = "badge-red"; }
 
-  return { avgRank, activeGames, smashCount, hasBye, grade, badgeCls };
+  return { avgRank, activeGames, smashCount, domeCount, hasBye, grade, badgeCls };
 }
 
 function renderSosTab() {
   const pos = document.getElementById("sosPos").value || "QB";
   const scope = document.getElementById("sosScope").value || "ALL";
   const sortOrder = document.getElementById("sosSort").value || "EASIEST";
+  const winMode = state.sosWindowMode || "NEXT4";
 
-  const startWk = Math.min(15, Math.max(1, state.week));
-  const weeks = [startWk, startWk + 1, startWk + 2, startWk + 3];
+  let weeks = [];
+  let windowLabel = "";
+  const isPlayoffs = (winMode === "PLAYOFFS" || winMode === "PUSH");
+
+  if (winMode === "PLAYOFFS") {
+    weeks = [15, 16, 17];
+    windowLabel = "FANTASY PLAYOFFS (WEEKS 15–17)";
+    document.getElementById("sosWindowBadge").textContent = "FANTASY PLAYOFF SLATE (WKS 15–17)";
+    document.getElementById("sosWindowBadge").className = "badge badge-green";
+  } else if (winMode === "PUSH") {
+    weeks = [14, 15, 16, 17];
+    windowLabel = "PLAYOFF PUSH + PLAYOFFS (WEEKS 14–17)";
+    document.getElementById("sosWindowBadge").textContent = "PLAYOFF PUSH + PLAYOFFS (WKS 14–17)";
+    document.getElementById("sosWindowBadge").className = "badge badge-purple";
+  } else {
+    const startWk = Math.min(15, Math.max(1, state.week));
+    weeks = [startWk, startWk + 1, startWk + 2, startWk + 3];
+    windowLabel = `UPCOMING 4-WEEK SLATE (WEEKS ${weeks[0]}–${weeks[3]})`;
+    document.getElementById("sosWindowBadge").textContent = `UPCOMING 4 WEEKS (WKS ${weeks[0]}–${weeks[3]})`;
+    document.getElementById("sosWindowBadge").className = "badge badge-blue";
+  }
 
   document.getElementById("sosTitleHdr").textContent =
-    `UPCOMING 4-WEEK POSITIONAL STRENGTH OF SCHEDULE (${pos} • WEEKS ${weeks[0]}–${weeks[3]})`;
+    `POSITIONAL STRENGTH OF SCHEDULE (${pos} • ${windowLabel})`;
+
+  const weekHeadersHTML = weeks.map(w => {
+    if (winMode === "PLAYOFFS" || winMode === "PUSH") {
+      const roundTag = w === 14 ? "Wk 14 (Finale)" : (w === 15 ? "Wk 15 (Quarters)" : (w === 16 ? "Wk 16 (Semis)" : "Wk 17 ( Finals )"));
+      return `<th>${roundTag}</th>`;
+    }
+    return `<th>Week ${w}</th>`;
+  }).join("");
 
   const tbl = document.getElementById("sosTable");
   const subjectHeader = scope === "ALL" ? "NFL Team" : "Player / Unit";
+  const showActionCol = scope !== "ALL";
   tbl.innerHTML = `
     <thead>
       <tr>
         <th style="width:55px;">Rank</th>
         <th style="text-align:left;min-width:230px;">${subjectHeader}</th>
-        <th>Week ${weeks[0]}</th>
-        <th>Week ${weeks[1]}</th>
-        <th>Week ${weeks[2]}</th>
-        <th>Week ${weeks[3]}</th>
-        <th style="width:150px;">4-Week Avg DvP</th>
+        ${weekHeadersHTML}
+        <th style="width:155px;">${winMode === "PLAYOFFS" ? "Playoff Avg DvP" : "Window Avg DvP"}</th>
         <th style="width:165px;">Schedule Grade</th>
+        ${showActionCol ? '<th style="width:135px;">Trade Action</th>' : ''}
       </tr>
     </thead>
     <tbody></tbody>`;
@@ -2436,16 +2629,22 @@ function renderSosTab() {
   let rows = [];
   if (scope === "ALL") {
     rows = Object.keys(NFL_TEAM_NAMES).map(team => {
-      const sos = computeFourWeekSosMetrics(team, weeks, pos);
+      const sos = computeSosWindowMetrics(team, weeks, pos);
       return { isTeamRow: true, team, name: NFL_TEAM_NAMES[team], sos };
     });
+  } else if (scope === "TOP_PLAYERS") {
+    rows = Object.values(state.players)
+      .filter(p => p.position === pos && p.isCurrentNfl)
+      .sort((a, b) => (b.baseValue - a.baseValue) || (b.seasonPpg - a.seasonPpg))
+      .slice(0, 36)
+      .map(p => ({ isTeamRow: false, player: p, team: p.team, sos: computeSosWindowMetrics(p.team, weeks, pos) }));
   } else if (scope === "ROSTER") {
     const selTeamIdx = parseInt(document.getElementById("teamSelect").value || "0", 10);
     const mgr = state.managers[selTeamIdx];
     const pids = mgr ? mgr.players : [];
     rows = pids.map(id => state.players[id])
       .filter(p => p && (p.position === pos || (pos === "DEF" && p.position === "DEF")))
-      .map(p => ({ isTeamRow: false, player: p, team: p.team, sos: computeFourWeekSosMetrics(p.team, weeks, pos) }));
+      .map(p => ({ isTeamRow: false, player: p, team: p.team, sos: computeSosWindowMetrics(p.team, weeks, pos) }));
   } else {
     const rostered = new Set();
     state.managers.forEach(m => m.players.forEach(pid => rostered.add(pid)));
@@ -2453,47 +2652,59 @@ function renderSosTab() {
       .filter(p => p.position === pos && p.isCurrentNfl && !rostered.has(p.id))
       .sort((a, b) => (b.vorpScore - a.vorpScore) || (b.projectedPoints - a.projectedPoints))
       .slice(0, 24)
-      .map(p => ({ isTeamRow: false, player: p, team: p.team, sos: computeFourWeekSosMetrics(p.team, weeks, pos) }));
+      .map(p => ({ isTeamRow: false, player: p, team: p.team, sos: computeSosWindowMetrics(p.team, weeks, pos) }));
   }
 
   rows.sort((a, b) => sortOrder === "EASIEST" ? (b.sos.avgRank - a.sos.avgRank) : (a.sos.avgRank - b.sos.avgRank));
 
   if (!rows.length) {
-    tbody.innerHTML = `<tr><td colspan="8" style="padding:24px;color:var(--text-muted);">Sync your Sleeper league or switch Scope to "All 32 NFL Teams" to view upcoming positional schedules.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="${weeks.length + (showActionCol ? 5 : 4)}" style="padding:24px;color:var(--text-muted);">Sync your Sleeper league or switch Scope to "All 32 NFL Teams" or "Top 36 Positional Players" to view schedules.</td></tr>`;
     return;
   }
 
   rows.forEach((r, idx) => {
     const tr = document.createElement("tr");
     tr.className = "table-row-hover";
+    const envMeta = isPlayoffs
+      ? `${r.sos.domeCount} Dome Game(s) • ${r.sos.smashCount} Smash Matchup(s)`
+      : `2026 Bye: Week ${BYE_2026[r.team] || '--'} • ${r.sos.smashCount} Smash Matchup(s)`;
+
     const subjectHTML = r.isTeamRow
       ? `<div class="player-cell">
            <img class="avatar" src="${teamLogoUrl(r.team)}" onerror="this.style.display='none'" />
            <div>
              <div style="font-weight:800;font-size:14px;color:var(--text-main);">${r.name} (${r.team})</div>
-             <div style="font-size:11px;color:var(--text-muted);">2026 Bye: Week ${BYE_2026[r.team] || '--'} • ${r.sos.smashCount} Smash Matchup(s)</div>
+             <div style="font-size:11px;color:var(--text-muted);">${envMeta}</div>
            </div>
          </div>`
       : `<div class="player-cell">
            <img class="avatar" src="${avatarUrl(r.player)}" onerror="this.style.display='none'" />
            <div>
              <div style="font-weight:700;font-size:14px;color:var(--text-main);"><img class="team-logo-sm" src="${teamLogoUrl(r.team)}" onerror="this.style.display='none'"/>${r.player.name}</div>
-             <div style="font-size:11px;color:var(--text-muted);">${r.player.position} #${r.player.posRank} (${r.team}) • ${r.player.seasonPpg.toFixed(1)} PPG</div>
+             <div style="font-size:11px;color:var(--text-muted);">${r.player.position} #${r.player.posRank} (${r.team}) • ${r.player.seasonPpg.toFixed(1)} PPG • VAL ${r.player.baseValue}</div>
            </div>
          </div>`;
+
+    const cellsHTML = weeks.map(w => `<td>${renderSosCellHTML(r.team, w, pos, isPlayoffs)}</td>`).join("");
+    const actionHTML = showActionCol
+      ? `<td><button class="btn-builder-action">Trade Target →</button></td>`
+      : "";
 
     tr.innerHTML = `
       <td style="font-weight:800;color:var(--text-muted);">#${idx + 1}</td>
       <td>${subjectHTML}</td>
-      <td>${renderSosCellHTML(r.team, weeks[0], pos)}</td>
-      <td>${renderSosCellHTML(r.team, weeks[1], pos)}</td>
-      <td>${renderSosCellHTML(r.team, weeks[2], pos)}</td>
-      <td>${renderSosCellHTML(r.team, weeks[3], pos)}</td>
+      ${cellsHTML}
       <td>
         <div style="font-weight:800;font-size:13px;color:var(--text-main);">DvP #${r.sos.avgRank.toFixed(1)}</div>
-        <div style="font-size:11px;color:var(--text-muted);">${r.sos.activeGames} Active Games${r.sos.hasBye ? ' (1 Bye)' : ''}</div>
+        <div style="font-size:11px;color:var(--text-muted);">${r.sos.activeGames} Games${r.sos.hasBye ? ' (1 Bye)' : ''}${isPlayoffs ? ` • ${r.sos.domeCount} Dome` : ''}</div>
       </td>
-      <td><span class="badge ${r.sos.badgeCls}">${r.sos.grade}</span></td>`;
+      <td><span class="badge ${r.sos.badgeCls}">${r.sos.grade}</span></td>
+      ${actionHTML}`;
+
+    if (showActionCol && r.player) {
+      const btn = tr.querySelector("button");
+      if (btn) btn.onclick = () => targetPlayerFromSos(r.player.id, pos);
+    }
     tbody.appendChild(tr);
   });
 }
@@ -2503,6 +2714,347 @@ function erf(x) {
   const t = 1 / (1 + 0.3275911 * x);
   const y = 1 - (((((1.061405429 * t - 1.453152027) * t) + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t * Math.exp(-x * x);
   return s * y;
+}
+
+// --- 6-Team Fantasy Playoff Bracket Simulator (Weeks 15, 16, 17) ---
+function computeHeadToHeadWinProb(scoreA, scoreB) {
+  const margin = (scoreA || 0) - (scoreB || 0);
+  const z = margin / 21.5;
+  if (isNaN(z) || Math.abs(margin) < 0.01) return 50.0;
+  return Math.min(98.5, Math.max(1.5, 0.5 * (1 + erf(z / Math.sqrt(2))) * 100));
+}
+
+function renderPlayoffBracketTab() {
+  const grid = document.getElementById("bracketGridContainer");
+  const oddsTbl = document.getElementById("bracketOddsTable");
+  if (!grid || !oddsTbl) return;
+
+  if (!state.managers || state.managers.length < 6) {
+    grid.innerHTML = `
+      <div class="card-banner" style="grid-column: 1 / -1; text-align:center; padding:28px;">
+        <div style="font-size:14px; font-weight:800; color:var(--text-main);">Sync Your Sleeper Account to Simulate the 6-Team Playoff Bracket</div>
+        <div style="font-size:12px; color:var(--text-muted); margin-top:4px;">Enter your Sleeper username in the top bar and click Sync Account to project Quarterfinal (Week 15), Semifinal (Week 16), and Championship (Week 17) matchups.</div>
+      </div>`;
+    oddsTbl.innerHTML = "";
+    return;
+  }
+
+  const seedMode = document.getElementById("bracketSeedMode").value || "CURRENT";
+  const reseedMode = document.getElementById("bracketReseedMode").value || "FIXED";
+
+  // Sort managers according to selected seeding basis
+  const ranked = [...state.managers];
+  if (seedMode === "CURRENT") {
+    // Sleeper official tiebreaker: Overall Record (Win %) -> Points For -> Points Against
+    ranked.sort((a, b) => {
+      const tgA = a.wins + a.losses, tgB = b.wins + b.losses;
+      const wpA = tgA > 0 ? a.wins / tgA : 0, wpB = tgB > 0 ? b.wins / tgB : 0;
+      if (Math.abs(wpB - wpA) > 0.0001) return wpB - wpA;
+      if (Math.abs(b.pf - a.pf) > 0.01) return b.pf - a.pf;
+      return b.pa - a.pa;
+    });
+  } else if (seedMode === "PROJ") {
+    ranked.sort((a, b) => (b.projW - a.projW) || (b.power - a.power) || (b.pf - a.pf));
+  } else {
+    ranked.sort((a, b) => (b.power - a.power) || (b.pf - a.pf));
+  }
+
+  // Precompute Week 15, Week 16, and Week 17 projections for the top 8 teams
+  const seeded = ranked.slice(0, Math.min(8, ranked.length)).map((mgr, idx) => {
+    const wk15 = calcPlayoffWeekProjection(mgr.players, 15);
+    const wk16 = calcPlayoffWeekProjection(mgr.players, 16);
+    const wk17 = calcPlayoffWeekProjection(mgr.players, 17);
+    return {
+      ...mgr,
+      seed: idx + 1,
+      wk15Proj: wk15.total,
+      wk16Proj: wk16.total,
+      wk17Proj: wk17.total,
+      playoffAvgProj: (wk15.total + wk16.total + wk17.total) / 3,
+      coreNames: wk15.topNames.join(", ")
+    };
+  });
+
+  const s1 = seeded[0], s2 = seeded[1], s3 = seeded[2], s4 = seeded[3], s5 = seeded[4], s6 = seeded[5];
+
+  // Quarterfinal 1 (Week 15): Seed #4 vs Seed #5
+  const qf1Prob4 = computeHeadToHeadWinProb(s4.wk15Proj, s5.wk15Proj);
+  const qf1DefaultWinner = s4.wk15Proj >= s5.wk15Proj ? s4 : s5;
+  const qf1Winner = (state.bracketOverrides.qf1 === s4.rosterId) ? s4 : ((state.bracketOverrides.qf1 === s5.rosterId) ? s5 : qf1DefaultWinner);
+  const qf1Loser = qf1Winner.rosterId === s4.rosterId ? s5 : s4;
+
+  // Quarterfinal 2 (Week 15): Seed #3 vs Seed #6
+  const qf2Prob3 = computeHeadToHeadWinProb(s3.wk15Proj, s6.wk15Proj);
+  const qf2DefaultWinner = s3.wk15Proj >= s6.wk15Proj ? s3 : s6;
+  const qf2Winner = (state.bracketOverrides.qf2 === s3.rosterId) ? s3 : ((state.bracketOverrides.qf2 === s6.rosterId) ? s6 : qf2DefaultWinner);
+  const qf2Loser = qf2Winner.rosterId === s3.rosterId ? s6 : s3;
+
+  // Determine Week 16 Semifinal Pairings based on Fixed vs NFL Re-Seeded
+  let sf1Opp = qf1Winner;
+  let sf2Opp = qf2Winner;
+  if (reseedMode === "RESEED") {
+    // Seed #1 plays the lowest remaining seed (highest seed number); Seed #2 plays the other advancing seed
+    if (qf1Winner.seed > qf2Winner.seed) {
+      sf1Opp = qf1Winner;
+      sf2Opp = qf2Winner;
+    } else {
+      sf1Opp = qf2Winner;
+      sf2Opp = qf1Winner;
+    }
+  }
+
+  // Semifinal 1 (Week 16): Seed #1 vs sf1Opp
+  const sf1Prob1 = computeHeadToHeadWinProb(s1.wk16Proj, sf1Opp.wk16Proj);
+  const sf1DefaultWinner = s1.wk16Proj >= sf1Opp.wk16Proj ? s1 : sf1Opp;
+  const sf1Winner = (state.bracketOverrides.sf1 === s1.rosterId) ? s1 : ((state.bracketOverrides.sf1 === sf1Opp.rosterId) ? sf1Opp : sf1DefaultWinner);
+  const sf1Loser = sf1Winner.rosterId === s1.rosterId ? sf1Opp : s1;
+
+  // Semifinal 2 (Week 16): Seed #2 vs sf2Opp
+  const sf2Prob2 = computeHeadToHeadWinProb(s2.wk16Proj, sf2Opp.wk16Proj);
+  const sf2DefaultWinner = s2.wk16Proj >= sf2Opp.wk16Proj ? s2 : sf2Opp;
+  const sf2Winner = (state.bracketOverrides.sf2 === s2.rosterId) ? s2 : ((state.bracketOverrides.sf2 === sf2Opp.rosterId) ? sf2Opp : sf2DefaultWinner);
+  const sf2Loser = sf2Winner.rosterId === s2.rosterId ? sf2Opp : s2;
+
+  // Championship Finals (Week 17): sf1Winner vs sf2Winner
+  const champProbA = computeHeadToHeadWinProb(sf1Winner.wk17Proj, sf2Winner.wk17Proj);
+  const champDefaultWinner = sf1Winner.wk17Proj >= sf2Winner.wk17Proj ? sf1Winner : sf2Winner;
+  const champWinner = (state.bracketOverrides.champ === sf1Winner.rosterId) ? sf1Winner : ((state.bracketOverrides.champ === sf2Winner.rosterId) ? sf2Winner : champDefaultWinner);
+
+  // 3rd Place Matchup (Week 17): sf1Loser vs sf2Loser
+  const thirdProbA = computeHeadToHeadWinProb(sf1Loser.wk17Proj, sf2Loser.wk17Proj);
+  const thirdDefaultWinner = sf1Loser.wk17Proj >= sf2Loser.wk17Proj ? sf1Loser : sf2Loser;
+  const thirdWinner = (state.bracketOverrides.third === sf1Loser.rosterId) ? sf1Loser : ((state.bracketOverrides.third === sf2Loser.rosterId) ? sf2Loser : thirdDefaultWinner);
+
+  function renderMatchupCardHTML(matchKey, title, weekNum, teamA, teamB, scoreA, scoreB, winProbA, winnerObj) {
+    const winProbB = 100 - winProbA;
+    const aWon = winnerObj.rosterId === teamA.rosterId;
+    const bWon = winnerObj.rosterId === teamB.rosterId;
+    const shortA = teamA.teamName.split(" (")[0];
+    const shortB = teamB.teamName.split(" (")[0];
+
+    return `
+      <div class="bracket-match-card">
+        <div class="bracket-match-hdr">
+          <span>${title}</span>
+          <button class="btn-builder-action" style="padding:2px 8px;font-size:10px;" onclick="openMatchupInSimulator(${teamA.rosterId}, ${teamB.rosterId})">Inspect H2H →</button>
+        </div>
+        <div class="bracket-slot ${aWon ? 'winner' : ''}" data-mkey="${matchKey}" data-rid="${teamA.rosterId}">
+          <div style="display:flex;align-items:center;gap:8px;min-width:0;flex:1;">
+            <span class="seed-pill ${teamA.seed <= 2 ? 'top-seed' : ''}">#${teamA.seed}</span>
+            <div style="min-width:0;flex:1;">
+              <div style="font-weight:800;font-size:13px;color:var(--text-main);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${shortA}</div>
+              <div style="font-size:10px;color:var(--text-muted);">${teamA.wins}-${teamA.losses} • Core: ${teamA.coreNames}</div>
+            </div>
+          </div>
+          <div style="text-align:right;">
+            <div style="font-weight:800;font-size:13px;color:${aWon ? 'var(--good)' : 'var(--text-main)'};">${scoreA.toFixed(1)} pts</div>
+            <div style="font-size:10px;font-weight:700;color:${winProbA >= 50 ? 'var(--good)' : 'var(--text-muted)'};">${winProbA.toFixed(0)}% Win</div>
+          </div>
+        </div>
+        <div class="bracket-slot ${bWon ? 'winner' : ''}" data-mkey="${matchKey}" data-rid="${teamB.rosterId}">
+          <div style="display:flex;align-items:center;gap:8px;min-width:0;flex:1;">
+            <span class="seed-pill ${teamB.seed <= 2 ? 'top-seed' : ''}">#${teamB.seed}</span>
+            <div style="min-width:0;flex:1;">
+              <div style="font-weight:800;font-size:13px;color:var(--text-main);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${shortB}</div>
+              <div style="font-size:10px;color:var(--text-muted);">${teamB.wins}-${teamB.losses} • Core: ${teamB.coreNames}</div>
+            </div>
+          </div>
+          <div style="text-align:right;">
+            <div style="font-weight:800;font-size:13px;color:${bWon ? 'var(--good)' : 'var(--text-main)'};">${scoreB.toFixed(1)} pts</div>
+            <div style="font-size:10px;font-weight:700;color:${winProbB > 50 ? 'var(--good)' : 'var(--text-muted)'};">${winProbB.toFixed(0)}% Win</div>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  grid.innerHTML = `
+    <!-- COLUMN 1: WEEK 15 QUARTERFINALS -->
+    <div class="bracket-col">
+      <div class="bracket-col-hdr">
+        <div>
+          <div style="font-size:13px;font-weight:800;color:var(--text-main);">ROUND 1: QUARTERFINALS</div>
+          <div style="font-size:11px;color:var(--text-muted);">Week 15 • Top 2 Seeds Earn First-Round Byes</div>
+        </div>
+        <span class="badge badge-blue">WEEK 15</span>
+      </div>
+
+      <div class="bracket-match-card">
+        <div class="bracket-match-hdr">
+          <span>FIRST-ROUND BYES (ADVANCE TO WK 16)</span>
+          <span style="color:var(--accent);">AUTO-ADVANCE</span>
+        </div>
+        <div class="bracket-slot bye-slot">
+          <div style="display:flex;align-items:center;gap:8px;min-width:0;flex:1;">
+            <span class="seed-pill top-seed">#1</span>
+            <div style="min-width:0;flex:1;">
+              <div style="font-weight:800;font-size:13px;color:var(--text-main);">${s1.teamName.split(" (")[0]}</div>
+              <div style="font-size:10px;color:var(--text-muted);">Record: ${s1.wins}-${s1.losses} • PF: ${s1.pf.toFixed(1)}</div>
+            </div>
+          </div>
+          <span class="badge badge-blue">WK 15 BYE</span>
+        </div>
+        <div class="bracket-slot bye-slot">
+          <div style="display:flex;align-items:center;gap:8px;min-width:0;flex:1;">
+            <span class="seed-pill top-seed">#2</span>
+            <div style="min-width:0;flex:1;">
+              <div style="font-weight:800;font-size:13px;color:var(--text-main);">${s2.teamName.split(" (")[0]}</div>
+              <div style="font-size:10px;color:var(--text-muted);">Record: ${s2.wins}-${s2.losses} • PF: ${s2.pf.toFixed(1)}</div>
+            </div>
+          </div>
+          <span class="badge badge-blue">WK 15 BYE</span>
+        </div>
+      </div>
+
+      ${renderMatchupCardHTML("qf1", "QUARTERFINAL 1 (#4 VS #5)", 15, s4, s5, s4.wk15Proj, s5.wk15Proj, qf1Prob4, qf1Winner)}
+      ${renderMatchupCardHTML("qf2", "QUARTERFINAL 2 (#3 VS #6)", 15, s3, s6, s3.wk15Proj, s6.wk15Proj, qf2Prob3, qf2Winner)}
+    </div>
+
+    <!-- COLUMN 2: WEEK 16 SEMIFINALS -->
+    <div class="bracket-col">
+      <div class="bracket-col-hdr">
+        <div>
+          <div style="font-size:13px;font-weight:800;color:var(--text-main);">ROUND 2: SEMIFINALS</div>
+          <div style="font-size:11px;color:var(--text-muted);">Week 16 • ${reseedMode === "RESEED" ? "NFL Re-Seeded Matchups" : "Fixed Bracket Draw"}</div>
+        </div>
+        <span class="badge badge-purple">WEEK 16</span>
+      </div>
+
+      ${renderMatchupCardHTML("sf1", `SEMIFINAL 1 (#1 VS #${sf1Opp.seed})`, 16, s1, sf1Opp, s1.wk16Proj, sf1Opp.wk16Proj, sf1Prob1, sf1Winner)}
+      ${renderMatchupCardHTML("sf2", `SEMIFINAL 2 (#2 VS #${sf2Opp.seed})`, 16, s2, sf2Opp, s2.wk16Proj, sf2Opp.wk16Proj, sf2Prob2, sf2Winner)}
+
+      <div class="bracket-match-card" style="margin-top:auto;">
+        <div class="bracket-match-hdr">
+          <span>ELIMINATED IN QUARTERFINALS (5TH/6TH)</span>
+          <span>WEEK 15 EXIT</span>
+        </div>
+        <div style="font-size:12px;color:var(--text-muted);display:flex;justify-content:space-between;padding:4px 2px;">
+          <span>#${qf1Loser.seed} ${qf1Loser.teamName.split(" (")[0]} (${qf1Loser.wk15Proj.toFixed(1)} pts)</span>
+          <span>#${qf2Loser.seed} ${qf2Loser.teamName.split(" (")[0]} (${qf2Loser.wk15Proj.toFixed(1)} pts)</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- COLUMN 3: WEEK 17 CHAMPIONSHIP & 3RD PLACE -->
+    <div class="bracket-col">
+      <div class="bracket-col-hdr">
+        <div>
+          <div style="font-size:13px;font-weight:800;color:var(--good);">ROUND 3: FINALS WEEK</div>
+          <div style="font-size:11px;color:var(--text-muted);">Week 17 • League Championship & 3rd Place</div>
+        </div>
+        <span class="badge badge-green">WEEK 17</span>
+      </div>
+
+      ${renderMatchupCardHTML("champ", `LEAGUE CHAMPIONSHIP (#${sf1Winner.seed} VS #${sf2Winner.seed})`, 17, sf1Winner, sf2Winner, sf1Winner.wk17Proj, sf2Winner.wk17Proj, champProbA, champWinner)}
+
+      <div class="champ-callout">
+        <div style="font-size:10px;font-weight:800;color:var(--good);letter-spacing:0.8px;">PROJECTED 2026 LEAGUE CHAMPION</div>
+        <div style="font-size:17px;font-weight:900;color:var(--text-main);margin-top:4px;">
+          #${champWinner.seed} ${champWinner.teamName.split(" (")[0]}
+        </div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:2px;">
+          Week 17 Finals Projection: <b style="color:var(--good);">${champWinner.wk17Proj.toFixed(2)} pts</b> • Core: ${champWinner.coreNames}
+        </div>
+      </div>
+
+      ${renderMatchupCardHTML("third", `3RD PLACE GAME (#${sf1Loser.seed} VS #${sf2Loser.seed})`, 17, sf1Loser, sf2Loser, sf1Loser.wk17Proj, sf2Loser.wk17Proj, thirdProbA, thirdWinner)}
+    </div>`;
+
+  // Attach click handlers so users can click any slot to force an upset and watch downstream rounds update
+  grid.querySelectorAll(".bracket-slot[data-mkey]").forEach(slotEl => {
+    slotEl.onclick = () => {
+      const mkey = slotEl.dataset.mkey;
+      const rid = parseInt(slotEl.dataset.rid, 10);
+      state.bracketOverrides[mkey] = rid;
+      if (mkey === "qf1" || mkey === "qf2") {
+        state.bracketOverrides.sf1 = null;
+        state.bracketOverrides.sf2 = null;
+        state.bracketOverrides.champ = null;
+        state.bracketOverrides.third = null;
+      } else if (mkey === "sf1" || mkey === "sf2") {
+        state.bracketOverrides.champ = null;
+        state.bracketOverrides.third = null;
+      }
+      renderPlayoffBracketTab();
+    };
+  });
+
+  // Compute exact analytical round-by-round probabilities for all 6 seeds + #7/#8 bubble teams
+  oddsTbl.innerHTML = `
+    <thead>
+      <tr>
+        <th style="width:70px;">Seed</th>
+        <th style="text-align:left;">Team / Manager</th>
+        <th>Current Record</th>
+        <th>Proj Final (Wk 14)</th>
+        <th>Wk 15 Quarters</th>
+        <th>Wk 16 Semis</th>
+        <th>Wk 17 Finals</th>
+        <th>Semi Win %</th>
+        <th>Title Odds %</th>
+        <th>Action</th>
+      </tr>
+    </thead>
+    <tbody></tbody>`;
+  const tbody = oddsTbl.querySelector("tbody");
+
+  seeded.forEach((tm, idx) => {
+    const isBubble = tm.seed > 6;
+    let qfAdvanceProb = 0, sfWinProb = 0, titleProb = 0;
+
+    if (tm.seed === 1) {
+      qfAdvanceProb = 100;
+      sfWinProb = sf1Prob1;
+      titleProb = (sf1Prob1 / 100) * (computeHeadToHeadWinProb(tm.wk17Proj, sf2Winner.wk17Proj));
+    } else if (tm.seed === 2) {
+      qfAdvanceProb = 100;
+      sfWinProb = sf2Prob2;
+      titleProb = (sf2Prob2 / 100) * (computeHeadToHeadWinProb(tm.wk17Proj, sf1Winner.wk17Proj));
+    } else if (tm.seed === 3) {
+      qfAdvanceProb = qf2Prob3;
+      const semiOpp = (reseedMode === "RESEED" && qf1Winner.seed > 3) ? s2 : s2;
+      const w16P = computeHeadToHeadWinProb(tm.wk16Proj, semiOpp.wk16Proj);
+      sfWinProb = (qfAdvanceProb / 100) * w16P;
+      titleProb = (sfWinProb / 100) * computeHeadToHeadWinProb(tm.wk17Proj, s1.wk17Proj);
+    } else if (tm.seed === 4) {
+      qfAdvanceProb = qf1Prob4;
+      const w16P = computeHeadToHeadWinProb(tm.wk16Proj, s1.wk16Proj);
+      sfWinProb = (qfAdvanceProb / 100) * w16P;
+      titleProb = (sfWinProb / 100) * computeHeadToHeadWinProb(tm.wk17Proj, s2.wk17Proj);
+    } else if (tm.seed === 5) {
+      qfAdvanceProb = 100 - qf1Prob4;
+      const w16P = computeHeadToHeadWinProb(tm.wk16Proj, s1.wk16Proj);
+      sfWinProb = (qfAdvanceProb / 100) * w16P;
+      titleProb = (sfWinProb / 100) * computeHeadToHeadWinProb(tm.wk17Proj, s2.wk17Proj);
+    } else if (tm.seed === 6) {
+      qfAdvanceProb = 100 - qf2Prob3;
+      const semiOpp = reseedMode === "RESEED" ? s1 : s2;
+      const w16P = computeHeadToHeadWinProb(tm.wk16Proj, semiOpp.wk16Proj);
+      sfWinProb = (qfAdvanceProb / 100) * w16P;
+      titleProb = (sfWinProb / 100) * computeHeadToHeadWinProb(tm.wk17Proj, (semiOpp.rosterId === s1.rosterId ? s2 : s1).wk17Proj);
+    }
+
+    const seedBadge = isBubble
+      ? `<span class="badge badge-yellow">#${tm.seed} BUBBLE</span>`
+      : (tm.seed <= 2 ? `<span class="badge badge-blue">#${tm.seed} BYE</span>` : `<span class="badge badge-green">#${tm.seed} SEED</span>`);
+
+    const tr = document.createElement("tr");
+    tr.className = "table-row-hover";
+    tr.innerHTML = `
+      <td>${seedBadge}</td>
+      <td style="text-align:left;">
+        <div style="font-weight:800;color:var(--text-main);">${tm.teamName}</div>
+        <div style="font-size:11px;color:var(--text-muted);">Core Starters: ${tm.coreNames} • Power Score: ${tm.power.toFixed(1)}</div>
+      </td>
+      <td style="font-weight:700;">${tm.wins} - ${tm.losses} (${tm.pf.toFixed(1)} PF)</td>
+      <td style="color:var(--accent);font-weight:700;">${tm.projW} - ${tm.projL}</td>
+      <td style="font-weight:700;color:${tm.seed <= 2 ? 'var(--accent)' : 'var(--text-main)'};">${tm.seed <= 2 ? 'BYE (' + tm.wk15Proj.toFixed(1) + ')' : tm.wk15Proj.toFixed(1) + ' pts'}</td>
+      <td style="font-weight:700;">${tm.wk16Proj.toFixed(1)} pts</td>
+      <td style="font-weight:700;color:var(--good);">${tm.wk17Proj.toFixed(1)} pts</td>
+      <td style="font-weight:700;color:${isBubble ? 'var(--text-muted)' : 'var(--text-main)'};">${isBubble ? '--' : sfWinProb.toFixed(1) + '%'}</td>
+      <td><span class="badge ${titleProb >= 22 ? 'badge-green' : (titleProb >= 10 ? 'badge-blue' : 'badge-yellow')}">${isBubble ? 'Out of Top 6' : titleProb.toFixed(1) + '%'}</span></td>
+      <td><button class="btn-builder-action" onclick="openMatchupInSimulator(${tm.rosterId}, ${s1.rosterId === tm.rosterId ? s2.rosterId : s1.rosterId})">Sim vs #1</button></td>`;
+    tbody.appendChild(tr);
+  });
 }
 
 function renderMatchupSim() {
@@ -2573,6 +3125,7 @@ function renderAllViews(teamIdx) {
   renderMatchupSim();
   drawSingleAnalyticsChart();
   renderSosTab();
+  renderPlayoffBracketTab();
 }
 
 document.querySelectorAll(".nav-btn").forEach(btn => {
@@ -2581,12 +3134,21 @@ document.querySelectorAll(".nav-btn").forEach(btn => {
     document.querySelectorAll(".tab-page").forEach(p => p.classList.remove("active"));
     btn.classList.add("active");
     document.getElementById(btn.dataset.tab).classList.add("active");
-    drawPowerChart(); drawWaiverChart(); drawSingleAnalyticsChart(); renderSosTab();
+    drawPowerChart(); drawWaiverChart(); drawSingleAnalyticsChart(); renderSosTab(); renderPlayoffBracketTab();
   };
 });
 
 document.querySelectorAll(".seg-btn").forEach(btn => {
   btn.onclick = () => switchTradeMode(parseInt(btn.dataset.tmode, 10));
+});
+
+document.querySelectorAll(".sos-mode-btn").forEach(btn => {
+  btn.onclick = () => {
+    document.querySelectorAll(".sos-mode-btn").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    state.sosWindowMode = btn.dataset.sosmode;
+    renderSosTab();
+  };
 });
 
 document.getElementById("syncBtn").onclick = syncUserAccount;
@@ -2599,7 +3161,7 @@ document.getElementById("teamSelect").onchange = e => {
 };
 weekSelect.onchange = async e => {
   state.week = parseInt(e.target.value, 10);
-  syncLiveEspnSchedule(state.week);
+  syncLiveEspnSchedule([state.week, state.week + 1, state.week + 2, state.week + 3]);
   renderSosTab();
   if (state.activeLeague) await loadLeague(document.getElementById("leagueSelect").value);
 };
@@ -2623,6 +3185,21 @@ document.getElementById("analyticsGraphSelect").onchange = drawSingleAnalyticsCh
 document.getElementById("sosPos").onchange = renderSosTab;
 document.getElementById("sosScope").onchange = renderSosTab;
 document.getElementById("sosSort").onchange = renderSosTab;
+document.getElementById("bracketSeedMode").onchange = () => {
+  state.bracketOverrides = { qf1: null, qf2: null, sf1: null, sf2: null, champ: null, third: null };
+  renderPlayoffBracketTab();
+};
+document.getElementById("bracketReseedMode").onchange = () => {
+  state.bracketOverrides.sf1 = null;
+  state.bracketOverrides.sf2 = null;
+  state.bracketOverrides.champ = null;
+  state.bracketOverrides.third = null;
+  renderPlayoffBracketTab();
+};
+document.getElementById("resetBracketBtn").onclick = () => {
+  state.bracketOverrides = { qf1: null, qf2: null, sf1: null, sf2: null, champ: null, third: null };
+  renderPlayoffBracketTab();
+};
 document.getElementById("simTeamA").onchange = renderMatchupSim;
 document.getElementById("simTeamB").onchange = renderMatchupSim;
 document.getElementById("shareBtn").onclick = () => {
