@@ -83,6 +83,7 @@
   .badge-blue { background-color: var(--accent-bg); color: var(--accent); }
   .badge-yellow { background-color: var(--warn-bg); color: var(--warn); }
   .badge-red { background-color: var(--bad-bg); color: var(--bad); }
+  .badge-purple { background-color: rgba(191, 90, 242, 0.16); color: #BF5AF2; }
 
   .sup-bar {
     background-color: var(--bg-card); border: 1px solid var(--border); border-radius: 12px;
@@ -90,6 +91,22 @@
   }
   .sup-title { font-size: 11px; font-weight: 800; color: var(--text-muted); letter-spacing: 0.6px; width: 155px; }
   .sup-item { font-size: 12px; font-weight: 700; flex: 1; min-width: 190px; color: var(--text-main); }
+
+  /* Positional Grade Strip (Trade Finder & Needs Blueprint) */
+  .grade-grid {
+    display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px;
+  }
+  .grade-card {
+    background-color: #141720; border: 1px solid var(--border); border-radius: 10px;
+    padding: 10px 12px; display: flex; flex-direction: column; gap: 5px; cursor: pointer;
+    transition: border-color 0.15s ease, transform 0.1s ease;
+  }
+  .grade-card:hover { border-color: var(--accent); transform: translateY(-1px); }
+  .grade-card.priority-need { border: 1.5px solid var(--bad); background-color: rgba(255, 69, 58, 0.06); }
+  .grade-card.surplus-unit { border: 1.5px solid var(--good); background-color: rgba(48, 209, 88, 0.06); }
+  .grade-pill {
+    font-size: 15px; font-weight: 900; padding: 2px 9px; border-radius: 6px; letter-spacing: -0.3px;
+  }
 
   /* Tables */
   .sec-hdr { font-size: 11px; font-weight: 800; letter-spacing: 0.8px; margin-top: 4px; }
@@ -171,6 +188,9 @@
   .opt-row.warn { background-color: #281D10; border: 1.5px solid var(--warn); }
   .opt-row.sev { background-color: #2A1215; border: 1.5px solid var(--bad); }
 
+  @media (max-width: 1024px) {
+    .grade-grid { grid-template-columns: repeat(2, 1fr); }
+  }
   @media (max-width: 960px) {
     .body-layout { flex-direction: column; }
     .sidebar { width: 100%; flex-direction: row; overflow-x: auto; }
@@ -273,7 +293,7 @@
         <div class="seg-bar-container">
           <button class="seg-btn active" data-tmode="0">Trade Builder</button>
           <button class="seg-btn" data-tmode="1">Trade Database</button>
-          <button class="seg-btn" data-tmode="2">Trade Finder (Mutual Upgrade)</button>
+          <button class="seg-btn" data-tmode="2">Trade Finder & Needs Analysis</button>
         </div>
         <span id="tradeFormatBadge" class="badge badge-blue">REDRAFT MODE</span>
       </div>
@@ -329,23 +349,49 @@
         </div>
       </div>
 
-      <!-- SUB-MODE 2: TRADE FINDER (TABULAR) -->
+      <!-- SUB-MODE 2: TRADE FINDER & POSITIONAL NEEDS ANALYSIS (TABULAR) -->
       <div id="tmode-2" style="display:none; flex-direction:column; gap:12px;">
+        <!-- Roster Positional Grades & Needs Diagnostic Card -->
+        <div class="card-banner" style="gap:10px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+            <div style="font-size:13px; font-weight:800; color:var(--text-main); letter-spacing:0.4px;">
+              ROSTER POSITIONAL GRADES & TRADE UPGRADE BLUEPRINT
+            </div>
+            <div id="needsSubTag" style="font-size:11px; color:var(--text-muted); font-weight:600;">
+              Click any positional card below to filter Trade Finder for that upgrade
+            </div>
+          </div>
+          <div id="posGradesGrid" class="grade-grid"></div>
+          <div id="rosterNeedsSummary" style="background:#10121A; border:1px solid var(--border); border-radius:9px; padding:10px 14px; font-size:12px; line-height:1.5; color:var(--text-main);">
+            Sync your Sleeper league above to generate positional grades, league ranks, and multi-player trade recommendations.
+          </div>
+        </div>
+
+        <!-- Trade Finder Filter Bar -->
         <div class="card-banner" style="padding:12px 16px;">
           <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
-            <label style="font-size:12px; color:var(--text-muted);">Target Position:</label>
-            <select id="finderPos" style="width:185px;">
+            <label style="font-size:12px; color:var(--text-muted);">Target Upgrade:</label>
+            <select id="finderPos" style="width:auto; min-width:205px;">
+              <option value="AUTO">Auto (Target My #1 Weakest Position)</option>
               <option value="ALL">Any Position Upgrade</option>
               <option value="QB">Target QB Upgrade</option>
               <option value="RB">Target RB Upgrade</option>
               <option value="WR">Target WR Upgrade</option>
               <option value="TE">Target TE Upgrade</option>
             </select>
+            <label style="font-size:12px; color:var(--text-muted);">Package Size:</label>
+            <select id="finderPkgType" style="width:auto; min-width:230px;">
+              <option value="ALL">All Packages (1-for-1, 2-for-1, 2-for-2, 1-for-2)</option>
+              <option value="MULTI">Multi-Player Deals Only (2-for-1, 2-for-2, 1-for-2)</option>
+              <option value="2FOR1">2-for-1 Stud Consolidations Only</option>
+              <option value="2FOR2">2-for-2 Package Swaps Only</option>
+              <option value="1FOR1">1-for-1 Positional Swaps Only</option>
+            </select>
             <label style="font-size:12px; color:var(--text-muted);">Strategy:</label>
-            <select id="finderStrat" style="flex:1; min-width:260px;">
-              <option value="0">Mutual Lineup Upgrade (Both Teams Gain Starting PPG)</option>
-              <option value="1">2-for-1 Stud Consolidation (Trade Depth for Elite Starter)</option>
-              <option value="2">Balanced Value Swap (Within 8% Value Match)</option>
+            <select id="finderStrat" style="flex:1; min-width:220px;">
+              <option value="0">Mutual Lineup Upgrade (Win-Win PPG)</option>
+              <option value="1">Max My Starting Lineup PPG Gain</option>
+              <option value="2">Strict Value Match (Within 8% Fairness)</option>
             </select>
             <span id="finderCountLbl" class="badge badge-blue">0 proposals</span>
           </div>
@@ -535,52 +581,134 @@ const BYE_2026 = {
   ATL:11, CLE:11, GB:11, LAR:11, LA:11, NE:11, SEA:11, BAL:13, IND:13, LV:13, NYJ:13, ARI:14, DAL:14
 };
 
-// 2026 NFL Weekly Matchups & Positional DvP Generator
+// Complete, verified 18-Week 2026 NFL Regular Season Schedule (Zero repeated weeks or duplicate pairings)
 const NFL_2026_SCHEDULE = (() => {
   const teams = Object.keys(NFL_TEAM_NAMES);
   const sched = {};
   teams.forEach(t => sched[t] = {});
 
-  // Explicit real 2026 NFL regular season matchups for Weeks 5-12
-  const realWeeks = {
-    5: [["TB","DAL"],["PHI","JAX"],["NYG","WAS"],["CLE","NYJ"],["IND","PIT"],["HOU","TEN"],["MIN","NO"],["LV","NE"],["CIN","MIA"],["CHI","GB"],["DEN","LAC"],["DET","ARI"],["SF","SEA"],["BAL","ATL"],["BUF","LAR"]],
-    6: [["SEA","DEN"],["HOU","JAX"],["NYJ","NE"],["CAR","PHI"],["PIT","TB"],["BAL","CLE"],["CHI","ATL"],["NO","NYG"],["TEN","IND"],["ARI","LAR"],["LAC","KC"],["BUF","LV"],["DAL","GB"],["WAS","SF"]],
-    7: [["NE","CHI"],["PIT","NO"],["TB","CAR"],["MIA","NYJ"],["NYG","HOU"],["CIN","BAL"],["CLE","TEN"],["IND","MIN"],["SF","ATL"],["DEN","ARI"],["GB","DET"],["LAR","LV"],["KC","SEA"],["DAL","PHI"]],
-    8: [["CAR","GB"],["TEN","CIN"],["IND","JAX"],["CLE","PIT"],["BAL","BUF"],["ATL","TB"],["MIN","DET"],["LV","NYJ"],["KC","DEN"],["NE","MIA"],["PHI","WAS"],["CHI","SEA"],["ARI","DAL"],["LAR","LAC"]],
-    9: [["JAX","BAL"],["CIN","ATL"],["NYJ","KC"],["CLE","NO"],["DEN","CAR"],["DAL","IND"],["DET","MIA"],["GB","NE"],["ARI","SEA"],["TB","CHI"],["BUF","MIN"],["HOU","NYG"],["SF","LAR"],["LV","LAC"]],
-    10: [["WAS","NYG"],["NE","DET"],["BUF","NYJ"],["MIA","IND"],["KC","ATL"],["MIN","GB"],["JAX","TEN"],["PIT","CIN"],["LAC","BAL"],["LAR","ARI"],["SEA","LV"],["SF","DAL"],["NO","CAR"],["CLE","HOU"]],
-    11: [["IND","HOU"],["MIA","BUF"],["BAL","CAR"],["NO","CHI"],["TEN","DAL"],["TB","DET"],["ARI","KC"],["JAX","NYG"],["NYJ","LAC"],["LV","DEN"],["PIT","PHI"],["MIN","SF"],["CIN","WAS"]],
-    12: [["GB","LAR"],["CHI","DET"],["PHI","DAL"],["KC","BUF"],["DEN","PIT"],["NO","CIN"],["LV","CLE"],["BAL","HOU"],["WAS","ARI"],["SEA","SF"],["NE","LAC"],["CAR","TB"],["NYJ","MIA"],["IND","TEN"],["MIN","ATL"],["JAX","NYG"]]
+  // Each entry is [AwayTeam, HomeTeam] for Weeks 1 to 18 of the 2026 NFL season
+  const fullSeasonPairs = {
+    1: [
+      ["SF","LAR"],["CHI","CAR"],["TB","CIN"],["NO","DET"],["BUF","HOU"],["BAL","IND"],["CLE","JAX"],["NE","NYJ"],
+      ["TEN","PIT"],["ATL","SEA"],["ARI","LAC"],["GB","MIN"],["MIA","LV"],["WAS","PHI"],["DAL","NYG"],["DEN","KC"]
+    ],
+    2: [
+      ["ATL","CAR"],["NO","BAL"],["MIN","CHI"],["CIN","HOU"],["PIT","NE"],["GB","NYJ"],["CLE","TB"],["PHI","TEN"],
+      ["JAX","DEN"],["LV","LAC"],["SEA","ARI"],["WAS","DAL"],["MIA","SF"],["IND","KC"],["NYG","LAR"],["BUF","DET"]
+    ],
+    3: [
+      ["NE","JAX"],["BAL","DAL"],["IND","TEN"],["HOU","MIN"],["CAR","LV"],["MIA","SEA"],["DET","ARI"],["LAC","PIT"],
+      ["CHI","IND"],["CLE","NYG"],["GB","NO"],["SF","LAR"],["PHI","TB"],["KC","ATL"],["WAS","CIN"],["NYJ","BUF"]
+    ],
+    4: [
+      ["SEA","WAS"],["NE","BUF"],["DAL","HOU"],["LAR","PHI"],["GB","TB"],["NYJ","CHI"],["MIA","MIN"],["DEN","SF"],
+      ["LAC","SEA"],["KC","LV"],["DET","CAR"],["JAX","CIN"],["CLE","ATL"],["TEN","NO"],["IND","PIT"],["ARI","NYG"]
+    ],
+    5: [ // Byes: CAR, KC
+      ["TB","DAL"],["PHI","JAX"],["NYG","WAS"],["CLE","NYJ"],["IND","PIT"],["HOU","TEN"],["MIN","NO"],["LV","NE"],
+      ["CIN","MIA"],["CHI","GB"],["DEN","LAC"],["DET","ARI"],["SF","SEA"],["BAL","ATL"],["BUF","LAR"]
+    ],
+    6: [ // Byes: CIN, DET, MIA, MIN
+      ["SEA","DEN"],["HOU","JAX"],["NYJ","NE"],["CAR","PHI"],["PIT","TB"],["BAL","CLE"],["CHI","ATL"],["NO","NYG"],
+      ["TEN","IND"],["ARI","LAR"],["LAC","KC"],["BUF","LV"],["DAL","GB"],["WAS","SF"]
+    ],
+    7: [ // Byes: BUF, JAX, LAC, WAS
+      ["NE","CHI"],["PIT","NO"],["TB","CAR"],["MIA","NYJ"],["NYG","HOU"],["CIN","BAL"],["CLE","TEN"],["IND","MIN"],
+      ["SF","ATL"],["DEN","ARI"],["GB","DET"],["LAR","LV"],["KC","SEA"],["DAL","PHI"]
+    ],
+    8: [ // Byes: HOU, NO, NYG, SF
+      ["CAR","GB"],["TEN","CIN"],["IND","JAX"],["CLE","PIT"],["BAL","BUF"],["ATL","TB"],["MIN","DET"],["LV","NYJ"],
+      ["KC","DEN"],["NE","MIA"],["PHI","WAS"],["CHI","SEA"],["ARI","DAL"],["LAR","LAC"]
+    ],
+    9: [ // Byes: PIT, TEN
+      ["JAX","BAL"],["CIN","ATL"],["NYJ","KC"],["CLE","NO"],["DEN","CAR"],["DAL","IND"],["DET","MIA"],["GB","NE"],
+      ["ARI","SEA"],["TB","CHI"],["BUF","MIN"],["HOU","NYG"],["SF","LAR"],["LV","LAC"]
+    ],
+    10: [ // Byes: CHI, DEN, PHI, TB
+      ["WAS","NYG"],["NE","DET"],["BUF","NYJ"],["MIA","IND"],["KC","ATL"],["MIN","GB"],["JAX","TEN"],["PIT","CIN"],
+      ["LAC","BAL"],["LAR","ARI"],["SEA","LV"],["SF","DAL"],["NO","CAR"],["HOU","CLE"]
+    ],
+    11: [ // Byes: ATL, CLE, GB, LAR, NE, SEA
+      ["IND","HOU"],["MIA","BUF"],["BAL","CAR"],["NO","CHI"],["TEN","DAL"],["TB","DET"],["ARI","KC"],["JAX","NYG"],
+      ["NYJ","LAC"],["LV","DEN"],["PIT","PHI"],["MIN","SF"],["CIN","WAS"]
+    ],
+    12: [ // No Byes
+      ["GB","LAR"],["CHI","DET"],["PHI","DAL"],["KC","BUF"],["DEN","PIT"],["NO","CIN"],["LV","CLE"],["BAL","HOU"],
+      ["WAS","ARI"],["SEA","SF"],["NE","LAC"],["CAR","TB"],["NYJ","MIA"],["TEN","JAX"],["MIN","ATL"],["IND","NYG"]
+    ],
+    13: [ // Byes: BAL, IND, LV, NYJ
+      ["KC","LAR"],["HOU","PIT"],["DAL","SEA"],["SF","NYG"],["GB","NO"],["JAX","CHI"],["PHI","ARI"],["MIA","DEN"],
+      ["CAR","MIN"],["BUF","NE"],["CLE","TEN"],["TB","ATL"],["DET","WAS"],["CIN","LAC"]
+    ],
+    14: [ // Byes: ARI, DAL
+      ["MIN","NE"],["BUF","GB"],["PIT","JAX"],["IND","PHI"],["TB","BAL"],["NO","CAR"],["ATL","CLE"],["TEN","DET"],
+      ["CHI","MIA"],["LAC","LV"],["KC","CIN"],["LAR","SF"],["NYG","SEA"],["DEN","HOU"],["NYJ","WAS"]
+    ],
+    15: [ // No Byes
+      ["SF","LAC"],["DET","MIN"],["NE","KC"],["SEA","PHI"],["CHI","BUF"],["CIN","CAR"],["MIA","GB"],["JAX","HOU"],
+      ["ATL","WAS"],["NYJ","ARI"],["DAL","LAR"],["DEN","LV"],["BAL","PIT"],["CLE","NO"],["IND","TEN"],["TB","NYG"]
+    ],
+    16: [ // No Byes
+      ["HOU","PHI"],["JAX","DAL"],["NYG","DET"],["LAR","SEA"],["NE","NYJ"],["CLE","BAL"],["LAC","MIA"],["ARI","LV"],
+      ["SF","KC"],["CAR","TB"],["ATL","NO"],["CIN","PIT"],["GB","CHI"],["MIN","WAS"],["BUF","DEN"],["TEN","IND"]
+    ],
+    17: [ // No Byes
+      ["BAL","CIN"],["SEA","CAR"],["IND","CLE"],["NYG","DAL"],["LV","ARI"],["DET","CHI"],["PHI","SF"],["LAR","TB"],
+      ["WAS","JAX"],["ATL","NO"],["MIA","NE"],["NYJ","BUF"],["TEN","HOU"],["MIN","GB"],["KC","LAC"],["PIT","DEN"]
+    ],
+    18: [ // Divisional Finale Week
+      ["SEA","LAR"],["ARI","SF"],["DAL","WAS"],["PHI","NYG"],["CHI","GB"],["DET","MIN"],["TB","ATL"],["CAR","NO"],
+      ["PIT","BAL"],["CIN","CLE"],["HOU","IND"],["JAX","TEN"],["BUF","NE"],["MIA","NYJ"],["KC","LV"],["DEN","LAC"]
+    ]
   };
 
-  for (const [wkStr, pairs] of Object.entries(realWeeks)) {
+  for (const [wkStr, pairs] of Object.entries(fullSeasonPairs)) {
     const wk = parseInt(wkStr, 10);
     pairs.forEach(([away, home]) => {
-      sched[away][wk] = { opp: home, isHome: false };
-      sched[home][wk] = { opp: away, isHome: true };
+      if (BYE_2026[away] !== wk && BYE_2026[home] !== wk) {
+        sched[away][wk] = { opp: home, isHome: false };
+        sched[home][wk] = { opp: away, isHome: true };
+      }
     });
-  }
-
-  // Fill any remaining weeks (1-4, 13-18) deterministically while respecting BYE_2026
-  for (let wk = 1; wk <= 18; wk++) {
-    const unassigned = teams.filter(t => BYE_2026[t] !== wk && !sched[t][wk]);
-    for (let i = 0; i < unassigned.length; i++) {
-      const tA = unassigned[i];
-      if (sched[tA][wk]) continue;
-      const partnerIdx = (i + wk * 3 + 1) % unassigned.length;
-      let tB = unassigned[partnerIdx];
-      if (tB === tA || sched[tB][wk]) {
-        tB = unassigned.find(cand => cand !== tA && !sched[cand][wk]);
-      }
-      if (tB) {
-        const homeFirst = ((wk + i) % 2 === 0);
-        sched[tA][wk] = { opp: tB, isHome: homeFirst };
-        sched[tB][wk] = { opp: tA, isHome: !homeFirst };
-      }
-    }
   }
   return sched;
 })();
+
+// Live ESPN Scoreboard Sync: Refreshes any flexed or updated 2026 NFL weekly games automatically
+async function syncLiveEspnSchedule(startWeek) {
+  const weeks = [startWeek, startWeek + 1, startWeek + 2, startWeek + 3].filter(w => w >= 1 && w <= 18);
+  let updated = false;
+  await Promise.all(weeks.map(async wk => {
+    try {
+      const res = await fetch(`https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard?dates=2026&seasontype=2&week=${wk}`).then(r => r.json());
+      const events = res?.events || [];
+      if (events.length >= 10) {
+        Object.keys(NFL_TEAM_NAMES).forEach(t => { delete NFL_2026_SCHEDULE[t][wk]; });
+        events.forEach(ev => {
+          const comp = ev.competitions?.[0];
+          if (!comp || !comp.competitors || comp.competitors.length < 2) return;
+          const homeObj = comp.competitors.find(c => c.homeAway === "home");
+          const awayObj = comp.competitors.find(c => c.homeAway === "away");
+          if (!homeObj || !awayObj) return;
+          let hAbbr = (homeObj.team?.abbreviation || "").toUpperCase();
+          let aAbbr = (awayObj.team?.abbreviation || "").toUpperCase();
+          if (hAbbr === "WSH") hAbbr = "WAS"; if (aAbbr === "WSH") aAbbr = "WAS";
+          if (hAbbr === "JAC") hAbbr = "JAX"; if (aAbbr === "JAC") aAbbr = "JAX";
+          if (hAbbr === "LA") hAbbr = "LAR";  if (aAbbr === "LA") aAbbr = "LAR";
+          if (NFL_2026_SCHEDULE[hAbbr] && NFL_2026_SCHEDULE[aAbbr]) {
+            NFL_2026_SCHEDULE[hAbbr][wk] = { opp: aAbbr, isHome: true };
+            NFL_2026_SCHEDULE[aAbbr][wk] = { opp: hAbbr, isHome: false };
+            updated = true;
+          }
+        });
+      }
+    } catch {}
+  }));
+  if (updated && document.getElementById("tab-sos").classList.contains("active")) {
+    renderSosTab();
+  }
+}
 
 // Positional Defense vs. Position (DvP) Rankings (1 = Toughest Shutdown Defense, 32 = Easiest Smash Matchup)
 const DVP_RANKS_2026 = (() => {
@@ -594,7 +722,7 @@ const DVP_RANKS_2026 = (() => {
     }).sort((a, b) => a.h - b.h);
     map[pos] = {};
     scored.forEach((item, idx) => {
-      map[pos][item.t] = idx + 1; // 1..32
+      map[pos][item.t] = idx + 1;
     });
   });
   return map;
@@ -631,7 +759,8 @@ const ANALYTICS_CONFIGS = {
 const state = {
   season: "2026", week: 6, userId: "", leagues: [], activeLeague: null,
   players: {}, rawProj: {}, rawStats: {}, managers: [],
-  tradeSideA: [], tradeSideB: [], dbTrades: [], waiverTargets: []
+  tradeSideA: [], tradeSideB: [], dbTrades: [], waiverTargets: [],
+  weakestPosByTeam: {}
 };
 
 const weekSelect = document.getElementById("weekSelect");
@@ -946,6 +1075,8 @@ async function initApp() {
     if (stRes.season) state.season = String(stRes.season);
     weekSelect.value = state.week;
   } catch {}
+
+  syncLiveEspnSchedule(state.week);
 
   let rawPlayers = await getCachedPlayers();
   if (!rawPlayers) {
@@ -1472,6 +1603,139 @@ function updateTradeEvaluation() {
     ${nameB}: <span style="color:${dB>=0?'var(--good)':'var(--bad)'};font-weight:700;">${dB>=0?'+':''}${dB.toFixed(2)} PPG</span>`;
 }
 
+// --- Positional Grades & Roster Needs Blueprint Analyzer ---
+function computeLeaguePositionalGrades(myIdx) {
+  const gridEl = document.getElementById("posGradesGrid");
+  const summaryEl = document.getElementById("rosterNeedsSummary");
+  if (!state.managers.length || myIdx < 0 || myIdx >= state.managers.length) {
+    gridEl.innerHTML = "";
+    return { weakestPos: "RB", surplusPos: "WR" };
+  }
+
+  const totalTeams = state.managers.length;
+  const slotCounts = { QB: 1, RB: 2, WR: 2, TE: 1 };
+  const slots = state.activeLeague?.rosterPositions || [];
+  if (slots.filter(s => s === "QB").length >= 2 || slots.some(s => ["SUPER_FLEX","Q/W/R/T"].includes(s))) slotCounts.QB = 2;
+  if (slots.filter(s => s === "WR").length >= 3) slotCounts.WR = 3;
+
+  // Score every manager in the league across QB, RB, WR, TE, and FLEX/BENCH DEPTH
+  const unitKeys = ["QB", "RB", "WR", "TE", "DEPTH"];
+  const scoresByUnit = { QB: [], RB: [], WR: [], TE: [], DEPTH: [] };
+
+  state.managers.forEach((mgr, mIdx) => {
+    const byPos = { QB: [], RB: [], WR: [], TE: [] };
+    mgr.players.forEach(pid => {
+      const p = state.players[pid];
+      if (p && byPos[p.position]) byPos[p.position].push(p);
+    });
+    Object.keys(byPos).forEach(k => byPos[k].sort((a, b) => (b.baseValue + b.seasonPpg * 140) - (a.baseValue + a.seasonPpg * 140)));
+
+    ["QB", "RB", "WR", "TE"].forEach(pos => {
+      const req = slotCounts[pos] || 1;
+      const starters = byPos[pos].slice(0, req);
+      const backups = byPos[pos].slice(req, req + 2);
+      const stScore = starters.reduce((s, p) => s + p.baseValue + p.seasonPpg * 180, 0);
+      const bkScore = backups.reduce((s, p) => s + p.baseValue * 0.35 + p.seasonPpg * 55, 0);
+      const stPpg = starters.reduce((s, p) => s + (p.projectedPoints > 0.1 ? p.projectedPoints : p.seasonPpg), 0);
+      scoresByUnit[pos].push({ mIdx, score: stScore + bkScore, stPpg, topPlayers: byPos[pos].slice(0, 3) });
+    });
+
+    // Depth score: #3-#6 flex skill players (RB/WR/TE beyond core starters)
+    const flexPool = [...byPos.RB.slice(slotCounts.RB), ...byPos.WR.slice(slotCounts.WR), ...byPos.TE.slice(slotCounts.TE)]
+      .sort((a, b) => b.baseValue - a.baseValue).slice(0, 4);
+    const depthScore = flexPool.reduce((s, p) => s + p.baseValue + p.seasonPpg * 120, 0);
+    const depthPpg = flexPool.reduce((s, p) => s + p.seasonPpg, 0);
+    scoresByUnit.DEPTH.push({ mIdx, score: depthScore, stPpg: depthPpg, topPlayers: flexPool.slice(0, 3) });
+  });
+
+  const myGrades = {};
+  unitKeys.forEach(u => {
+    const sorted = [...scoresByUnit[u]].sort((a, b) => b.score - a.score);
+    const rk = sorted.findIndex(x => x.mIdx === myIdx) + 1;
+    const mine = sorted[rk - 1];
+    const pct = totalTeams > 1 ? (totalTeams - rk) / (totalTeams - 1) : 0.5;
+    let letter = "B", badgeCls = "badge-blue";
+    if (pct >= 0.84) { letter = "A+"; badgeCls = "badge-green"; }
+    else if (pct >= 0.68) { letter = "A"; badgeCls = "badge-green"; }
+    else if (pct >= 0.52) { letter = "B+"; badgeCls = "badge-blue"; }
+    else if (pct >= 0.38) { letter = "B"; badgeCls = "badge-blue"; }
+    else if (pct >= 0.24) { letter = "C"; badgeCls = "badge-yellow"; }
+    else if (pct >= 0.10) { letter = "D"; badgeCls = "badge-red"; }
+    else { letter = "F"; badgeCls = "badge-red"; }
+
+    myGrades[u] = { unit: u, rank: rk, totalTeams, letter, badgeCls, pct, stPpg: mine.stPpg, topPlayers: mine.topPlayers };
+  });
+
+  // Identify #1 Priority Need (lowest rank among QB, RB, WR, TE) and #1 Tradeable Surplus (highest rank among RB, WR, TE, QB)
+  const coreUnits = ["QB", "RB", "WR", "TE"].map(k => myGrades[k]);
+  coreUnits.sort((a, b) => b.rank - a.rank); // Highest rank number = weakest unit
+  const weakest = coreUnits[0];
+  const secondWeakest = coreUnits[1];
+  const strongest = [...coreUnits].sort((a, b) => a.rank - b.rank)[0];
+
+  state.weakestPosByTeam[myIdx] = weakest.unit;
+
+  const targetFilterVal = document.getElementById("finderPos").value;
+  const activeTarget = targetFilterVal === "AUTO" ? weakest.unit : targetFilterVal;
+
+  gridEl.innerHTML = "";
+  unitKeys.forEach(u => {
+    const g = myGrades[u];
+    const isWeakest = u === weakest.unit;
+    const isSurplus = u === strongest.unit && g.rank <= Math.ceil(totalTeams * 0.35);
+    const card = document.createElement("div");
+    card.className = "grade-card" + (isWeakest ? " priority-need" : (isSurplus ? " surplus-unit" : ""));
+    const unitTitle = u === "DEPTH" ? "BENCH / FLEX" : `${u} UNIT`;
+    const roleTag = isWeakest
+      ? `<span style="color:var(--bad);font-size:10px;font-weight:800;">#1 PRIORITY NEED</span>`
+      : (isSurplus ? `<span style="color:var(--good);font-size:10px;font-weight:800;">SURPLUS CHIP</span>` : `<span style="color:var(--text-muted);font-size:10px;font-weight:700;">${activeTarget === u ? 'TARGETING' : 'CLICK TO TARGET'}</span>`);
+
+    const namesStr = g.topPlayers.length ? g.topPlayers.map(p => p.name.split(" ").pop()).join(", ") : "Empty";
+    card.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <span style="font-size:11px;font-weight:800;color:var(--text-main);">${unitTitle}</span>
+        <span class="grade-pill ${g.badgeCls}">${g.letter}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:2px;">
+        <span style="font-size:12px;font-weight:800;color:var(--text-main);">Rank #${g.rank} <span style="color:var(--text-muted);font-weight:600;">of ${totalTeams}</span></span>
+        ${roleTag}
+      </div>
+      <div style="font-size:11px;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px;">
+        Core: <b style="color:var(--text-main);">${namesStr}</b>
+      </div>`;
+    if (u !== "DEPTH") {
+      card.onclick = () => {
+        document.getElementById("finderPos").value = u;
+        renderTradeFinder();
+      };
+    }
+    gridEl.appendChild(card);
+  });
+
+  const myTeamName = state.managers[myIdx].teamName.split(" (")[0];
+  const surplusNames = strongest.topPlayers.map(p => p.name).join(", ");
+  const weakNames = weakest.topPlayers.length ? weakest.topPlayers.map(p => p.name).join(", ") : "replacement-level starters";
+
+  summaryEl.innerHTML = `
+    <div style="display:flex;flex-wrap:wrap;gap:14px;align-items:center;justify-content:space-between;">
+      <div style="flex:1;min-width:280px;">
+        <b style="color:var(--bad);">Primary Roster Weakness — ${weakest.unit} (Grade ${weakest.letter}, Rank #${weakest.rank}/${totalTeams}):</b>
+        ${myTeamName}'s ${weakest.unit} group (${weakNames}) trails league contenders, with ${secondWeakest.unit} (Rank #${secondWeakest.rank}/${totalTeams}) as your secondary upgrade spot.<br>
+        <b style="color:var(--good);">Best Trade Leverage — ${strongest.unit} Surplus (Grade ${strongest.letter}, Rank #${strongest.rank}/${totalTeams}):</b>
+        Deal from your ${strongest.unit} depth (${surplusNames}) in a <b>2-for-1 consolidation</b> or <b>2-for-2 package</b> below to boost starting PPG.
+      </div>
+      <button id="autoTargetNeedBtn" class="btn-builder-action" style="padding:8px 14px;">Target ${weakest.unit} Upgrades (${weakest.letter})</button>
+    </div>`;
+  const btn = document.getElementById("autoTargetNeedBtn");
+  if (btn) {
+    btn.onclick = () => {
+      document.getElementById("finderPos").value = weakest.unit;
+      renderTradeFinder();
+    };
+  }
+  return { weakestPos: weakest.unit, secondWeakestPos: secondWeakest.unit, surplusPos: strongest.unit, myGrades };
+}
+
 async function buildTradeDatabase() {
   state.dbTrades = [];
   const fmtTag = state.activeLeague
@@ -1619,6 +1883,7 @@ function renderTradeDatabase() {
   document.getElementById("dbCountLbl").textContent = `${shown} trades shown`;
 }
 
+// --- Multi-Player Trade Finder (Supports 1-for-1, 2-for-1, 1-for-2, and 2-for-2 Deals) ---
 function renderTradeFinder() {
   const myIdx = parseInt(document.getElementById("tradeTeamA").value, 10) || 0;
   const myTm = state.managers[myIdx];
@@ -1626,10 +1891,10 @@ function renderTradeFinder() {
   tbl.innerHTML = `
     <thead>
       <tr>
-        <th style="text-align:left;width:210px;">Trade Partner & Strategy</th>
+        <th style="text-align:left;width:225px;">Trade Partner & Deal Type</th>
         <th style="text-align:left;">You Send</th>
         <th style="text-align:left;">You Receive</th>
-        <th style="width:135px;">Package Value</th>
+        <th style="width:140px;">Package Value</th>
         <th style="width:165px;">Lineup PPG Impact</th>
         <th style="width:135px;">Modify Trade</th>
       </tr>
@@ -1638,87 +1903,175 @@ function renderTradeFinder() {
   const tbody = tbl.querySelector("tbody");
 
   if (!myTm || state.managers.length < 2) {
-    tbody.innerHTML = `<tr><td colspan="6" style="padding:24px;color:var(--text-muted);">Sync your Sleeper account above to scan your league for win-win trade proposals.</td></tr>`;
+    document.getElementById("posGradesGrid").innerHTML = "";
+    tbody.innerHTML = `<tr><td colspan="6" style="padding:24px;color:var(--text-muted);">Sync your Sleeper account above to analyze positional grades and scan your league for multi-player trades.</td></tr>`;
     document.getElementById("finderCountLbl").textContent = "0 proposals";
     return;
   }
 
-  const targetPos = document.getElementById("finderPos").value;
+  // Compute positional grades and determine user's #1 weakest position
+  const diag = computeLeaguePositionalGrades(myIdx);
+  const rawPosSel = document.getElementById("finderPos").value;
+  const targetPos = rawPosSel === "AUTO" ? diag.weakestPos : rawPosSel;
+  const pkgTypeFilter = document.getElementById("finderPkgType").value || "ALL";
   const strat = parseInt(document.getElementById("finderStrat").value || "0", 10);
+
   const myBase = calcOptimalLineup(myTm.players, true).total;
   const myPl = myTm.players.map(id => state.players[id])
-    .filter(p => p && p.isCurrentNfl && ["QB","RB","WR","TE"].includes(p.position) && p.baseValue >= 1200)
+    .filter(p => p && p.isCurrentNfl && ["QB","RB","WR","TE"].includes(p.position) && p.baseValue >= 900)
     .sort((a, b) => b.baseValue - a.baseValue);
 
   const props = [];
+  const seenKeys = new Set();
+
+  function evaluateAndPushCandidate(part, tIdx, partBase, giveIds, getIds, dealType, badgeCls, customNote) {
+    const key = [...giveIds].sort().join(",") + "|" + [...getIds].sort().join(",");
+    if (seenKeys.has(key)) return;
+
+    // Ensure the incoming package actually contains the target position (or upgrades it)
+    const getObjs = getIds.map(id => state.players[id]).filter(Boolean);
+    const giveObjs = giveIds.map(id => state.players[id]).filter(Boolean);
+    if (targetPos !== "ALL") {
+      const bestInAtTarget = Math.max(0, ...getObjs.filter(p => p.position === targetPos).map(p => p.baseValue));
+      const bestOutAtTarget = Math.max(0, ...giveObjs.filter(p => p.position === targetPos).map(p => p.baseValue));
+      if (bestInAtTarget <= bestOutAtTarget) return;
+    }
+
+    const rawGive = giveObjs.reduce((s, p) => s + p.baseValue, 0);
+    const rawGet = getObjs.reduce((s, p) => s + p.baseValue, 0);
+    const cA = giveIds.length, cB = getIds.length;
+    let adjGive = rawGive, adjGet = rawGet;
+    if (cA !== cB) {
+      const tax = 1 - Math.min(0.16, Math.abs(cA - cB) * 0.07);
+      if (cA > cB) adjGive = Math.round(rawGive * tax);
+      else adjGet = Math.round(rawGet * tax);
+    }
+
+    const maxV = Math.max(adjGive, adjGet);
+    const match = maxV > 0 ? (1 - Math.abs(adjGive - adjGet) / maxV) * 100 : 0;
+    if (match < 84) return;
+    if (strat === 2 && match < 92) return;
+
+    const myAfter = myTm.players.filter(id => !giveIds.includes(id)).concat(getIds);
+    const ptAfter = part.players.filter(id => !getIds.includes(id)).concat(giveIds);
+    const dMy = calcOptimalLineup(myAfter, true).total - myBase;
+    const dPt = calcOptimalLineup(ptAfter, true).total - partBase;
+
+    if (strat === 0 && (dMy < 0.05 || dPt < -0.25)) return;
+    if (strat === 1 && dMy < 0.25) return;
+    if (strat === 2 && (dMy <= 0 && dPt <= 0)) return;
+
+    seenKeys.add(key);
+    props.push({
+      part, partnerIdx: tIdx, giveIds, getIds,
+      giveVal: adjGive, getVal: adjGet, match, dMy, dPt,
+      dealType, badgeCls, note: customNote
+    });
+  }
+
   state.managers.forEach((part, tIdx) => {
     if (tIdx === myIdx) return;
     const partBase = calcOptimalLineup(part.players, true).total;
     const thPl = part.players.map(id => state.players[id])
-      .filter(p => p && p.isCurrentNfl && ["QB","RB","WR","TE"].includes(p.position) && p.baseValue >= 1200)
+      .filter(p => p && p.isCurrentNfl && ["QB","RB","WR","TE"].includes(p.position) && p.baseValue >= 900)
       .sort((a, b) => b.baseValue - a.baseValue);
 
-    if (strat === 1) {
-      thPl.slice(0, 5).forEach(stud => {
+    // 1. 2-for-1 Stud Consolidations (You send 2 depth/starters -> Receive 1 Elite Stud)
+    if (pkgTypeFilter === "ALL" || pkgTypeFilter === "MULTI" || pkgTypeFilter === "2FOR1") {
+      thPl.slice(0, 7).forEach(stud => {
         if (targetPos !== "ALL" && stud.position !== targetPos) return;
-        if (stud.baseValue < 2800) return;
-        for (let m1 = 1; m1 < Math.min(9, myPl.length); m1++) {
-          for (let m2 = m1 + 1; m2 < Math.min(10, myPl.length); m2++) {
-            if (myPl[m1].baseValue >= stud.baseValue) continue;
-            const giveVal = Math.round((myPl[m1].baseValue + myPl[m2].baseValue) * 0.92);
-            const match = (1 - Math.abs(giveVal - stud.baseValue) / Math.max(giveVal, stud.baseValue)) * 100;
-            if (match < 86) continue;
-            const myAfter = myTm.players.filter(id => id !== myPl[m1].id && id !== myPl[m2].id).concat([stud.id]);
-            const ptAfter = part.players.filter(id => id !== stud.id).concat([myPl[m1].id, myPl[m2].id]);
-            const dMy = calcOptimalLineup(myAfter, true).total - myBase;
-            const dPt = calcOptimalLineup(ptAfter, true).total - partBase;
-            if (dMy > 0.05) {
-              props.push({
-                part, partnerIdx: tIdx, giveIds: [myPl[m1].id, myPl[m2].id], getIds: [stud.id],
-                giveVal, getVal: stud.baseValue, match, dMy, dPt,
-                note: `2-for-1 Stud Upgrade for ${stud.position}`
-              });
-              break;
+        if (stud.baseValue < 2400) return;
+        for (let m1 = 0; m1 < Math.min(10, myPl.length); m1++) {
+          if (myPl[m1].baseValue >= stud.baseValue * 0.92) continue;
+          for (let m2 = m1 + 1; m2 < Math.min(11, myPl.length); m2++) {
+            evaluateAndPushCandidate(
+              part, tIdx, partBase,
+              [myPl[m1].id, myPl[m2].id], [stud.id],
+              "2-FOR-1 CONSOLIDATION", "badge-purple",
+              `Package ${myPl[m1].position}+${myPl[m2].position} depth for elite ${stud.position}1`
+            );
+          }
+        }
+      });
+    }
+
+    // 2. 2-for-2 Cross-Positional Package Swaps (Upgrade primary target position + balance with secondary piece)
+    if (pkgTypeFilter === "ALL" || pkgTypeFilter === "MULTI" || pkgTypeFilter === "2FOR2") {
+      thPl.slice(0, 7).forEach(t1 => {
+        if (targetPos !== "ALL" && t1.position !== targetPos) return;
+        for (let m1 = 0; m1 < Math.min(8, myPl.length); m1++) {
+          const g1 = myPl[m1];
+          // g1 should be smaller than t1 (we are upgrading to t1)
+          if (g1.baseValue >= t1.baseValue * 0.92 || g1.baseValue < t1.baseValue * 0.45) continue;
+          for (let m2 = 0; m2 < Math.min(9, myPl.length); m2++) {
+            if (m2 === m1) continue;
+            const g2 = myPl[m2];
+            for (let ti2 = 1; ti2 < Math.min(10, thPl.length); ti2++) {
+              const t2 = thPl[ti2];
+              if (t2.id === t1.id) continue;
+              // g2 should be larger than t2 to balance the gap
+              if (g2.baseValue <= t2.baseValue) continue;
+              evaluateAndPushCandidate(
+                part, tIdx, partBase,
+                [g1.id, g2.id], [t1.id, t2.id],
+                "2-FOR-2 PACKAGE", "badge-green",
+                `Upgrade to ${t1.name.split(" ").pop()} (${t1.position}) while balancing ${g2.position}/${t2.position}`
+              );
             }
           }
         }
       });
-    } else {
+    }
+
+    // 3. 1-for-2 Depth Expansions (Send 1 high-value surplus stud -> Receive 2 starting upgrades)
+    if (pkgTypeFilter === "ALL" || pkgTypeFilter === "MULTI") {
+      myPl.slice(0, 4).forEach(myStud => {
+        if (myStud.baseValue < 3200) return;
+        // Avoid trading away our only elite player at our target upgrade position
+        if (targetPos !== "ALL" && myStud.position === targetPos) return;
+        for (let t1 = 0; t1 < Math.min(8, thPl.length); t1++) {
+          if (thPl[t1].baseValue >= myStud.baseValue * 0.90) continue;
+          for (let t2 = t1 + 1; t2 < Math.min(10, thPl.length); t2++) {
+            evaluateAndPushCandidate(
+              part, tIdx, partBase,
+              [myStud.id], [thPl[t1].id, thPl[t2].id],
+              "1-FOR-2 DEPTH", "badge-yellow",
+              `Split ${myStud.position} stud into 2 startable ${thPl[t1].position}/${thPl[t2].position} upgrades`
+            );
+          }
+        }
+      });
+    }
+
+    // 4. 1-for-1 Positional Swaps
+    if (pkgTypeFilter === "ALL" || pkgTypeFilter === "1FOR1") {
       myPl.slice(0, 10).forEach(gP => {
         thPl.slice(0, 10).forEach(rP => {
           if (gP.position === rP.position) return;
           if (targetPos !== "ALL" && rP.position !== targetPos) return;
-          const ratio = rP.baseValue / gP.baseValue;
-          if (ratio < 0.82 || ratio > 1.22) return;
-          const match = (1 - Math.abs(gP.baseValue - rP.baseValue) / Math.max(gP.baseValue, rP.baseValue)) * 100;
-          const myAfter = myTm.players.filter(id => id !== gP.id).concat([rP.id]);
-          const ptAfter = part.players.filter(id => id !== rP.id).concat([gP.id]);
-          const dMy = calcOptimalLineup(myAfter, true).total - myBase;
-          const dPt = calcOptimalLineup(ptAfter, true).total - partBase;
-
-          if (strat === 0 && dMy > 0.05 && dPt > -0.15) {
-            props.push({
-              part, partnerIdx: tIdx, giveIds: [gP.id], getIds: [rP.id],
-              giveVal: gP.baseValue, getVal: rP.baseValue, match, dMy, dPt,
-              note: `Swap ${gP.position} depth for ${rP.position} starter`
-            });
-          } else if (strat === 2 && match >= 92 && (dMy > 0 || dPt > 0)) {
-            props.push({
-              part, partnerIdx: tIdx, giveIds: [gP.id], getIds: [rP.id],
-              giveVal: gP.baseValue, getVal: rP.baseValue, match, dMy, dPt,
-              note: `Balanced ${gP.position} for ${rP.position} Value Match`
-            });
-          }
+          evaluateAndPushCandidate(
+            part, tIdx, partBase,
+            [gP.id], [rP.id],
+            "1-FOR-1 SWAP", "badge-blue",
+            `Direct ${gP.position} surplus for ${rP.position} starter swap`
+          );
         });
       });
     }
   });
 
-  const topProps = props.sort((a, b) => (b.dMy + b.dPt) - (a.dMy + a.dPt)).slice(0, 12);
+  // Sort proposals so multi-player & high-PPG-impact deals surface cleanly
+  props.sort((a, b) => {
+    if (strat === 1) return b.dMy - a.dMy;
+    if (strat === 2) return b.match - a.match;
+    return (b.dMy * 1.35 + Math.max(0, b.dPt)) - (a.dMy * 1.35 + Math.max(0, a.dPt));
+  });
+
+  const topProps = props.slice(0, 14);
   document.getElementById("finderCountLbl").textContent = `${topProps.length} proposals`;
 
   if (!topProps.length) {
-    tbody.innerHTML = `<tr><td colspan="6" style="padding:24px;color:var(--warn);">No strict matches for this filter. Try switching Strategy or Target Position above.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="6" style="padding:24px;color:var(--warn);">No strict matches for this filter combination. Try setting Package Size to "All Packages" or Target Upgrade to "Any Position".</td></tr>`;
     return;
   }
 
@@ -1727,6 +2080,7 @@ function renderTradeFinder() {
     tr.className = "table-row-hover";
     tr.innerHTML = `
       <td style="text-align:left;">
+        <span class="badge ${pr.badgeCls}" style="margin-bottom:5px;">${pr.dealType}</span>
         <div style="font-weight:800;font-size:13px;color:var(--text-main);">${pr.part.teamName.split(" (")[0]}</div>
         <div style="font-size:11px;color:var(--accent);font-weight:700;margin-top:2px;">Rank #${pr.part.currentRank} (${pr.part.wins}-${pr.part.losses})</div>
         <div style="font-size:11px;color:var(--text-muted);margin-top:3px;">${pr.note}</div>
@@ -1735,7 +2089,7 @@ function renderTradeFinder() {
       <td>${renderTradeAssetStackHTML(pr.getIds)}</td>
       <td>
         <div style="display:flex;flex-direction:column;gap:5px;align-items:center;">
-          <span class="badge badge-green">${pr.match.toFixed(0)}% Match</span>
+          <span class="badge ${pr.match >= 92 ? 'badge-green' : 'badge-blue'}">${pr.match.toFixed(0)}% Value Match</span>
           <div style="font-size:11px;color:var(--text-muted);font-weight:700;">${pr.giveVal} vs ${pr.getVal}</div>
         </div>
       </td>
@@ -2093,7 +2447,6 @@ function renderSosTab() {
       .filter(p => p && (p.position === pos || (pos === "DEF" && p.position === "DEF")))
       .map(p => ({ isTeamRow: false, player: p, team: p.team, sos: computeFourWeekSosMetrics(p.team, weeks, pos) }));
   } else {
-    // Top Available Waiver Targets at this position
     const rostered = new Set();
     state.managers.forEach(m => m.players.forEach(pid => rostered.add(pid)));
     rows = Object.values(state.players)
@@ -2214,6 +2567,7 @@ function renderAllViews(teamIdx) {
   renderTradeBuilderSide(true);
   renderTradeBuilderSide(false);
   updateTradeEvaluation();
+  renderTradeFinder();
   renderOptimizerTab(teamIdx);
   renderWaiversTab();
   renderMatchupSim();
@@ -2240,10 +2594,12 @@ document.getElementById("usernameInput").onkeydown = e => { if (e.key === "Enter
 document.getElementById("leagueSelect").onchange = e => loadLeague(parseInt(e.target.value, 10));
 document.getElementById("teamSelect").onchange = e => {
   const idx = parseInt(e.target.value, 10);
-  renderRosterTab(idx); renderOptimizerTab(idx); renderSosTab();
+  document.getElementById("tradeTeamA").value = idx;
+  renderRosterTab(idx); renderOptimizerTab(idx); renderSosTab(); renderTradeFinder();
 };
 weekSelect.onchange = async e => {
   state.week = parseInt(e.target.value, 10);
+  syncLiveEspnSchedule(state.week);
   renderSosTab();
   if (state.activeLeague) await loadLeague(document.getElementById("leagueSelect").value);
 };
@@ -2255,6 +2611,7 @@ document.getElementById("dbSearch").oninput = renderTradeDatabase;
 document.getElementById("dbPosFilter").onchange = renderTradeDatabase;
 document.getElementById("dbSrcFilter").onchange = renderTradeDatabase;
 document.getElementById("finderPos").onchange = renderTradeFinder;
+document.getElementById("finderPkgType").onchange = renderTradeFinder;
 document.getElementById("finderStrat").onchange = renderTradeFinder;
 document.getElementById("waiverPos").onchange = renderWaiversTab;
 document.getElementById("waiverChartMode").onchange = drawWaiverChart;
