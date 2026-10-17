@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Sleeper Fantasy Command Center</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<div class="top-nav">
+  <div class="top-brand-row">
+    <div class="title-label">SLEEPER COMMAND CENTER</div>
+    <div style="display:flex; gap:10px; align-items:center;">
+      <button id="shareBtn" style="background:#232834; font-size:12px; padding:5px 12px;">Copy Share Link</button>
+      <div id="statusLabel" class="status-pill">Enter your Sleeper username to sync leagues</div>
+    </div>
+  </div>
+  <div class="controls-row">
+    <label>ACCOUNT</label>
+    <input id="usernameInput" placeholder="Sleeper username..." style="width:175px;" />
+    <button id="syncBtn">Sync Account</button>
+    <label style="margin-left:6px;">LEAGUE</label>
+    <select id="leagueSelect" class="grow"><option>-- Sync account first --</option></select>
+    <label style="margin-left:6px;">ROSTER</label>
+    <select id="teamSelect" class="grow"><option>-- Select League --</option></select>
+    <label style="margin-left:6px;">WEEK</label>
+    <select id="weekSelect" style="width:115px;"></select>
+  </div>
+</div>
+
+<div class="body-layout">
+  <div class="sidebar">
+    <button class="nav-btn active" data-tab="tab-roster">Roster Overview</button>
+    <button class="nav-btn" data-tab="tab-power">Power Rankings</button>
+    <button class="nav-btn" data-tab="tab-trade">Trade Center</button>
+    <button class="nav-btn" data-tab="tab-opt">Lineup Optimizer</button>
+    <button class="nav-btn" data-tab="tab-waiver">Waiver Wire</button>
+    <button class="nav-btn" data-tab="tab-analytics">Player Analytics</button>
+    <button class="nav-btn" data-tab="tab-sos">SOS Heat-Map</button>
+    <button class="nav-btn" data-tab="tab-bracket">Playoff Bracket</button>
+    <button class="nav-btn" data-tab="tab-matchup">Matchup Simulator</button>
+  </div>
+
+  <div class="content-stack">
+    <!-- TAB 1: ROSTER -->
+    <div id="tab-roster" class="tab-page active">
+      <div class="card-banner">
+        <div class="banner-inner">
+          <div id="rTeamName" style="font-size:16px; font-weight:800; flex:1;">Team: --</div>
+          <span id="rRecord" class="badge badge-green">Record: 0 - 0</span>
+          <span id="rAllPlay" class="badge badge-blue">All-Play: 0 - 0</span>
+          <span id="rPoints" style="font-size:12px; font-weight:600;">PF: 0.0 (Max: 0.0 | 0.0% Eff) | PA: 0.0</span>
+          <span id="rRank" class="badge badge-yellow" style="background:#232834; color:var(--text-main);">Power Rank: #--</span>
+        </div>
+        <div id="rPosStrength" style="font-size:12px; color:var(--text-muted);">Positional Depth & Health Summary: Sync league to analyze.</div>
+      </div>
+      <div class="sup-bar">
+        <div class="sup-title">WEEKLY SUPERLATIVES</div>
+        <div id="supJug" class="sup-item">TOP SCORER: --</div>
+        <div id="supBench" class="sup-item">BENCH POINTS LEFT: --</div>
+        <div id="supHeart" class="sup-item">NARROWEST LOSS: --</div>
+      </div>
+      <div class="sec-hdr" style="color:var(--good);">STARTING LINEUP</div>
+      <div class="table-wrap"><table id="startersTbl"></table></div>
+      <div class="sec-hdr" style="color:var(--text-muted);">BENCH DEPTH</div>
+      <div class="table-wrap"><table id="benchTbl"></table></div>
+      <div id="irSec" style="display:none; flex-direction:column; gap:8px;">
+        <div class="sec-hdr" style="color:var(--bad);">INJURED RESERVE (IR)</div>
+        <div class="table-wrap"><table id="irTbl"></table></div>
+      </div>
+      <div id="taxiSec" style="display:none; flex-direction:column; gap:8px;">
+        <div class="sec-hdr" style="color:var(--warn);">TAXI SQUAD</div>
+        <div class="table-wrap"><table id="taxiTbl"></table></div>
+      </div>
+    </div>
+
+    <!-- TAB 2: POWER RANKINGS -->
+    <div id="tab-power" class="tab-page">
+      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+        <div style="font-size:15px; font-weight:800;">LEAGUE POWER RANKINGS, WEEKLY TRAJECTORY & ROS PROJECTIONS</div>
+        <div style="display:flex; align-items:center; gap:8px;">
+          <label style="font-size:12px; color:var(--text-muted);">Chart View:</label>
+          <select id="powerChartMode" style="min-width:360px;">
+            <option value="0">View 1: Weekly Power Rank Trajectory (Week 1 → Current Week)</option>
+            <option value="1">View 2: Seasonal Projections — Projected Final Wins & Playoff Odds</option>
+            <option value="2">View 3: Manager Efficiency vs. Points Against (Skill vs Luck)</option>
+          </select>
+        </div>
+      </div>
+      <canvas id="powerCanvas" class="chart-canvas"></canvas>
+      <div class="table-wrap"><table id="powerTbl"></table></div>
+    </div>
+
+    <!-- TAB 3: TRADE CENTER -->
+    <div id="tab-trade" class="tab-page">
+      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+        <div class="seg-bar-container">
+          <button class="seg-btn active" data-tmode="0">Trade Builder</button>
+          <button class="seg-btn" data-tmode="1">Trade Database</button>
+          <button class="seg-btn" data-tmode="2">Trade Finder & Needs Analysis</button>
+        </div>
+        <span id="tradeFormatBadge" class="badge badge-blue">REDRAFT MODE</span>
+      </div>
+
+      <div id="tmode-0" class="trade-grid">
+        <div class="card-banner">
+          <div style="font-size:11px; font-weight:800; color:var(--text-muted);">YOUR TEAM / MANAGER 1 ROSTER</div>
+          <select id="tradeTeamA"></select>
+          <div id="tradeListA" class="scroll-list" style="max-height:300px;"></div>
+          <div id="picksWrapA" style="display:none; flex-direction:column; gap:6px; margin-top:4px;">
+            <div style="font-size:11px; font-weight:800; color:var(--accent);">AVAILABLE DRAFT PICKS (CLICK TO ADD)</div>
+            <div id="tradePicksA" class="scroll-list" style="max-height:140px;"></div>
+          </div>
+        </div>
+        <div class="card-banner">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <div style="font-size:13px; font-weight:700; color:var(--text-muted);">Trade Package Analysis (Click Item to Remove)</div>
+            <button id="toggleTradeFormulaBtn" class="btn-builder-action" style="padding:4px 9px; font-size:10px;">Valuation Formula</button>
+          </div>
+          <div id="tradeFormulaBox" style="display:none; background:#10121A; border:1px solid var(--accent); padding:10px; border-radius:8px; font-size:11px; line-height:1.5; color:var(--text-main);">
+            <b style="color:var(--accent);">How Trade Value (0–9999) Is Calculated:</b><br>
+            • <b>Rank Curve:</b> <code>7800 × e^(-0.0105 × (SleeperRank - 1))</code><br>
+            • <b>PPG Production:</b> <code>(Player PPG ÷ Position Baseline PPG) × 3400</code><br>
+            • <b>League Format Weight:</b> Redraft weights 60% PPG / 40% Rank; Dynasty weights 68% Rank / 32% PPG × Age Multiplier.<br>
+            • <b>Consolidation Tax:</b> Multi-asset packages apply a 6%–18% roster-spot tax to the side sending more assets.<br>
+            • <b>Draft Picks (Keeper/Dynasty):</b> <code>Round Base × Slot Mult (0.76–1.34) × Year Discount (0.88^yr)</code>.
+          </div>
+          <div id="sideATitle" style="font-size:12px; font-weight:800; color:var(--bad);">Manager 1 Sends (0 pts)</div>
+          <div id="pkgListA" class="scroll-list" style="max-height:135px; min-height:70px; background:#10121A; padding:8px; border-radius:8px; border:1px solid var(--border);"></div>
+          <div id="sideBTitle" style="font-size:12px; font-weight:800; color:var(--good);">Manager 2 Sends (0 pts)</div>
+          <div id="pkgListB" class="scroll-list" style="max-height:135px; min-height:70px; background:#10121A; padding:8px; border-radius:8px; border:1px solid var(--border);"></div>
+          <div id="tradeFairness" style="text-align:center; font-weight:800; color:var(--accent); font-size:13px; padding:4px;">Select assets on both sides to analyze.</div>
+          <div id="tradeConsole" style="background:#10121A; border:1px solid var(--border); padding:10px; border-radius:10px; font-size:12px; line-height:1.5; color:var(--text-muted);">
+            Trade Builder calculates Asset Value Points, ROS Lineup PPG Delta, and Playoff PPG Delta.
+          </div>
+          <button id="clearTradeBtn" style="background:#232834;">Clear Trade Package</button>
+        </div>
+        <div class="card-banner">
+          <div style="font-size:11px; font-weight:800; color:var(--text-muted);">TRADE PARTNER / MANAGER 2 ROSTER</div>
+          <select id="tradeTeamB"></select>
+          <div id="tradeListB" class="scroll-list" style="max-height:300px;"></div>
+          <div id="picksWrapB" style="display:none; flex-direction:column; gap:6px; margin-top:4px;">
+            <div style="font-size:11px; font-weight:800; color:var(--good);">AVAILABLE DRAFT PICKS (CLICK TO ADD)</div>
+            <div id="tradePicksB" class="scroll-list" style="max-height:140px;"></div>
+          </div>
+        </div>
+      </div>
+
+      <div id="tmode-1" style="display:none; flex-direction:column; gap:12px;">
+        <div class="card-banner" style="padding:12px 16px;">
+          <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+            <input id="dbSearch" placeholder="Search player name (e.g. Bijan, Jefferson, Lamar, Bowers)..." style="flex:1; min-width:220px;" />
+            <select id="dbPosFilter" style="width:165px;">
+              <option value="ALL">All Positions</option><option value="QB">QB Trades</option>
+              <option value="RB">RB Trades</option><option value="WR">WR Trades</option><option value="TE">TE Trades</option>
+            </select>
+            <select id="dbSrcFilter" style="width:230px;">
+              <option value="ALL">All Sources (League + Market)</option>
+              <option value="LEAGUE">My Sleeper League Trades Only</option>
+              <option value="MARKET">Community Market Comps Only</option>
+            </select>
+            <span id="dbCountLbl" class="badge badge-green">0 trades found</span>
+          </div>
+        </div>
+        <div class="table-wrap"><table id="dbTable"></table></div>
+      </div>
+
+      <div id="tmode-2" style="display:none; flex-direction:column; gap:12px;">
+        <div class="card-banner" style="gap:10px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+            <div style="font-size:13px; font-weight:800;">ROSTER POSITIONAL GRADES & TRADE UPGRADE BLUEPRINT</div>
+            <div style="font-size:11px; color:var(--text-muted); font-weight:600;">Click any positional card below to filter Trade Finder for that upgrade</div>
+          </div>
+          <div id="posGradesGrid" class="grade-grid"></div>
+          <div id="rosterNeedsSummary" style="background:#10121A; border:1px solid var(--border); border-radius:9px; padding:10px 14px; font-size:12px; line-height:1.5;">
+            Sync your Sleeper league above to generate positional grades, league ranks, and multi-player trade recommendations.
+          </div>
+        </div>
+        <div class="card-banner" style="padding:12px 16px;">
+          <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+            <label style="font-size:12px; color:var(--text-muted);">Target Upgrade:</label>
+            <select id="finderPos" style="width:auto; min-width:185px;">
+              <option value="AUTO">Auto (Target My #1 Weakest Position)</option>
+              <option value="ALL">Any Position Upgrade</option>
+              <option value="QB">Target QB Upgrade</option><option value="RB">Target RB Upgrade</option>
+              <option value="WR">Target WR Upgrade</option><option value="TE">Target TE Upgrade</option>
+            </select>
+            <label style="font-size:12px; color:var(--text-muted);">Package Size:</label>
+            <select id="finderPkgType" style="width:auto; min-width:210px;">
+              <option value="ALL">All Packages</option>
+              <option value="PICK_PKG">Player + Draft Pick Packages Only</option>
+              <option value="MULTI">Multi-Player Deals Only (2-for-1, 2-for-2, 1-for-2)</option>
+              <option value="2FOR1">2-for-1 Stud Consolidations Only</option>
+              <option value="2FOR2">2-for-2 Package Swaps Only</option>
+              <option value="1FOR1">1-for-1 Positional Swaps Only</option>
+            </select>
+            <div id="finderPickModeWrap" style="display:none; align-items:center; gap:8px;">
+              <label style="font-size:12px; color:var(--accent); font-weight:800;">2027–28 Picks:</label>
+              <select id="finderPickMode" style="width:auto; min-width:195px; border-color:rgba(10,132,255,0.5);">
+                <option value="AUTO">On (Keeper & Dynasty)</option>
+                <option value="OFF">Players Only (No Picks)</option>
+              </select>
+            </div>
+            <label style="font-size:12px; color:var(--good); font-weight:800;">Playoff SOS Boost:</label>
+            <select id="finderSosBoost" style="width:auto; min-width:210px; border-color:rgba(48,209,88,0.5);">
+              <option value="BOOST">ON — Prioritize A / A+ Playoff Schedules</option>
+              <option value="STRICT">STRICT — Only Acquire A / A+ Playoff Slates</option>
+              <option value="OFF">OFF — Standard ROS PPG Only</option>
+            </select>
+            <label style="font-size:12px; color:var(--text-muted);">Strategy:</label>
+            <select id="finderStrat" style="flex:1; min-width:180px;">
+              <option value="0">Mutual Lineup Upgrade (Win-Win PPG)</option>
+              <option value="1">Max My Starting Lineup PPG Gain</option>
+              <option value="2">Strict Value Match (Within 8% Fairness)</option>
+            </select>
+            <span id="finderCountLbl" class="badge badge-blue">0 proposals</span>
+          </div>
+        </div>
+        <div class="table-wrap"><table id="finderTable"></table></div>
+      </div>
+    </div>
+
+    <!-- TAB 4: OPTIMIZER -->
+    <div id="tab-opt" class="tab-page">
+      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap;">
+        <div id="optHeader" style="font-size:15px; font-weight:800;">WEEK LINEUP COMPARISON: CURRENT VS. OPTIMAL</div>
+        <div id="optSubAlert" style="font-size:12px; font-weight:700; color:var(--warn);"></div>
+      </div>
+      <div style="display:flex; justify-content:space-between; font-weight:800; font-size:13px; padding:0 8px;">
+        <span id="optCurTot" style="color:var(--warn);">CURRENT LINEUP: 0.00 pts</span>
+        <span id="optBestTot" style="color:var(--good);">OPTIMUM LINEUP: 0.00 pts</span>
+      </div>
+      <div id="optRows" style="display:flex; flex-direction:column; gap:8px;"></div>
+    </div>
+
+    <!-- TAB 5: WAIVERS -->
+    <div id="tab-waiver" class="tab-page">
+      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+        <div style="font-size:15px; font-weight:800;">WAIVER WIRE PICKUP ANALYTICS</div>
+        <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+          <select id="waiverPos" style="width:185px;">
+            <option value="ALL">ALL (VORP Ranked)</option><option value="QB">QB</option><option value="RB">RB</option>
+            <option value="WR">WR</option><option value="TE">TE</option><option value="FLEX">FLEX (RB/WR/TE)</option><option value="DEF">DEF</option><option value="K">K</option>
+          </select>
+          <select id="waiverChartMode" style="min-width:310px;">
+            <option value="0">Chart 1: VORP-Adjusted Pickup Score (Normalizes Positions)</option>
+            <option value="1">Chart 2: Role Usage & Opportunity Volume Leaders</option>
+            <option value="2">Chart 3: Breakout Trend — Week Proj vs. Season Avg PPG</option>
+          </select>
+        </div>
+      </div>
+      <canvas id="waiverCanvas" class="chart-canvas" style="height:280px;"></canvas>
+      <div class="sec-hdr" style="color:var(--good);">TOP AVAILABLE WAIVER TARGETS</div>
+      <div class="table-wrap"><table id="waiverTbl"></table></div>
+    </div>
+
+    <!-- TAB 6: PLAYER ANALYTICS -->
+    <div id="tab-analytics" class="tab-page">
+      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+        <div style="font-size:15px; font-weight:800;">ADVANCED PLAYER METRICS & TREND GRAPHS (TOP 32 ACTIVE)</div>
+        <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+          <label style="font-size:12px; color:var(--text-muted);">Position:</label>
+          <select id="analyticsPos" style="width:auto; min-width:175px;">
+            <option value="QB">Quarterbacks (QB)</option><option value="RB">Running Backs (RB)</option>
+            <option value="WR">Wide Receivers (WR)</option><option value="TE">Tight Ends (TE)</option><option value="DEF">Team Defense (DEF)</option>
+          </select>
+          <label style="font-size:12px; color:var(--text-muted);">Metric View:</label>
+          <select id="analyticsGraphSelect" style="width:auto; min-width:360px;"></select>
+          <label style="font-size:12px; color:var(--good); font-weight:800;">Sort Top 32 By:</label>
+          <select id="analyticsSortKey" style="width:auto; min-width:190px; border-color:rgba(48,209,88,0.5);">
+            <option value="seasonPpg">Season Fantasy PPG</option>
+            <option value="yKey">Active Y-Axis Metric</option>
+            <option value="xKey">Active X-Axis Metric</option>
+            <option value="projectedPoints">Weekly Projected Points</option>
+            <option value="vorpScore">VORP Score</option>
+            <option value="baseValue">Market Trade Value</option>
+          </select>
+          <button id="toggleAnalyticsFormulaBtn" class="btn-builder-action" style="padding:7px 12px;">Metric Formulas</button>
+        </div>
+      </div>
+
+      <div id="analyticsFormulaCard" class="card-banner" style="display:none; background:#12151E; border:1px solid var(--accent); font-size:12px; line-height:1.6;">
+        <div style="font-weight:800; color:var(--accent); font-size:13px;">HOW PLAYER ANALYTICS & TRADE VALUE ARE CALCULATED (REAL SLEEPER BOX-SCORE STATS)</div>
+        <div>• <b>TPRR % (Targets per Route Run):</b> <code>(Targets/Gm ÷ Estimated Routes Run/Gm) × 100</code> derived from actual offensive snaps (<code>off_snp</code>).</div>
+        <div>• <b>YPRR (Yards per Route Run):</b> <code>Receiving Yards/Gm (rec_yd) ÷ Estimated Routes Run/Gm</code>.</div>
+        <div>• <b>YPTOE (Yards per Target Over Expected):</b> <code>(Rec Yards ÷ Targets) - Positional NFL Baseline (8.3 WR / 7.4 TE)</code>.</div>
+        <div>• <b>RB Gold Touches / Gm:</b> <code>Red Zone Carries/Gm (rush_rz_att) + Red Zone Targets/Gm (rec_rz_tgt)</code>.</div>
+        <div>• <b>RYOE / Gm (Rush Yards Over Expected):</b> <code>(Player YPC - 4.15 NFL Baseline YPC) × Rush Attempts/Gm</code>.</div>
+        <div>• <b>QB CPOE & EPA/Play:</b> <code>Completion % (pass_cmp ÷ pass_att) - 64.2% Expected</code> and efficiency per dropback from yards, TDs, and INTs.</div>
+        <div>• <b>Trade Value (0–9999):</b> Exponential Sleeper Rank curve (<code>7800 × e^(-0.0105×Rank)</code>) blended with PPG production ratio (<code>PPG ÷ Baseline × 3400</code>), Superflex/TEP multipliers, and Dynasty Age Curve.</div>
+      </div>
+
+      <div class="card-banner" style="padding:16px;">
+        <div id="singleGraphTitle" style="font-size:14px; font-weight:800; color:var(--accent); margin-bottom:8px;">Metric Graph</div>
+        <canvas id="analyticsCanvasSingle" style="width:100%; height:440px; background:var(--bg-card); border-radius:10px; display:block;"></canvas>
+      </div>
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <div class="sec-hdr" style="color:var(--accent);">PLOTTED PLAYER DATA TABLE (CLICK ANY COLUMN HEADER TO SORT)</div>
+        <div style="font-size:11px; color:var(--text-muted);">Showing Top 32 Active Players</div>
+      </div>
+      <div class="table-wrap"><table id="analyticsTable"></table></div>
+    </div>
+
+    <!-- TAB 7: SOS HEAT-MAP -->
+    <div id="tab-sos" class="tab-page">
+      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+        <div>
+          <div id="sosTitleHdr" style="font-size:15px; font-weight:800;">POSITIONAL STRENGTH OF SCHEDULE (SOS) HEAT-MAP</div>
+          <div style="font-size:12px; color:var(--text-muted); margin-top:2px;">
+            Defense vs. Position (DvP) Rank: <span style="color:var(--good);font-weight:700;">#25–#32 Smash (Green)</span> •
+            <span style="color:#86EFAC;font-weight:700;">#18–#24 Favorable</span> •
+            <span style="color:var(--text-main);font-weight:700;">#12–#17 Neutral</span> •
+            <span style="color:var(--warn);font-weight:700;">#6–#11 Tough</span> •
+            <span style="color:var(--bad);font-weight:700;">#1–#5 Shutdown (Red)</span>
+          </div>
+        </div>
+        <div class="seg-bar-container">
+          <button class="sos-mode-btn active" data-sosmode="NEXT4">Upcoming 4 Weeks</button>
+          <button class="sos-mode-btn" data-sosmode="PLAYOFFS">Fantasy Playoffs</button>
+          <button class="sos-mode-btn" data-sosmode="PUSH">Playoff Push + Playoffs</button>
+        </div>
+      </div>
+      <div class="card-banner" style="padding:12px 16px;">
+        <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; justify-content:space-between;">
+          <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+            <label style="font-size:12px; color:var(--text-muted);">Position:</label>
+            <select id="sosPos" style="width:auto; min-width:180px;">
+              <option value="QB">Quarterbacks (vs QB)</option><option value="RB">Running Backs (vs RB)</option>
+              <option value="WR">Wide Receivers (vs WR)</option><option value="TE">Tight Ends (vs TE)</option><option value="DEF">Team Defense (vs Opp Off)</option>
+            </select>
+            <label style="font-size:12px; color:var(--text-muted);">Scope:</label>
+            <select id="sosScope" style="width:auto; min-width:255px;">
+              <option value="ALL">All 32 NFL Teams</option>
+              <option value="TOP_PLAYERS">Top 36 Positional Players (Trade Targets)</option>
+              <option value="ROSTER">My Selected Roster Players</option>
+              <option value="WAIVER">Top Available Waiver Targets</option>
+            </select>
+            <label style="font-size:12px; color:var(--text-muted);">Sort:</label>
+            <select id="sosSort" style="width:auto; min-width:195px;">
+              <option value="EASIEST">Easiest Slate First (Target)</option>
+              <option value="HARDEST">Toughest Slate First (Fade/Sell)</option>
+            </select>
+          </div>
+          <span id="sosWindowBadge" class="badge badge-blue">UPCOMING 4-WEEK SLATE</span>
+        </div>
+      </div>
+      <div class="table-wrap"><table id="sosTable"></table></div>
+    </div>
+
+    <!-- TAB 8: PLAYOFF BRACKET SIMULATOR -->
+    <div id="tab-bracket" class="tab-page">
+      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+        <div>
+          <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+            <div id="bracketMainTitle" style="font-size:15px; font-weight:800;">FANTASY PLAYOFF BRACKET SIMULATOR</div>
+            <span id="bracketFormatBadge" class="badge badge-green">LEAGUE FORMAT: 6-TEAM PLAYOFF • STARTS WK 15</span>
+          </div>
+          <div style="font-size:12px; color:var(--text-muted); margin-top:2px;">
+            Automatically syncs your Sleeper league's playoff team count (4, 6, 7, or 8 teams), start week, and seeding rules. Click any team card to force an upset.
+          </div>
+        </div>
+        <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+          <label style="font-size:12px; color:var(--text-muted);">Format:</label>
+          <select id="bracketTeamsOverride" style="width:auto; min-width:195px;">
+            <option value="AUTO">Auto (Use League Settings)</option>
+            <option value="4">4-Team Playoff (2 Rounds)</option>
+            <option value="6">6-Team Playoff (Top 2 Byes)</option>
+            <option value="7">7-Team Playoff (Top 1 Bye)</option>
+            <option value="8">8-Team Playoff (No Byes)</option>
+          </select>
+          <label style="font-size:12px; color:var(--text-muted);">Seeding:</label>
+          <select id="bracketSeedMode" style="width:auto; min-width:225px;">
+            <option value="CURRENT">Current Standings (Record → PF → PA)</option>
+            <option value="PROJ">Projected Final Standings</option>
+            <option value="POWER">Power Rankings Contenders</option>
+          </select>
+          <label style="font-size:12px; color:var(--text-muted);">Rule:</label>
+          <select id="bracketReseedMode" style="width:auto; min-width:205px;">
+            <option value="AUTO">Auto (Use League Settings)</option>
+            <option value="FIXED">Fixed Bracket Draw</option>
+            <option value="RESEED">NFL Re-Seeded (#1 vs Lowest)</option>
+          </select>
+          <button id="resetBracketBtn" style="background:#232834; font-size:12px; padding:7px 14px;">Reset Picks</button>
+        </div>
+      </div>
+      <div id="bracketGridContainer" class="bracket-grid"></div>
+      <div class="sec-hdr" style="color:var(--good);">PLAYOFF FIELD & BUBBLE CHAMPIONSHIP ODDS BREAKDOWN</div>
+      <div class="table-wrap"><table id="bracketOddsTable"></table></div>
+    </div>
+
+    <!-- TAB 9: MATCHUP SIMULATOR -->
+    <div id="tab-matchup" class="tab-page">
+      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+        <div style="font-size:15px; font-weight:800;">HEAD-TO-HEAD MATCHUP & WIN-PROBABILITY SIMULATOR</div>
+        <div style="display:flex; align-items:center; gap:8px;">
+          <select id="simTeamA" style="min-width:210px;"></select>
+          <span style="font-size:13px; font-weight:800; color:var(--accent); padding:0 6px;">VS</span>
+          <select id="simTeamB" style="min-width:210px;"></select>
+        </div>
+      </div>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px;">
+        <div class="card-banner" style="text-align:center;">
+          <div id="simBannerA" style="font-size:14px; font-weight:800; color:var(--good);">Team A Win Prob: 50.0%</div>
+          <div id="simScoreA" style="font-size:12px; color:var(--text-muted); font-weight:600;">Proj Score: 0.00 pts</div>
+        </div>
+        <div class="card-banner" style="text-align:center;">
+          <div id="simBannerB" style="font-size:14px; font-weight:800; color:var(--bad);">Team B Win Prob: 50.0%</div>
+          <div id="simScoreB" style="font-size:12px; color:var(--text-muted); font-weight:600;">Proj Score: 0.00 pts</div>
+        </div>
+      </div>
+      <div id="simRows" style="display:flex; flex-direction:column; gap:8px;"></div>
+    </div>
+  </div>
+</div>
