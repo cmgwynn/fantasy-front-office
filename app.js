@@ -1,3 +1,40 @@
+// ============================================================================
+// SLEEPER COMMAND CENTER — COMPLETE & VERIFIED APPLICATION SCRIPT (app.js)
+// ============================================================================
+
+// 1. Top-Level Tab & Sub-Tab Switcher
+document.addEventListener("click", e => {
+  const navBtn = e.target.closest(".nav-btn");
+  if (navBtn && navBtn.dataset.tab) {
+    document.querySelectorAll(".nav-btn").forEach(b => b.classList.remove("active"));
+    document.querySelectorAll(".tab-page").forEach(p => p.classList.remove("active"));
+    navBtn.classList.add("active");
+    const targetPage = document.getElementById(navBtn.dataset.tab);
+    if (targetPage) targetPage.classList.add("active");
+    drawPowerChart();
+    drawWaiverChart();
+    drawSingleAnalyticsChart();
+    renderSosTab();
+    renderPlayoffBracketTab();
+    return;
+  }
+
+  const segBtn = e.target.closest(".seg-btn");
+  if (segBtn && segBtn.dataset.tmode !== undefined) {
+    switchTradeMode(parseInt(segBtn.dataset.tmode, 10));
+    return;
+  }
+
+  const sosBtn = e.target.closest(".sos-mode-btn");
+  if (sosBtn && sosBtn.dataset.sosmode) {
+    document.querySelectorAll(".sos-mode-btn").forEach(b => b.classList.remove("active"));
+    sosBtn.classList.add("active");
+    state.sosWindowMode = sosBtn.dataset.sosmode;
+    renderSosTab();
+  }
+});
+
+// 2. Constants & State
 const NFL_TEAMS = ["ari","atl","bal","buf","car","chi","cin","cle","dal","den","det","gb","hou","ind","jax","kc","lv","lac","lar","mia","min","ne","no","nyg","nyj","phi","pit","sf","sea","tb","ten","was"];
 const NFL_TEAM_NAMES = {
   ARI:"Arizona Cardinals", ATL:"Atlanta Falcons", BAL:"Baltimore Ravens", BUF:"Buffalo Bills",
@@ -10,14 +47,53 @@ const NFL_TEAM_NAMES = {
   SEA:"Seattle Seahawks", TB:"Tampa Bay Buccaneers", TEN:"Tennessee Titans", WAS:"Washington Commanders"
 };
 const DOME_TEAMS = new Set(["ARI","ATL","DAL","DET","HOU","IND","LAC","LAR","LV","MIN","NO"]);
-
-// Baseline 2026 fallback (automatically overwritten for 2027+ by syncFullSeasonNflSchedule)
 const BYE_2026 = {
   CAR:5, KC:5, CIN:6, DET:6, MIA:6, MIN:6, BUF:7, JAX:7, LAC:7, WAS:7,
   HOU:8, NO:8, NYG:8, SF:8, PIT:9, TEN:9, CHI:10, DEN:10, PHI:10, TB:10,
   ATL:11, CLE:11, GB:11, LAR:11, LA:11, NE:11, SEA:11, BAL:13, IND:13, LV:13, NYJ:13, ARI:14, DAL:14
 };
 
+const state = {
+  season: String(new Date().getFullYear()),
+  week: 6, userId: "", leagues: [], activeLeague: null,
+  players: {}, rawProj: {}, rawStats: {}, managers: [],
+  tradeSideA: [], tradeSideB: [], dbTrades: [], waiverTargets: [],
+  weakestPosByTeam: {}, sosWindowMode: "NEXT4", bracketOverrides: {}
+};
+
+let dbSortKey = "matchPct", dbSortDir = -1;
+let finderSortKey = "Composite", finderSortDir = -1;
+let analyticsSortDir = -1;
+
+// 3. Team Logo Preloader
+const logoImgCache = {};
+let logoRedrawTimer = null;
+function scheduleLogoRedraw() {
+  if (logoRedrawTimer) return;
+  logoRedrawTimer = setTimeout(() => {
+    logoRedrawTimer = null;
+    if (document.getElementById("tab-analytics")?.classList.contains("active")) drawSingleAnalyticsChart();
+  }, 60);
+}
+NFL_TEAMS.forEach(t => {
+  const img = new Image();
+  img.onload = scheduleLogoRedraw;
+  img.src = `https://sleepercdn.com/images/team_logos/nfl/${t}.png`;
+  logoImgCache[t] = img;
+});
+function getTeamLogoImage(team) {
+  if (!team || team === "FA") return null;
+  let k = team.toLowerCase().trim();
+  if (k === "jac") k = "jax"; if (k === "la") k = "lar"; if (k === "wsh") k = "was";
+  if (!logoImgCache[k]) {
+    const img = new Image(); img.onload = scheduleLogoRedraw;
+    img.src = `https://sleepercdn.com/images/team_logos/nfl/${k}.png`;
+    logoImgCache[k] = img;
+  }
+  return logoImgCache[k];
+}
+
+// 4. Schedule, Dynamic Season Sync & DvP Rankings
 const NFL_2026_SCHEDULE = (() => {
   const sched = {};
   Object.keys(NFL_TEAM_NAMES).forEach(t => sched[t] = {});
@@ -53,12 +129,83 @@ const NFL_2026_SCHEDULE = (() => {
   return sched;
 })();
 
-// Dynamic Season Schedule & Bye-Week Sync (Automatically fetches & caches any NFL season 2026, 2027, 2028+)
+const DVP_RANKS_2026 = (() => {
+  const orderedByPos = {
+    RB: ["JAX","TB","HOU","ATL","MIN","NE","KC","WAS","SEA","CHI","SF","BAL","PIT","DET","BUF","MIA","TEN","CLE","PHI","NYJ","LAC","CIN","ARI","NYG","GB","LAR","IND","DEN","LV","NO","CAR","DAL"],
+    QB: ["MIN","GB","SEA","DEN","HOU","PIT","CLE","SF","NYJ","BAL","KC","PHI","LAC","CHI","BUF","NE","NO","MIA","ATL","NYG","TEN","IND","LV","ARI","CIN","LAR","CAR","TB","JAX","DAL","WAS","DET"],
+    WR: ["DEN","NYJ","HOU","CLE","KC","CHI","SF","PHI","SEA","GB","PIT","NE","LAC","BUF","MIA","NO","IND","ATL","TEN","LV","NYG","CIN","ARI","TB","CAR","DAL","LAR","BAL","JAX","MIN","WAS","DET"],
+    TE: ["CLE","SF","PIT","NE","HOU","SEA","DEN","PHI","MIN","NYJ","DAL","CHI","BUF","GB","LAC","BAL","TB","MIA","NO","NYG","LAR","WAS","JAX","TEN","ATL","DET","ARI","IND","CAR","KC","CIN","LV"],
+    DEF:["DET","BAL","SF","BUF","KC","GB","CIN","PHI","HOU","DAL","ATL","LAR","TB","SEA","MIN","WAS","LAC","ARI","IND","JAX","CHI","NO","PIT","DEN","NYJ","LV","NE","CAR","NYG","CLE","MIA","TEN"]
+  };
+  const map = {};
+  for (const [pos, arr] of Object.entries(orderedByPos)) {
+    map[pos] = {};
+    arr.forEach((team, idx) => { map[pos][team] = idx + 1; });
+  }
+  return map;
+})();
+
+const ANALYTICS_CONFIGS = {
+  QB: [
+    { title: "QB View 1: Passing Yards per Game vs. Passing Touchdowns per Game", xKey: "passYdsPerGame", yKey: "passTdPerGame", xLbl: "Passing Yards per Game", yLbl: "Passing TDs per Game" },
+    { title: "QB View 2: Completion Pct Over Expected (CPOE) vs. EPA per Play", xKey: "cpoeVal", yKey: "epaPerPlay", xLbl: "Completion % Over Expected (CPOE)", yLbl: "Expected Points Added (EPA/Play)" },
+    { title: "QB View 3: Rushing Attempts per Game vs. Season Fantasy PPG", xKey: "rushAttPerGame", yKey: "seasonPpg", xLbl: "Rushing Attempts per Game", yLbl: "Season Fantasy PPG" }
+  ],
+  RB: [
+    { title: "RB View 1: Projected Gold Touches (RZ + GL) vs. Projected Receiving Targets", xKey: "goldTouchesPerGame", yKey: "targetsPerGame", xLbl: "Gold Touches / Gm (RZ + GL)", yLbl: "Receiving Targets / Gm" },
+    { title: "RB View 2: Offensive Snap Share (%) vs. Rush Yards Over Expected (RYOE/Gm)", xKey: "snapSharePct", yKey: "ryoePerGame", xLbl: "Offensive Snap Share (%)", yLbl: "Rush Yds Over Expected / Gm" },
+    { title: "RB View 3: Total Touches per Game vs. Season Fantasy PPG", xKey: "touchesPerGame", yKey: "seasonPpg", xLbl: "Total Touches per Game", yLbl: "Season Fantasy PPG" }
+  ],
+  WR: [
+    { title: "WR View 1: Targets per Route Run (TPRR) vs. Yards per Route Run (YPRR)", xKey: "tprrPct", yKey: "yprrVal", xLbl: "Targets per Route Run (%)", yLbl: "Yards per Route Run (YPRR)" },
+    { title: "WR View 2: Target Volume (Tgts/Gm) vs. Yards per Target Over Expected (YPTOE)", xKey: "targetsPerGame", yKey: "yptoeVal", xLbl: "Targets per Game", yLbl: "Yards / Target Over Expected" },
+    { title: "WR View 3: Receptions per Game vs. Season Fantasy PPG", xKey: "receptionsPerGame", yKey: "seasonPpg", xLbl: "Receptions per Game", yLbl: "Season Fantasy PPG" }
+  ],
+  TE: [
+    { title: "TE View 1: Route Participation (%) vs. Targets per Route Run (TPRR %)", xKey: "snapSharePct", yKey: "tprrPct", xLbl: "Route Participation (%)", yLbl: "Targets per Route Run (%)" },
+    { title: "TE View 2: Red Zone Target Share vs. Season Fantasy PPG", xKey: "targetsPerGame", yKey: "seasonPpg", xLbl: "Targets per Game", yLbl: "Season Fantasy PPG" },
+    { title: "TE View 3: Yards per Route Run (YPRR) vs. Dynasty Trade Value", xKey: "yprrVal", yKey: "baseValue", xLbl: "Yards per Route Run (YPRR)", yLbl: "Market Trade Value" }
+  ],
+  DEF: [
+    { title: "DEF View 1: Sacks per Game vs. Takeaways per Game (INT + Fumble Rec)", xKey: "sacksPerGame", yKey: "takeawaysPerGame", xLbl: "Sacks per Game", yLbl: "Takeaways per Game" },
+    { title: "DEF View 2: Havoc Plays per Game (Sacks + Takeaways) vs. Season Fantasy PPG", xKey: "defPlaysPerGame", yKey: "seasonPpg", xLbl: "Havoc Plays / Gm (Sacks + TO)", yLbl: "Season Fantasy PPG" },
+    { title: "DEF View 3: Season Fantasy PPG vs. Weekly Projected Points", xKey: "seasonPpg", yKey: "projectedPoints", xLbl: "Season Fantasy PPG", yLbl: "Weekly Projected Points" }
+  ]
+};
+
+function openPlayerCacheDB() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open("SleeperCommandCacheV4", 1);
+    req.onupgradeneeded = e => e.target.result.createObjectStore("kv");
+    req.onsuccess = e => resolve(e.target.result);
+    req.onerror = () => reject();
+  });
+}
+async function getCachedPlayers() {
+  try {
+    const db = await openPlayerCacheDB();
+    return new Promise(res => {
+      const tx = db.transaction("kv", "readonly").objectStore("kv").get("nfl_players_v4");
+      tx.onsuccess = () => {
+        const d = tx.result;
+        if (d && (Date.now() - d.ts < 86400000)) res(d.payload); else res(null);
+      };
+      tx.onerror = () => res(null);
+    });
+  } catch { return null; }
+}
+async function setCachedPlayers(payload) {
+  try {
+    const db = await openPlayerCacheDB();
+    const tx = db.transaction("kv", "readwrite");
+    tx.objectStore("kv").put({ ts: Date.now(), payload }, "nfl_players_v4");
+  } catch {}
+}
+
 async function syncFullSeasonNflSchedule(seasonYear) {
   const yr = String(seasonYear || state.season || new Date().getFullYear());
   const cacheKey = `nfl_sched_${yr}`;
 
-  // 1. Check IndexedDB cache first (valid for 12 hours)
   try {
     const db = await openPlayerCacheDB();
     const cached = await new Promise(res => {
@@ -79,7 +226,6 @@ async function syncFullSeasonNflSchedule(seasonYear) {
     }
   } catch {}
 
-  // 2. Fetch all 18 regular-season weeks from ESPN for the active season year
   const allWeeks = Array.from({ length: 18 }, (_, i) => i + 1);
   const tempSched = {};
   Object.keys(NFL_TEAM_NAMES).forEach(t => tempSched[t] = {});
@@ -111,17 +257,13 @@ async function syncFullSeasonNflSchedule(seasonYear) {
     } catch {}
   }));
 
-  // 3. If ESPN returned the season schedule, overwrite schedule & auto-detect every team's Bye Week
   if (validWeeksFetched >= 12) {
     const detectedByes = {};
     Object.keys(NFL_TEAM_NAMES).forEach(t => {
       NFL_2026_SCHEDULE[t] = tempSched[t];
       detectedByes[t] = 0;
       for (let w = 4; w <= 14; w++) {
-        if (!tempSched[t][w]) {
-          detectedByes[t] = w;
-          break;
-        }
+        if (!tempSched[t][w]) { detectedByes[t] = w; break; }
       }
       BYE_2026[t] = detectedByes[t];
     });
@@ -135,34 +277,15 @@ async function syncFullSeasonNflSchedule(seasonYear) {
   }
 }
 
-// Keep syncLiveEspnSchedule as an alias so week-change listeners work seamlessly
-async function syncLiveEspnSchedule(weeksToSync) {
+async function syncLiveEspnSchedule() {
   await syncFullSeasonNflSchedule(state.activeLeague?.season || state.season);
   if (document.getElementById("tab-sos")?.classList.contains("active")) renderSosTab();
   if (document.getElementById("tab-bracket")?.classList.contains("active")) renderPlayoffBracketTab();
 }
 
-const DVP_RANKS_2026 = (() => {
-  const orderedByPos = {
-    RB: ["JAX","TB","HOU","ATL","MIN","NE","KC","WAS","SEA","CHI","SF","BAL","PIT","DET","BUF","MIA","TEN","CLE","PHI","NYJ","LAC","CIN","ARI","NYG","GB","LAR","IND","DEN","LV","NO","CAR","DAL"],
-    QB: ["MIN","GB","SEA","DEN","HOU","PIT","CLE","SF","NYJ","BAL","KC","PHI","LAC","CHI","BUF","NE","NO","MIA","ATL","NYG","TEN","IND","LV","ARI","CIN","LAR","CAR","TB","JAX","DAL","WAS","DET"],
-    WR: ["DEN","NYJ","HOU","CLE","KC","CHI","SF","PHI","SEA","GB","PIT","NE","LAC","BUF","MIA","NO","IND","ATL","TEN","LV","NYG","CIN","ARI","TB","CAR","DAL","LAR","BAL","JAX","MIN","WAS","DET"],
-    TE: ["CLE","SF","PIT","NE","HOU","SEA","DEN","PHI","MIN","NYJ","DAL","CHI","BUF","GB","LAC","BAL","TB","MIA","NO","NYG","LAR","WAS","JAX","TEN","ATL","DET","ARI","IND","CAR","KC","CIN","LV"],
-    DEF:["DET","BAL","SF","BUF","KC","GB","CIN","PHI","HOU","DAL","ATL","LAR","TB","SEA","MIN","WAS","LAC","ARI","IND","JAX","CHI","NO","PIT","DEN","NYJ","LV","NE","CAR","NYG","CLE","MIA","TEN"]
-  };
-  const map = {};
-  for (const [pos, arr] of Object.entries(orderedByPos)) {
-    map[pos] = {};
-    arr.forEach((team, idx) => { map[pos][team] = idx + 1; });
-  }
-  return map;
-})();
-
-// Dynamically recalculates Defense vs. Position (DvP) rankings from live Sleeper stats & projections for any season
 function recomputeDynamicDvpRanks() {
   const teams = Object.keys(NFL_TEAM_NAMES);
   if (!Object.keys(state.players).length) return;
-
   const is2026 = String(state.activeLeague?.season || state.season) === "2026";
   const defMetrics = {};
 
@@ -177,11 +300,9 @@ function recomputeDynamicDvpRanks() {
     const takeawaysPg = ((st.int || 0) + (st.fum_rec || 0)) / gp;
     const defSr = defPlayer?.searchRank && defPlayer.searchRank < 500 ? defPlayer.searchRank : 165;
 
-    // Higher toughness score = tougher defense (closer to Rank #1 Shutdown)
     const runToughness = (36 - ptsAllowPg) * 2.1 + (390 - ydsAllowPg) * 0.08 + sacksPg * 2.6 + (220 - defSr) * 0.12;
     const passToughness = (36 - ptsAllowPg) * 1.8 + sacksPg * 3.4 + takeawaysPg * 4.2 + (220 - defSr) * 0.14;
 
-    // Calculate how strong this NFL team's offense is (to rank opposing DEF matchups)
     const teamOffPlayers = Object.values(state.players).filter(p => !p.isPick && p.team === t && p.isCurrentNfl && ["QB","RB","WR","TE"].includes(p.position));
     teamOffPlayers.sort((a, b) => (b.seasonPpg || b.projectedPoints) - (a.seasonPpg || a.projectedPoints));
     const topOffPpg = teamOffPlayers.slice(0, 5).reduce((sum, p) => sum + (p.seasonPpg || p.projectedPoints || 8), 0);
@@ -191,24 +312,20 @@ function recomputeDynamicDvpRanks() {
       QB: passToughness,
       WR: passToughness * 0.95 + takeawaysPg * 1.8,
       TE: (runToughness * 0.45 + passToughness * 0.55),
-      DEF: topOffPpg // Higher offensive PPG = tougher matchup for opposing fantasy DEF
+      DEF: topOffPpg
     };
   });
 
   ["RB", "QB", "WR", "TE", "DEF"].forEach(pos => {
     const ranked = [...teams].sort((a, b) => {
       if (is2026) {
-        // In 2026, blend verified 2026 rankings (75%) with live stat toughness (25%)
         const baseA = (33 - (DVP_RANKS_2026[pos]?.[a] || 16)) * 3.0;
         const baseB = (33 - (DVP_RANKS_2026[pos]?.[b] || 16)) * 3.0;
         return (baseB + defMetrics[b][pos] * 0.25) - (baseA + defMetrics[a][pos] * 0.25);
       }
-      // In 2027+, rank 100% dynamically from live Sleeper stats & offensive/defensive strength
       return defMetrics[b][pos] - defMetrics[a][pos];
     });
-    ranked.forEach((team, idx) => {
-      DVP_RANKS_2026[pos][team] = idx + 1; // #1 = Toughest Shutdown, #32 = Easiest Smash
-    });
+    ranked.forEach((team, idx) => { DVP_RANKS_2026[pos][team] = idx + 1; });
   });
 }
 
@@ -220,73 +337,6 @@ function calcDraftPickValue(season, round, slot, totalTeams, lg) {
   const yrDisc = Math.pow(0.88, Math.max(0, season - (curYr + 1)));
   const fmtMult = lg?.leagueType === 2 ? 1.0 : (lg?.leagueType === 1 ? 0.65 : 0.35);
   return Math.max(150, Math.round(baseVal * slotMult * yrDisc * fmtMult));
-}
-
-const ANALYTICS_CONFIGS = {
-  QB: [
-    { title: "QB View 1: Passing Yards per Game vs. Passing Touchdowns per Game", xKey: "passYdsPerGame", yKey: "passTdPerGame", xLbl: "Passing Yards per Game", yLbl: "Passing TDs per Game" },
-    { title: "QB View 2: Completion Pct Over Expected (CPOE) vs. EPA per Play", xKey: "cpoeVal", yKey: "epaPerPlay", xLbl: "Completion % Over Expected (CPOE)", yLbl: "Expected Points Added (EPA/Play)" },
-    { title: "QB View 3: Rushing Attempts per Game vs. Season Fantasy PPG", xKey: "rushAttPerGame", yKey: "seasonPpg", xLbl: "Rushing Attempts per Game", yLbl: "Season Fantasy PPG" }
-  ],
-  RB: [
-    { title: "RB View 1: Projected Gold Touches (RZ + GL) vs. Projected Receiving Targets", xKey: "goldTouchesPerGame", yKey: "targetsPerGame", xLbl: "Gold Touches / Gm (RZ + GL)", yLbl: "Receiving Targets / Gm" },
-    { title: "RB View 2: Offensive Snap Share (%) vs. Rush Yards Over Expected (RYOE/Gm)", xKey: "snapSharePct", yKey: "ryoePerGame", xLbl: "Offensive Snap Share (%)", yLbl: "Rush Yds Over Expected / Gm" },
-    { title: "RB View 3: Total Touches per Game vs. Season Fantasy PPG", xKey: "touchesPerGame", yKey: "seasonPpg", xLbl: "Total Touches per Game", yLbl: "Season Fantasy PPG" }
-  ],
-  WR: [
-    { title: "WR View 1: Targets per Route Run (TPRR) vs. Yards per Route Run (YPRR)", xKey: "tprrPct", yKey: "yprrVal", xLbl: "Targets per Route Run (%)", yLbl: "Yards per Route Run (YPRR)" },
-    { title: "WR View 2: Target Volume (Tgts/Gm) vs. Yards per Target Over Expected (YPTOE)", xKey: "targetsPerGame", yKey: "yptoeVal", xLbl: "Targets per Game", yLbl: "Yards / Target Over Expected" },
-    { title: "WR View 3: Receptions per Game vs. Season Fantasy PPG", xKey: "receptionsPerGame", yKey: "seasonPpg", xLbl: "Receptions per Game", yLbl: "Season Fantasy PPG" }
-  ],
-  TE: [
-    { title: "TE View 1: Route Participation (%) vs. Targets per Route Run (TPRR %)", xKey: "snapSharePct", yKey: "tprrPct", xLbl: "Route Participation (%)", yLbl: "Targets per Route Run (%)" },
-    { title: "TE View 2: Red Zone Target Share vs. Season Fantasy PPG", xKey: "targetsPerGame", yKey: "seasonPpg", xLbl: "Targets per Game", yLbl: "Season Fantasy PPG" },
-    { title: "TE View 3: Yards per Route Run (YPRR) vs. Dynasty Trade Value", xKey: "yprrVal", yKey: "baseValue", xLbl: "Yards per Route Run (YPRR)", yLbl: "Market Trade Value" }
-  ],
-  DEF: [
-    { title: "DEF View 1: Sacks per Game vs. Takeaways per Game (INT + Fumble Rec)", xKey: "sacksPerGame", yKey: "takeawaysPerGame", xLbl: "Sacks per Game", yLbl: "Takeaways per Game" },
-    { title: "DEF View 2: Havoc Plays per Game (Sacks + Takeaways) vs. Season Fantasy PPG", xKey: "defPlaysPerGame", yKey: "seasonPpg", xLbl: "Havoc Plays / Gm (Sacks + TO)", yLbl: "Season Fantasy PPG" },
-    { title: "DEF View 3: Season Fantasy PPG vs. Weekly Projected Points", xKey: "seasonPpg", yKey: "projectedPoints", xLbl: "Season Fantasy PPG", yLbl: "Weekly Projected Points" }
-  ]
-};
-
-const state = {
-  season: "2026", week: 6, userId: "", leagues: [], activeLeague: null,
-  players: {}, rawProj: {}, rawStats: {}, managers: [],
-  tradeSideA: [], tradeSideB: [], dbTrades: [], waiverTargets: [],
-  weakestPosByTeam: {}, sosWindowMode: "NEXT4", bracketOverrides: {}
-};
-
-let dbSortKey = "matchPct", dbSortDir = -1;
-let finderSortKey = "Composite", finderSortDir = -1;
-let analyticsSortDir = -1;
-
-const weekSelect = document.getElementById("weekSelect");
-if (weekSelect) {
-  weekSelect.innerHTML = "";
-  for (let w = 1; w <= 18; w++) {
-    const opt = document.createElement("option"); opt.value = w; opt.textContent = `Week ${w}`;
-    weekSelect.appendChild(opt);
-  }
-}
-
-function ensureDynamicTradeControls() {
-  const dbPosEl = document.getElementById("dbPosFilter");
-  if (dbPosEl && !document.getElementById("dbRosterScope")) {
-    const sel = document.createElement("select");
-    sel.id = "dbRosterScope";
-    sel.style.cssText = "width:auto; min-width:225px; border-color:rgba(48,209,88,0.5);";
-    sel.innerHTML = `<option value="MY_ROSTER">Involving My Selected Roster Only</option><option value="ALL">All League & Market Comps</option>`;
-    dbPosEl.parentNode.insertBefore(sel, dbPosEl);
-  }
-  const fPkgEl = document.getElementById("finderPkgType");
-  if (fPkgEl && !document.getElementById("finderPartnerType")) {
-    const sel = document.createElement("select");
-    sel.id = "finderPartnerType";
-    sel.style.cssText = "width:auto; min-width:215px; border-color:rgba(255,214,10,0.45);";
-    sel.innerHTML = `<option value="ALL">All Partners (Smart Archetype Fit)</option><option value="REBUILDER">Rebuilders / Sellers Only (Buy Vets)</option><option value="CONTENDER">Contenders / Buyers Only (Sell Vets)</option><option value="BUBBLE">Playoff Bubble Teams Only</option>`;
-    fPkgEl.parentNode.insertBefore(sel, fPkgEl);
-  }
 }
 
 function switchTradeMode(modeIdx) {
@@ -311,33 +361,31 @@ function updateAnalyticsDropdownOptions() {
   sel.value = ["0","1","2"].includes(curVal) ? curVal : "0";
 }
 
-function openPlayerCacheDB() {
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open("SleeperCommandCacheV4", 1);
-    req.onupgradeneeded = e => e.target.result.createObjectStore("kv");
-    req.onsuccess = e => resolve(e.target.result);
-    req.onerror = () => reject();
-  });
+function ensureDynamicTradeControls() {
+  const dbPosEl = document.getElementById("dbPosFilter");
+  if (dbPosEl && !document.getElementById("dbRosterScope")) {
+    const sel = document.createElement("select");
+    sel.id = "dbRosterScope";
+    sel.style.cssText = "width:auto; min-width:225px; border-color:rgba(48,209,88,0.5);";
+    sel.innerHTML = `<option value="MY_ROSTER">Involving My Selected Roster Only</option><option value="ALL">All League & Market Comps</option>`;
+    dbPosEl.parentNode.insertBefore(sel, dbPosEl);
+  }
+  const fPkgEl = document.getElementById("finderPkgType");
+  if (fPkgEl && !document.getElementById("finderPartnerType")) {
+    const sel = document.createElement("select");
+    sel.id = "finderPartnerType";
+    sel.style.cssText = "width:auto; min-width:215px; border-color:rgba(255,214,10,0.45);";
+    sel.innerHTML = `<option value="ALL">All Partners (Smart Archetype Fit)</option><option value="REBUILDER">Rebuilders / Sellers Only (Buy Vets)</option><option value="CONTENDER">Contenders / Buyers Only (Sell Vets)</option><option value="BUBBLE">Playoff Bubble Teams Only</option>`;
+    fPkgEl.parentNode.insertBefore(sel, fPkgEl);
+  }
 }
-async function getCachedPlayers() {
-  try {
-    const db = await openPlayerCacheDB();
-    return new Promise(res => {
-      const tx = db.transaction("kv", "readonly").objectStore("kv").get("nfl_players_v4");
-      tx.onsuccess = () => {
-        const d = tx.result;
-        if (d && (Date.now() - d.ts < 86400000)) res(d.payload); else res(null);
-      };
-      tx.onerror = () => res(null);
-    });
-  } catch { return null; }
-}
-async function setCachedPlayers(payload) {
-  try {
-    const db = await openPlayerCacheDB();
-    const tx = db.transaction("kv", "readwrite");
-    tx.objectStore("kv").put({ ts: Date.now(), payload }, "nfl_players_v4");
-  } catch {}
+
+function updateDynamicSeasonLabels() {
+  const activeYr = String(state.activeLeague?.season || state.season || new Date().getFullYear());
+  const nextYr1 = parseInt(activeYr, 10) + 1;
+  const nextYr2Short = String(nextYr1 + 1).slice(-2);
+  const pickLbl = document.querySelector('#finderPickModeWrap label');
+  if (pickLbl) pickLbl.textContent = `${nextYr1}–${nextYr2Short} Picks:`;
 }
 
 function setStatus(txt) {
@@ -461,6 +509,32 @@ function getPlayoffWeeksForActiveLeague() {
 function isPickTradingAllowedInLeague() {
   const lt = state.activeLeague?.leagueType || 0;
   return lt === 1 || lt === 2;
+}
+
+function computeSosWindowMetrics(teamAbbr, weeks, pos) {
+  let normTeam = (teamAbbr || "").toUpperCase().trim();
+  if (normTeam === "JAC") normTeam = "JAX"; if (normTeam === "LA") normTeam = "LAR";
+
+  let sumRank = 0, activeGames = 0, smashCount = 0, domeCount = 0, hasBye = false;
+  weeks.forEach(w => {
+    if (BYE_2026[normTeam] === w) { hasBye = true; return; }
+    const m = NFL_2026_SCHEDULE[normTeam]?.[w];
+    const r = m ? (DVP_RANKS_2026[pos]?.[m.opp] || 16) : 16;
+    const venueTeam = m ? (m.isHome ? normTeam : m.opp) : "";
+    if (DOME_TEAMS.has(venueTeam)) domeCount++;
+    sumRank += r; activeGames++;
+    if (r >= 24) smashCount++;
+  });
+  const avgRank = activeGames > 0 ? sumRank / activeGames : 16;
+  let grade = "B", badgeCls = "badge-blue";
+  if (avgRank >= 24.5) { grade = "A+ (Smash Slate)"; badgeCls = "badge-green"; }
+  else if (avgRank >= 20.5) { grade = "A (Easy Slate)"; badgeCls = "badge-green"; }
+  else if (avgRank >= 16.5) { grade = "B+ (Favorable)"; badgeCls = "badge-blue"; }
+  else if (avgRank >= 13.0) { grade = "C (Neutral)"; badgeCls = "badge-yellow"; }
+  else if (avgRank >= 9.5) { grade = "D (Tough Slate)"; badgeCls = "badge-yellow"; }
+  else { grade = "F (Brutal Slate)"; badgeCls = "badge-red"; }
+
+  return { avgRank, activeGames, smashCount, domeCount, hasBye, grade, badgeCls };
 }
 
 function getPlayerPlayoffSosProfile(p) {
@@ -781,15 +855,17 @@ function calcPlayoffWindowAvgLineupPpg(rosterIds) {
   return sum / Math.max(1, poWeeks.length);
 }
 
-function updateDynamicSeasonLabels() {
-  const activeYr = String(state.activeLeague?.season || state.season || new Date().getFullYear());
-  const nextYr1 = parseInt(activeYr, 10) + 1;
-  const nextYr2Short = String(nextYr1 + 1).slice(-2);
-  const pickLbl = document.querySelector('#finderPickModeWrap label');
-  if (pickLbl) pickLbl.textContent = `${nextYr1}–${nextYr2Short} Picks:`;
-}
-
+// 5. App Initialization & Account / League Sync
 async function initApp() {
+  const weekSelect = document.getElementById("weekSelect");
+  if (weekSelect && !weekSelect.options.length) {
+    for (let w = 1; w <= 18; w++) {
+      const opt = document.createElement("option");
+      opt.value = w; opt.textContent = `Week ${w}`;
+      weekSelect.appendChild(opt);
+    }
+  }
+
   ensureDynamicTradeControls();
   updateAnalyticsDropdownOptions();
   state.season = String(new Date().getFullYear());
@@ -846,7 +922,8 @@ async function initApp() {
     if (weekSelect) weekSelect.value = state.week;
   }
   if (params.get("user")) {
-    document.getElementById("usernameInput").value = params.get("user");
+    const uIn = document.getElementById("usernameInput");
+    if (uIn) uIn.value = params.get("user");
     syncUserAccount();
   }
 }
@@ -864,10 +941,11 @@ async function fetchWeeklyProjections() {
     }
   } catch {}
   recalcAllPlayers();
+  recomputeDynamicDvpRanks();
 }
 
 async function syncUserAccount() {
-  const u = document.getElementById("usernameInput").value.trim();
+  const u = document.getElementById("usernameInput")?.value.trim();
   if (!u) return;
   setStatus(`Looking up '${u}'...`);
   try {
@@ -902,6 +980,7 @@ async function loadLeague(idx) {
   state.activeLeague = state.leagues[idx];
   if (!state.activeLeague) return;
   state.bracketOverrides = {};
+  updateDynamicSeasonLabels();
   if (document.getElementById("bracketTeamsOverride")) document.getElementById("bracketTeamsOverride").value = "AUTO";
   if (document.getElementById("bracketReseedMode")) document.getElementById("bracketReseedMode").value = "AUTO";
   document.getElementById("tradeFormatBadge").textContent = state.activeLeague.leagueType === 2 ? "DYNASTY MODE" : (state.activeLeague.leagueType === 1 ? "KEEPER MODE" : "REDRAFT MODE");
@@ -990,7 +1069,7 @@ async function loadLeague(idx) {
   });
 
   if (isPickTradingAllowedInLeague()) {
-    const nextYr = (parseInt(state.activeLeague.season, 10) || 2026) + 1;
+    const nextYr = (parseInt(state.activeLeague.season, 10) || parseInt(state.season, 10)) + 1;
     const maxR = Math.min(4, Math.max(3, state.activeLeague.draftRounds || 4));
     const pickOwnerMap = {};
     for (let yr = nextYr; yr <= nextYr + 1; yr++) {
@@ -1033,13 +1112,19 @@ async function loadLeague(idx) {
   }
 
   const selectors = ["teamSelect", "tradeTeamA", "tradeTeamB", "simTeamA", "simTeamB"];
-  selectors.forEach(id => document.getElementById(id).innerHTML = "");
+  selectors.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.innerHTML = "";
+  });
   let myIdx = 0;
   state.managers.forEach((m, i) => {
     if (m.ownerId === state.userId) myIdx = i;
     selectors.forEach(id => {
-      const opt = document.createElement("option"); opt.value = i; opt.textContent = m.teamName;
-      document.getElementById(id).appendChild(opt);
+      const el = document.getElementById(id);
+      if (el) {
+        const opt = document.createElement("option"); opt.value = i; opt.textContent = m.teamName;
+        el.appendChild(opt);
+      }
     });
   });
 
@@ -1056,6 +1141,7 @@ async function loadLeague(idx) {
   setStatus(`Synced ${state.activeLeague.name} (${state.activeLeague.playoffTeams}-Team Playoff) • Week ${state.week}`);
 }
 
+// 6. Tab 1 & Tab 2: Roster Overview & Power Rankings
 function renderSuperlatives(matchups) {
   let hiScore = -1, hiId = -1, maxBench = -1, benchId = -1, minMargin = 9999, winId = -1, loseId = -1;
   const games = {};
@@ -1176,7 +1262,7 @@ function drawPowerChart() {
   ctx.clearRect(0, 0, W, H);
 
   if (!state.managers.length) return;
-  const mode = parseInt(document.getElementById("powerChartMode").value, 10);
+  const mode = parseInt(document.getElementById("powerChartMode")?.value || "0", 10);
 
   if (mode === 0) {
     ctx.fillStyle = "#F2F4F8"; ctx.font = "700 12px -apple-system, sans-serif";
@@ -1278,6 +1364,7 @@ function drawPowerChart() {
   }
 }
 
+// 7. Tab 3: Trade Center (Builder, Database & Finder)
 function renderTradeBuilderSide(isSideA) {
   const selIdx = parseInt(document.getElementById(isSideA ? "tradeTeamA" : "tradeTeamB")?.value || "0", 10);
   const tm = state.managers[selIdx];
@@ -2077,6 +2164,7 @@ function renderTradeFinder() {
   });
 }
 
+// 8. Tab 4, Tab 5 & Tab 6: Lineup Optimizer, Waivers & Player Analytics
 function renderOptimizerTab(idx) {
   const tm = state.managers[idx];
   if (!tm) return;
@@ -2303,7 +2391,8 @@ function drawSingleAnalyticsChart() {
       ctx.textAlign = "center"; ctx.fillText(p.team.slice(0, 3), x, y + 3);
     }
 
-    ctx.fillStyle = "#F2F4F8"; ctx.font = "700 10px -apple-system, BlinkMacSystemFont, sans-serif";
+    ctx.fillStyle = "#F2F4F8";
+    ctx.font = "700 10px -apple-system, BlinkMacSystemFont, sans-serif";
     const label = p.position === "DEF" ? p.team : (p.name.split(" ").slice(1).join(" ") || p.name);
     const tw = ctx.measureText(label).width;
     if (x + 15 + tw > plot.l + plot.w + 20) { ctx.textAlign = "right"; ctx.fillText(label, x - 15, y + 4); }
@@ -2312,6 +2401,7 @@ function drawSingleAnalyticsChart() {
   ctx.textAlign = "left";
 }
 
+// 9. Tab 7, Tab 8 & Tab 9: SOS Heat-Map, Playoff Bracket & Matchup Simulator
 function renderSosCellHTML(teamAbbr, weekNum, pos, showDomeBadge = false) {
   let normTeam = (teamAbbr || "").toUpperCase().trim();
   if (normTeam === "JAC") normTeam = "JAX"; if (normTeam === "LA") normTeam = "LAR";
@@ -2342,32 +2432,6 @@ function renderSosCellHTML(teamAbbr, weekNum, pos, showDomeBadge = false) {
       </div>
       <div style="font-size:10px;font-weight:700;opacity:0.92;">DvP #${dvpRank} • ${tierTxt}</div>
     </div>`;
-}
-
-function computeSosWindowMetrics(teamAbbr, weeks, pos) {
-  let normTeam = (teamAbbr || "").toUpperCase().trim();
-  if (normTeam === "JAC") normTeam = "JAX"; if (normTeam === "LA") normTeam = "LAR";
-
-  let sumRank = 0, activeGames = 0, smashCount = 0, domeCount = 0, hasBye = false;
-  weeks.forEach(w => {
-    if (BYE_2026[normTeam] === w) { hasBye = true; return; }
-    const m = NFL_2026_SCHEDULE[normTeam]?.[w];
-    const r = m ? (DVP_RANKS_2026[pos]?.[m.opp] || 16) : 16;
-    const venueTeam = m ? (m.isHome ? normTeam : m.opp) : "";
-    if (DOME_TEAMS.has(venueTeam)) domeCount++;
-    sumRank += r; activeGames++;
-    if (r >= 24) smashCount++;
-  });
-  const avgRank = activeGames > 0 ? sumRank / activeGames : 16;
-  let grade = "B", badgeCls = "badge-blue";
-  if (avgRank >= 24.5) { grade = "A+ (Smash Slate)"; badgeCls = "badge-green"; }
-  else if (avgRank >= 20.5) { grade = "A (Easy Slate)"; badgeCls = "badge-green"; }
-  else if (avgRank >= 16.5) { grade = "B+ (Favorable)"; badgeCls = "badge-blue"; }
-  else if (avgRank >= 13.0) { grade = "C (Neutral)"; badgeCls = "badge-yellow"; }
-  else if (avgRank >= 9.5) { grade = "D (Tough Slate)"; badgeCls = "badge-yellow"; }
-  else { grade = "F (Brutal Slate)"; badgeCls = "badge-red"; }
-
-  return { avgRank, activeGames, smashCount, domeCount, hasBye, grade, badgeCls };
 }
 
 function renderSosTab() {
@@ -2772,87 +2836,77 @@ function renderAllViews(teamIdx) {
   renderSosTab(); renderPlayoffBracketTab();
 }
 
-// --- Safe Event Listener Bindings ---
-ensureDynamicTradeControls();
+// 10. Form Control Bindings & Boot
+function bindControlEvents() {
+  ensureDynamicTradeControls();
+  const weekSelect = document.getElementById("weekSelect");
 
-document.querySelectorAll(".nav-btn").forEach(btn => {
-  btn.onclick = () => {
-    document.querySelectorAll(".nav-btn").forEach(b => b.classList.remove("active"));
-    document.querySelectorAll(".tab-page").forEach(p => p.classList.remove("active"));
-    btn.classList.add("active");
-    document.getElementById(btn.dataset.tab)?.classList.add("active");
-    drawPowerChart(); drawWaiverChart(); drawSingleAnalyticsChart(); renderSosTab(); renderPlayoffBracketTab();
-  };
-});
+  document.getElementById("syncBtn")?.addEventListener("click", syncUserAccount);
+  document.getElementById("usernameInput")?.addEventListener("keydown", e => { if (e.key === "Enter") syncUserAccount(); });
+  document.getElementById("leagueSelect")?.addEventListener("change", e => loadLeague(parseInt(e.target.value, 10)));
+  document.getElementById("teamSelect")?.addEventListener("change", e => {
+    const idx = parseInt(e.target.value, 10);
+    if (document.getElementById("tradeTeamA")) document.getElementById("tradeTeamA").value = idx;
+    renderRosterTab(idx); renderOptimizerTab(idx); renderSosTab(); renderTradeFinder(); buildTradeDatabase();
+  });
+  weekSelect?.addEventListener("change", async e => {
+    state.week = parseInt(e.target.value, 10);
+    syncLiveEspnSchedule();
+    renderSosTab();
+    if (state.activeLeague) await loadLeague(document.getElementById("leagueSelect").value);
+  });
+  document.getElementById("powerChartMode")?.addEventListener("change", drawPowerChart);
+  document.getElementById("tradeTeamA")?.addEventListener("change", e => {
+    if (document.getElementById("teamSelect")) document.getElementById("teamSelect").value = e.target.value;
+    state.tradeSideA = [];
+    renderTradeBuilderSide(true); updateTradeEvaluation(); buildTradeDatabase();
+  });
+  document.getElementById("tradeTeamB")?.addEventListener("change", () => { state.tradeSideB = []; renderTradeBuilderSide(false); updateTradeEvaluation(); });
+  document.getElementById("clearTradeBtn")?.addEventListener("click", () => { state.tradeSideA = []; state.tradeSideB = []; renderTradeBuilderSide(true); renderTradeBuilderSide(false); updateTradeEvaluation(); });
+  document.getElementById("dbSearch")?.addEventListener("input", renderTradeDatabase);
+  document.getElementById("dbRosterScope")?.addEventListener("change", renderTradeDatabase);
+  document.getElementById("dbPosFilter")?.addEventListener("change", renderTradeDatabase);
+  document.getElementById("dbSrcFilter")?.addEventListener("change", renderTradeDatabase);
+  document.getElementById("finderPos")?.addEventListener("change", renderTradeFinder);
+  document.getElementById("finderPartnerType")?.addEventListener("change", renderTradeFinder);
+  document.getElementById("finderPkgType")?.addEventListener("change", renderTradeFinder);
+  document.getElementById("finderPickMode")?.addEventListener("change", renderTradeFinder);
+  document.getElementById("finderSosBoost")?.addEventListener("change", renderTradeFinder);
+  document.getElementById("finderStrat")?.addEventListener("change", renderTradeFinder);
+  document.getElementById("waiverPos")?.addEventListener("change", renderWaiversTab);
+  document.getElementById("waiverChartMode")?.addEventListener("change", drawWaiverChart);
+  document.getElementById("analyticsPos")?.addEventListener("change", () => { updateAnalyticsDropdownOptions(); drawSingleAnalyticsChart(); });
+  document.getElementById("analyticsGraphSelect")?.addEventListener("change", drawSingleAnalyticsChart);
+  document.getElementById("analyticsSortKey")?.addEventListener("change", () => { analyticsSortDir = -1; drawSingleAnalyticsChart(); });
+  document.getElementById("toggleAnalyticsFormulaBtn")?.addEventListener("click", () => {
+    const el = document.getElementById("analyticsFormulaCard");
+    if (el) el.style.display = el.style.display === "none" ? "flex" : "none";
+  });
+  document.getElementById("toggleTradeFormulaBtn")?.addEventListener("click", () => {
+    const el = document.getElementById("tradeFormulaBox");
+    if (el) el.style.display = el.style.display === "none" ? "block" : "none";
+  });
+  document.getElementById("sosPos")?.addEventListener("change", renderSosTab);
+  document.getElementById("sosScope")?.addEventListener("change", renderSosTab);
+  document.getElementById("sosSort")?.addEventListener("change", renderSosTab);
+  document.getElementById("bracketTeamsOverride")?.addEventListener("change", () => { state.bracketOverrides = {}; renderPlayoffBracketTab(); renderSosTab(); renderTradeFinder(); });
+  document.getElementById("bracketSeedMode")?.addEventListener("change", () => { state.bracketOverrides = {}; renderPlayoffBracketTab(); });
+  document.getElementById("bracketReseedMode")?.addEventListener("change", () => { delete state.bracketOverrides.sf1; delete state.bracketOverrides.sf2; delete state.bracketOverrides.champ; delete state.bracketOverrides.third; renderPlayoffBracketTab(); });
+  document.getElementById("resetBracketBtn")?.addEventListener("click", () => { state.bracketOverrides = {}; renderPlayoffBracketTab(); });
+  document.getElementById("simTeamA")?.addEventListener("change", renderMatchupSim);
+  document.getElementById("simTeamB")?.addEventListener("change", renderMatchupSim);
+  document.getElementById("shareBtn")?.addEventListener("click", () => {
+    const u = document.getElementById("usernameInput")?.value.trim() || "";
+    const url = `${location.origin}${location.pathname}?user=${encodeURIComponent(u)}&week=${state.week}`;
+    navigator.clipboard.writeText(url);
+    setStatus("Shareable link copied to clipboard!");
+  });
+  window.addEventListener("resize", () => { drawPowerChart(); drawWaiverChart(); drawSingleAnalyticsChart(); });
+}
 
-document.querySelectorAll(".seg-btn").forEach(btn => { btn.onclick = () => switchTradeMode(parseInt(btn.dataset.tmode, 10)); });
-document.querySelectorAll(".sos-mode-btn").forEach(btn => {
-  btn.onclick = () => {
-    document.querySelectorAll(".sos-mode-btn").forEach(b => b.classList.remove("active"));
-    btn.classList.add("active"); state.sosWindowMode = btn.dataset.sosmode; renderSosTab();
-  };
-});
-
-document.getElementById("syncBtn")?.addEventListener("click", syncUserAccount);
-document.getElementById("usernameInput")?.addEventListener("keydown", e => { if (e.key === "Enter") syncUserAccount(); });
-document.getElementById("leagueSelect")?.addEventListener("change", e => loadLeague(parseInt(e.target.value, 10)));
-document.getElementById("teamSelect")?.addEventListener("change", e => {
-  const idx = parseInt(e.target.value, 10);
-  if (document.getElementById("tradeTeamA")) document.getElementById("tradeTeamA").value = idx;
-  renderRosterTab(idx); renderOptimizerTab(idx); renderSosTab(); renderTradeFinder(); buildTradeDatabase();
-});
-weekSelect?.addEventListener("change", async e => {
-  state.week = parseInt(e.target.value, 10);
-  syncLiveEspnSchedule([state.week, state.week + 1, state.week + 2, state.week + 3]);
-  renderSosTab();
-  if (state.activeLeague) await loadLeague(document.getElementById("leagueSelect").value);
-});
-document.getElementById("powerChartMode")?.addEventListener("change", drawPowerChart);
-document.getElementById("tradeTeamA")?.addEventListener("change", e => {
-  if (document.getElementById("teamSelect")) document.getElementById("teamSelect").value = e.target.value;
-  state.tradeSideA = [];
-  renderTradeBuilderSide(true); updateTradeEvaluation(); buildTradeDatabase();
-});
-document.getElementById("tradeTeamB")?.addEventListener("change", () => { state.tradeSideB = []; renderTradeBuilderSide(false); updateTradeEvaluation(); });
-document.getElementById("clearTradeBtn")?.addEventListener("click", () => { state.tradeSideA = []; state.tradeSideB = []; renderTradeBuilderSide(true); renderTradeBuilderSide(false); updateTradeEvaluation(); });
-document.getElementById("dbSearch")?.addEventListener("input", renderTradeDatabase);
-document.getElementById("dbRosterScope")?.addEventListener("change", renderTradeDatabase);
-document.getElementById("dbPosFilter")?.addEventListener("change", renderTradeDatabase);
-document.getElementById("dbSrcFilter")?.addEventListener("change", renderTradeDatabase);
-document.getElementById("finderPos")?.addEventListener("change", renderTradeFinder);
-document.getElementById("finderPartnerType")?.addEventListener("change", renderTradeFinder);
-document.getElementById("finderPkgType")?.addEventListener("change", renderTradeFinder);
-document.getElementById("finderPickMode")?.addEventListener("change", renderTradeFinder);
-document.getElementById("finderSosBoost")?.addEventListener("change", renderTradeFinder);
-document.getElementById("finderStrat")?.addEventListener("change", renderTradeFinder);
-document.getElementById("waiverPos")?.addEventListener("change", renderWaiversTab);
-document.getElementById("waiverChartMode")?.addEventListener("change", drawWaiverChart);
-document.getElementById("analyticsPos")?.addEventListener("change", () => { updateAnalyticsDropdownOptions(); drawSingleAnalyticsChart(); });
-document.getElementById("analyticsGraphSelect")?.addEventListener("change", drawSingleAnalyticsChart);
-document.getElementById("analyticsSortKey")?.addEventListener("change", () => { analyticsSortDir = -1; drawSingleAnalyticsChart(); });
-document.getElementById("toggleAnalyticsFormulaBtn")?.addEventListener("click", () => {
-  const el = document.getElementById("analyticsFormulaCard");
-  if (el) el.style.display = el.style.display === "none" ? "flex" : "none";
-});
-document.getElementById("toggleTradeFormulaBtn")?.addEventListener("click", () => {
-  const el = document.getElementById("tradeFormulaBox");
-  if (el) el.style.display = el.style.display === "none" ? "block" : "none";
-});
-document.getElementById("sosPos")?.addEventListener("change", renderSosTab);
-document.getElementById("sosScope")?.addEventListener("change", renderSosTab);
-document.getElementById("sosSort")?.addEventListener("change", renderSosTab);
-document.getElementById("bracketTeamsOverride")?.addEventListener("change", () => { state.bracketOverrides = {}; renderPlayoffBracketTab(); renderSosTab(); renderTradeFinder(); });
-document.getElementById("bracketSeedMode")?.addEventListener("change", () => { state.bracketOverrides = {}; renderPlayoffBracketTab(); });
-document.getElementById("bracketReseedMode")?.addEventListener("change", () => { delete state.bracketOverrides.sf1; delete state.bracketOverrides.sf2; delete state.bracketOverrides.champ; delete state.bracketOverrides.third; renderPlayoffBracketTab(); });
-document.getElementById("resetBracketBtn")?.addEventListener("click", () => { state.bracketOverrides = {}; renderPlayoffBracketTab(); });
-document.getElementById("simTeamA")?.addEventListener("change", renderMatchupSim);
-document.getElementById("simTeamB")?.addEventListener("change", renderMatchupSim);
-document.getElementById("shareBtn")?.addEventListener("click", () => {
-  const u = document.getElementById("usernameInput")?.value.trim() || "";
-  const url = `${location.origin}${location.pathname}?user=${encodeURIComponent(u)}&week=${state.week}`;
-  navigator.clipboard.writeText(url);
-  setStatus("Shareable link copied to clipboard!");
-};
-window.addEventListener("resize", () => { drawPowerChart(); drawWaiverChart(); drawSingleAnalyticsChart(); });
-
-initApp();
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", () => { bindControlEvents(); initApp(); });
+} else {
+  bindControlEvents();
+  initApp();
+}
