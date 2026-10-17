@@ -305,28 +305,35 @@
         <div class="card-banner" style="padding:12px 16px;">
           <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
             <label style="font-size:12px; color:var(--text-muted);">Target Upgrade:</label>
-            <select id="finderPos" style="width:auto; min-width:195px;">
+            <select id="finderPos" style="width:auto; min-width:185px;">
               <option value="AUTO">Auto (Target My #1 Weakest Position)</option>
               <option value="ALL">Any Position Upgrade</option>
               <option value="QB">Target QB Upgrade</option><option value="RB">Target RB Upgrade</option>
               <option value="WR">Target WR Upgrade</option><option value="TE">Target TE Upgrade</option>
             </select>
             <label style="font-size:12px; color:var(--text-muted);">Package Size:</label>
-            <select id="finderPkgType" style="width:auto; min-width:215px;">
-              <option value="ALL">All Packages (1-for-1, 2-for-1, 2-for-2, 1-for-2)</option>
+            <select id="finderPkgType" style="width:auto; min-width:210px;">
+              <option value="ALL">All Packages (Players & Picks)</option>
+              <option value="PICK_PKG">Player + Draft Pick Packages Only</option>
               <option value="MULTI">Multi-Player Deals Only (2-for-1, 2-for-2, 1-for-2)</option>
               <option value="2FOR1">2-for-1 Stud Consolidations Only</option>
               <option value="2FOR2">2-for-2 Package Swaps Only</option>
               <option value="1FOR1">1-for-1 Positional Swaps Only</option>
             </select>
+            <label style="font-size:12px; color:var(--accent); font-weight:800;">2027–28 Pick Balancer:</label>
+            <select id="finderPickMode" style="width:auto; min-width:215px; border-color:rgba(10,132,255,0.5);">
+              <option value="AUTO">Auto (On for Keeper & Dynasty)</option>
+              <option value="ON">Always Include 2027–28 Picks</option>
+              <option value="OFF">Players Only (No Draft Picks)</option>
+            </select>
             <label style="font-size:12px; color:var(--good); font-weight:800;">Playoff SOS Boost:</label>
-            <select id="finderSosBoost" style="width:auto; min-width:235px; border-color:rgba(48,209,88,0.5);">
+            <select id="finderSosBoost" style="width:auto; min-width:215px; border-color:rgba(48,209,88,0.5);">
               <option value="BOOST">ON — Prioritize A / A+ Playoff Schedules</option>
               <option value="STRICT">STRICT — Only Acquire A / A+ Playoff Slates</option>
               <option value="OFF">OFF — Standard ROS PPG Only</option>
             </select>
             <label style="font-size:12px; color:var(--text-muted);">Strategy:</label>
-            <select id="finderStrat" style="flex:1; min-width:190px;">
+            <select id="finderStrat" style="flex:1; min-width:180px;">
               <option value="0">Mutual Lineup Upgrade (Win-Win PPG)</option>
               <option value="1">Max My Starting Lineup PPG Gain</option>
               <option value="2">Strict Value Match (Within 8% Fairness)</option>
@@ -337,7 +344,7 @@
         <div class="table-wrap"><table id="finderTable"></table></div>
       </div>
     </div>
-
+   
     <!-- TAB 4: OPTIMIZER -->
     <div id="tab-opt" class="tab-page">
       <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap;">
@@ -2089,12 +2096,12 @@ function renderTradeFinder() {
   const myIdx = parseInt(document.getElementById("tradeTeamA").value, 10) || 0;
   const myTm = state.managers[myIdx];
   const tbl = document.getElementById("finderTable");
-  tbl.innerHTML = `<thead><tr><th style="text-align:left;width:230px;">Trade Partner & Deal Type</th><th style="text-align:left;">You Send</th><th style="text-align:left;">You Receive</th><th style="width:140px;">Package Value</th><th style="width:185px;">ROS & Playoff PPG Impact</th><th style="width:135px;">Modify Trade</th></tr></thead><tbody></tbody>`;
+  tbl.innerHTML = `<thead><tr><th style="text-align:left;width:235px;">Trade Partner & Deal Type</th><th style="text-align:left;">You Send</th><th style="text-align:left;">You Receive</th><th style="width:140px;">Package Value</th><th style="width:185px;">ROS & Playoff PPG Impact</th><th style="width:135px;">Modify Trade</th></tr></thead><tbody></tbody>`;
   const tbody = tbl.querySelector("tbody");
 
   if (!myTm || state.managers.length < 2) {
     document.getElementById("posGradesGrid").innerHTML = "";
-    tbody.innerHTML = `<tr><td colspan="6" style="padding:24px;color:var(--text-muted);">Sync your Sleeper account above to analyze positional grades and scan your league for multi-player trades.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="6" style="padding:24px;color:var(--text-muted);">Sync your Sleeper account above to analyze positional grades and scan your league for multi-player and pick-balanced trades.</td></tr>`;
     document.getElementById("finderCountLbl").textContent = "0 proposals";
     return;
   }
@@ -2103,32 +2110,61 @@ function renderTradeFinder() {
   const rawPosSel = document.getElementById("finderPos").value;
   const targetPos = rawPosSel === "AUTO" ? diag.weakestPos : rawPosSel;
   const pkgTypeFilter = document.getElementById("finderPkgType").value || "ALL";
+  const pickMode = document.getElementById("finderPickMode")?.value || "AUTO";
   const sosBoostMode = document.getElementById("finderSosBoost").value || "BOOST";
   const strat = parseInt(document.getElementById("finderStrat").value || "0", 10);
+
+  // Enable draft pick balancing automatically in Keeper (1) or Dynasty (2) leagues, or when user selects ON / PICK_PKG
+  const isKeeperOrDynasty = (state.activeLeague?.leagueType === 1 || state.activeLeague?.leagueType === 2);
+  const allowPicks = pickMode === "ON" || pkgTypeFilter === "PICK_PKG" || (pickMode === "AUTO" && isKeeperOrDynasty);
 
   const myBase = calcOptimalLineup(myTm.players, true).total;
   const myPlayoffBase = calcPlayoffWindowAvgLineupPpg(myTm.players);
   const myPl = myTm.players.map(id => state.players[id])
     .filter(p => p && !p.isPick && p.isCurrentNfl && ["QB","RB","WR","TE"].includes(p.position) && p.baseValue >= 900)
     .sort((a, b) => b.baseValue - a.baseValue);
+  const myPicks = (myTm.ownedPicks || []).slice().sort((a, b) => b.baseValue - a.baseValue);
 
   const props = [];
   const seenKeys = new Set();
 
+  // Helper: Finds the single best 2027/2028 draft pick from a manager's pick inventory to bridge a value gap
+  function findBestBalancingPick(picksPool, neededValue) {
+    if (!picksPool || !picksPool.length || neededValue < 250) return null;
+    let bestPick = null, minDiff = Infinity;
+    for (const pk of picksPool) {
+      const diff = Math.abs(pk.baseValue - neededValue);
+      if (diff < minDiff) {
+        minDiff = diff;
+        bestPick = pk;
+      }
+    }
+    return bestPick;
+  }
+
   function evaluateAndPushCandidate(part, tIdx, partBase, giveIds, getIds, dealType, badgeCls, customNote) {
+    const hasPickInDeal = giveIds.some(id => String(id).startsWith("PICK_")) || getIds.some(id => String(id).startsWith("PICK_"));
+    if (pkgTypeFilter === "PICK_PKG" && !hasPickInDeal) return;
+    if (!allowPicks && hasPickInDeal) return;
+
     const key = [...giveIds].sort().join(",") + "|" + [...getIds].sort().join(",");
     if (seenKeys.has(key)) return;
 
     const getObjs = getIds.map(id => state.players[id]).filter(Boolean);
     const giveObjs = giveIds.map(id => state.players[id]).filter(Boolean);
+    const getPlayersOnly = getObjs.filter(p => !p.isPick);
+    const givePlayersOnly = giveObjs.filter(p => !p.isPick);
+
+    if (!getPlayersOnly.length || !givePlayersOnly.length) return;
+
     if (targetPos !== "ALL") {
-      const bestInAtTarget = Math.max(0, ...getObjs.filter(p => p.position === targetPos).map(p => p.baseValue));
-      const bestOutAtTarget = Math.max(0, ...giveObjs.filter(p => p.position === targetPos).map(p => p.baseValue));
+      const bestInAtTarget = Math.max(0, ...getPlayersOnly.filter(p => p.position === targetPos).map(p => p.baseValue));
+      const bestOutAtTarget = Math.max(0, ...givePlayersOnly.filter(p => p.position === targetPos).map(p => p.baseValue));
       if (bestInAtTarget <= bestOutAtTarget) return;
     }
 
-    const inSosList = getObjs.map(getPlayerPlayoffSosProfile);
-    const outSosList = giveObjs.map(getPlayerPlayoffSosProfile);
+    const inSosList = getPlayersOnly.map(getPlayerPlayoffSosProfile);
+    const outSosList = givePlayersOnly.map(getPlayerPlayoffSosProfile);
     const hasElitePlayoffTarget = inSosList.some(s => s.isElite);
     const avgInDvP = inSosList.reduce((s, x) => s + x.avgRank, 0) / Math.max(1, inSosList.length);
     const avgOutDvP = outSosList.reduce((s, x) => s + x.avgRank, 0) / Math.max(1, outSosList.length);
@@ -2141,24 +2177,30 @@ function renderTradeFinder() {
     const cA = giveIds.length, cB = getIds.length;
     let adjGive = rawGive, adjGet = rawGet;
     if (cA !== cB) {
-      const tax = 1 - Math.min(0.16, Math.abs(cA - cB) * 0.07);
+      const tax = 1 - Math.min(0.16, Math.abs(cA - cB) * 0.06);
       if (cA > cB) adjGive = Math.round(rawGive * tax);
       else adjGet = Math.round(rawGet * tax);
     }
 
     const maxV = Math.max(adjGive, adjGet);
     const match = maxV > 0 ? (1 - Math.abs(adjGive - adjGet) / maxV) * 100 : 0;
-    if (match < 84) return;
+    if (match < 85) return;
     if (strat === 2 && match < 92) return;
 
-    const myAfter = myTm.players.filter(id => !giveIds.includes(id)).concat(getIds);
-    const ptAfter = part.players.filter(id => !getIds.includes(id)).concat(giveIds);
+    const givePlayerIds = giveIds.filter(id => !String(id).startsWith("PICK_"));
+    const getPlayerIds = getIds.filter(id => !String(id).startsWith("PICK_"));
+    const myAfter = myTm.players.filter(id => !givePlayerIds.includes(id)).concat(getPlayerIds);
+    const ptAfter = part.players.filter(id => !getPlayerIds.includes(id)).concat(givePlayerIds);
     const dMy = calcOptimalLineup(myAfter, true).total - myBase;
     const dPt = calcOptimalLineup(ptAfter, true).total - partBase;
     const dPlayoffMy = calcPlayoffWindowAvgLineupPpg(myAfter) - myPlayoffBase;
 
     const effectiveMyGain = sosBoostMode !== "OFF" ? Math.max(dMy, dPlayoffMy) : dMy;
-    if (strat === 0 && (effectiveMyGain < 0.05 || dPt < -0.25)) return;
+    // When a partner receives a draft pick in a rebuild/downgrade deal, allow a slightly larger immediate PPG dip for them
+    const partnerReceivesPick = giveIds.some(id => String(id).startsWith("PICK_"));
+    const minPartnerDelta = partnerReceivesPick ? -1.65 : -0.25;
+
+    if (strat === 0 && (effectiveMyGain < 0.05 || dPt < minPartnerDelta)) return;
     if (strat === 1 && effectiveMyGain < 0.25) return;
     if (strat === 2 && (effectiveMyGain <= 0 && dPt <= 0)) return;
 
@@ -2168,12 +2210,13 @@ function renderTradeFinder() {
       sosRankBonus += (netDvPGain / 10) * 0.75;
       sosRankBonus += (dPlayoffMy - dMy) * 0.85;
     }
+    if (hasPickInDeal && allowPicks) sosRankBonus += 0.45;
 
     seenKeys.add(key);
     props.push({
       part, partnerIdx: tIdx, giveIds, getIds,
       giveVal: adjGive, getVal: adjGet, match, dMy, dPt,
-      dPlayoffMy, hasElitePlayoffTarget, sosRankBonus,
+      dPlayoffMy, hasElitePlayoffTarget, hasPickInDeal, sosRankBonus,
       dealType, badgeCls, note: customNote
     });
   }
@@ -2184,20 +2227,89 @@ function renderTradeFinder() {
     const thPl = part.players.map(id => state.players[id])
       .filter(p => p && !p.isPick && p.isCurrentNfl && ["QB","RB","WR","TE"].includes(p.position) && p.baseValue >= 900)
       .sort((a, b) => b.baseValue - a.baseValue);
+    const thPicks = (part.ownedPicks || []).slice().sort((a, b) => b.baseValue - a.baseValue);
 
-    if (pkgTypeFilter === "ALL" || pkgTypeFilter === "MULTI" || pkgTypeFilter === "2FOR1") {
+    // 1. 2-for-1 Stud Consolidations (Plus automatic Pick Balancer if 2 players fall short or overshoot)
+    if (pkgTypeFilter === "ALL" || pkgTypeFilter === "MULTI" || pkgTypeFilter === "2FOR1" || pkgTypeFilter === "PICK_PKG") {
       thPl.slice(0, 7).forEach(stud => {
         if (targetPos !== "ALL" && stud.position !== targetPos) return;
         if (stud.baseValue < 2400) return;
         for (let m1 = 0; m1 < Math.min(10, myPl.length); m1++) {
           if (myPl[m1].baseValue >= stud.baseValue * 0.92) continue;
           for (let m2 = m1 + 1; m2 < Math.min(11, myPl.length); m2++) {
-            evaluateAndPushCandidate(part, tIdx, partBase, [myPl[m1].id, myPl[m2].id], [stud.id], "2-FOR-1 CONSOLIDATION", "badge-purple", `Package ${myPl[m1].position}+${myPl[m2].position} depth for elite ${stud.position}1`);
+            const pairVal = Math.round((myPl[m1].baseValue + myPl[m2].baseValue) * 0.94);
+            // Direct 2-for-1 if values already align
+            if (pkgTypeFilter !== "PICK_PKG") {
+              evaluateAndPushCandidate(part, tIdx, partBase, [myPl[m1].id, myPl[m2].id], [stud.id], "2-FOR-1 CONSOLIDATION", "badge-purple", `Package ${myPl[m1].position}+${myPl[m2].position} depth for elite ${stud.position}1`);
+            }
+            // If 2-for-1 is uneven, balance it with a 2027/2028 draft pick
+            if (allowPicks) {
+              const gap = stud.baseValue - pairVal;
+              if (gap > 300 && gap < 3600) {
+                const balPick = findBestBalancingPick(myPicks, gap);
+                if (balPick) {
+                  evaluateAndPushCandidate(part, tIdx, partBase, [myPl[m1].id, myPl[m2].id, balPick.id], [stud.id], "2-FOR-1 + PICK", "badge-purple", `Add ${balPick.season} Rd ${balPick.round} to complete stud ${stud.position}1 upgrade`);
+                }
+              } else if (gap < -350 && gap > -3200) {
+                const retPick = findBestBalancingPick(thPicks, Math.abs(gap));
+                if (retPick) {
+                  evaluateAndPushCandidate(part, tIdx, partBase, [myPl[m1].id, myPl[m2].id], [stud.id, retPick.id], "2-FOR-1 + PICK RETURN", "badge-purple", `Consolidate for ${stud.name.split(" ").pop()} + ${retPick.season} Rd ${retPick.round} pick back`);
+                }
+              }
+            }
           }
         }
       });
     }
 
+    // 2. 1-for-1 Swaps & Uneven 1-for-1s Balanced by 2027/2028 Draft Picks
+    if (pkgTypeFilter === "ALL" || pkgTypeFilter === "1FOR1" || pkgTypeFilter === "PICK_PKG") {
+      myPl.slice(0, 11).forEach(gP => {
+        thPl.slice(0, 11).forEach(rP => {
+          // Direct 1-for-1 cross-positional swap
+          if (pkgTypeFilter !== "PICK_PKG" && gP.position !== rP.position) {
+            if (targetPos === "ALL" || rP.position === targetPos) {
+              evaluateAndPushCandidate(part, tIdx, partBase, [gP.id], [rP.id], "1-FOR-1 SWAP", "badge-blue", `Direct ${gP.position} surplus for ${rP.position} starter swap`);
+            }
+          }
+
+          // Pick-Balanced 1-for-1 Upgrades (Works across positions OR tiering up at the same position!)
+          if (allowPicks && gP.id !== rP.id) {
+            if (targetPos !== "ALL" && rP.position !== targetPos) return;
+            const rawDiff = rP.baseValue - gP.baseValue;
+
+            // Case A: Target player (rP) is more valuable than our player (gP) -> We attach a 2027/2028 pick
+            if (rawDiff >= 350 && rawDiff <= 4500) {
+              const neededPickVal = Math.round(rawDiff * 1.06);
+              const myBalPick = findBestBalancingPick(myPicks, neededPickVal);
+              if (myBalPick) {
+                evaluateAndPushCandidate(
+                  part, tIdx, partBase,
+                  [gP.id, myBalPick.id], [rP.id],
+                  "PLAYER + PICK → STUD", "badge-green",
+                  `Tier up from ${gP.name.split(" ").pop()} to ${rP.name.split(" ").pop()} using ${myBalPick.season} Rd ${myBalPick.round}`
+                );
+              }
+            }
+            // Case B: Our surplus player (gP) is more valuable than their starter (rP) -> Partner attaches a 2027/2028 pick
+            else if (rawDiff <= -350 && rawDiff >= -4200 && gP.position !== rP.position) {
+              const neededPickVal = Math.round(Math.abs(rawDiff) * 1.06);
+              const thBalPick = findBestBalancingPick(thPicks, neededPickVal);
+              if (thBalPick) {
+                evaluateAndPushCandidate(
+                  part, tIdx, partBase,
+                  [gP.id], [rP.id, thBalPick.id],
+                  "1-FOR-1 + PICK GAIN", "badge-blue",
+                  `Acquire ${rP.position} starter + ${thBalPick.season} Rd ${thBalPick.round} pick for ${gP.name.split(" ").pop()}`
+                );
+              }
+            }
+          }
+        });
+      });
+    }
+
+    // 3. 2-for-2 Cross-Positional Package Swaps
     if (pkgTypeFilter === "ALL" || pkgTypeFilter === "MULTI" || pkgTypeFilter === "2FOR2") {
       thPl.slice(0, 7).forEach(t1 => {
         if (targetPos !== "ALL" && t1.position !== targetPos) return;
@@ -2217,6 +2329,7 @@ function renderTradeFinder() {
       });
     }
 
+    // 4. 1-for-2 Depth Expansions
     if (pkgTypeFilter === "ALL" || pkgTypeFilter === "MULTI") {
       myPl.slice(0, 4).forEach(myStud => {
         if (myStud.baseValue < 3200 || (targetPos !== "ALL" && myStud.position === targetPos)) return;
@@ -2228,15 +2341,6 @@ function renderTradeFinder() {
         }
       });
     }
-
-    if (pkgTypeFilter === "ALL" || pkgTypeFilter === "1FOR1") {
-      myPl.slice(0, 10).forEach(gP => {
-        thPl.slice(0, 10).forEach(rP => {
-          if (gP.position === rP.position || (targetPos !== "ALL" && rP.position !== targetPos)) return;
-          evaluateAndPushCandidate(part, tIdx, partBase, [gP.id], [rP.id], "1-FOR-1 SWAP", "badge-blue", `Direct ${gP.position} surplus for ${rP.position} starter swap`);
-        });
-      });
-    }
   });
 
   props.sort((a, b) => {
@@ -2245,11 +2349,11 @@ function renderTradeFinder() {
     return (b.dMy * 1.35 + Math.max(0, b.dPt) + b.sosRankBonus) - (a.dMy * 1.35 + Math.max(0, a.dPt) + a.sosRankBonus);
   });
 
-  const topProps = props.slice(0, 14);
+  const topProps = props.slice(0, 16);
   document.getElementById("finderCountLbl").textContent = `${topProps.length} proposals`;
 
   if (!topProps.length) {
-    tbody.innerHTML = `<tr><td colspan="6" style="padding:24px;color:var(--warn);">No strict matches for this filter combination. Try switching Playoff SOS Boost to "ON" or setting Package Size to "All Packages".</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="6" style="padding:24px;color:var(--warn);">No strict matches for this filter combination. Try switching 2027–28 Pick Balancer to "Always Include" or Package Size to "All Packages".</td></tr>`;
     return;
   }
 
@@ -2257,11 +2361,12 @@ function renderTradeFinder() {
     const tr = document.createElement("tr");
     tr.className = "table-row-hover";
     const sosCalloutBadge = pr.hasElitePlayoffTarget ? `<span class="badge badge-green" style="margin-left:4px;">PLAYOFF SOS BOOST (A/A+)</span>` : "";
+    const pickCalloutBadge = pr.hasPickInDeal ? `<span class="badge badge-blue" style="margin-left:4px;">PICK BALANCED</span>` : "";
 
     tr.innerHTML = `
       <td style="text-align:left;">
         <div style="display:flex;align-items:center;flex-wrap:wrap;gap:4px;margin-bottom:5px;">
-          <span class="badge ${pr.badgeCls}">${pr.dealType}</span>${sosCalloutBadge}
+          <span class="badge ${pr.badgeCls}">${pr.dealType}</span>${pickCalloutBadge}${sosCalloutBadge}
         </div>
         <div style="font-weight:800;font-size:13px;">${pr.part.teamName.split(" (")[0]}</div>
         <div style="font-size:11px;color:var(--accent);font-weight:700;margin-top:2px;">Rank #${pr.part.currentRank} (${pr.part.wins}-${pr.part.losses})</div>
@@ -3070,6 +3175,7 @@ document.getElementById("dbSearch").oninput = renderTradeDatabase;
 document.getElementById("dbPosFilter").onchange = renderTradeDatabase;
 document.getElementById("dbSrcFilter").onchange = renderTradeDatabase;
 document.getElementById("finderPos").onchange = renderTradeFinder;
+document.getElementById("finderPickMode").onchange = renderTradeFinder;
 document.getElementById("finderPkgType").onchange = renderTradeFinder;
 document.getElementById("finderSosBoost").onchange = renderTradeFinder;
 document.getElementById("finderStrat").onchange = renderTradeFinder;
