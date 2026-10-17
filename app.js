@@ -10,40 +10,14 @@ const NFL_TEAM_NAMES = {
   SEA:"Seattle Seahawks", TB:"Tampa Bay Buccaneers", TEN:"Tennessee Titans", WAS:"Washington Commanders"
 };
 const DOME_TEAMS = new Set(["ARI","ATL","DAL","DET","HOU","IND","LAC","LAR","LV","MIN","NO"]);
+
+// Baseline 2026 fallback (automatically overwritten for 2027+ by syncFullSeasonNflSchedule)
 const BYE_2026 = {
   CAR:5, KC:5, CIN:6, DET:6, MIA:6, MIN:6, BUF:7, JAX:7, LAC:7, WAS:7,
   HOU:8, NO:8, NYG:8, SF:8, PIT:9, TEN:9, CHI:10, DEN:10, PHI:10, TB:10,
   ATL:11, CLE:11, GB:11, LAR:11, LA:11, NE:11, SEA:11, BAL:13, IND:13, LV:13, NYJ:13, ARI:14, DAL:14
 };
 
-const logoImgCache = {};
-let logoRedrawTimer = null;
-function scheduleLogoRedraw() {
-  if (logoRedrawTimer) return;
-  logoRedrawTimer = setTimeout(() => {
-    logoRedrawTimer = null;
-    if (document.getElementById("tab-analytics")?.classList.contains("active")) drawSingleAnalyticsChart();
-  }, 60);
-}
-NFL_TEAMS.forEach(t => {
-  const img = new Image();
-  img.onload = scheduleLogoRedraw;
-  img.src = `https://sleepercdn.com/images/team_logos/nfl/${t}.png`;
-  logoImgCache[t] = img;
-});
-function getTeamLogoImage(team) {
-  if (!team || team === "FA") return null;
-  let k = team.toLowerCase().trim();
-  if (k === "jac") k = "jax"; if (k === "la") k = "lar"; if (k === "wsh") k = "was";
-  if (!logoImgCache[k]) {
-    const img = new Image(); img.onload = scheduleLogoRedraw;
-    img.src = `https://sleepercdn.com/images/team_logos/nfl/${k}.png`;
-    logoImgCache[k] = img;
-  }
-  return logoImgCache[k];
-}
-
-// Verified 18-Week 2026 NFL Regular Season Schedule
 const NFL_2026_SCHEDULE = (() => {
   const sched = {};
   Object.keys(NFL_TEAM_NAMES).forEach(t => sched[t] = {});
@@ -79,15 +53,44 @@ const NFL_2026_SCHEDULE = (() => {
   return sched;
 })();
 
-async function syncLiveEspnSchedule(weeksToSync) {
-  const weeks = weeksToSync.filter(w => w >= 1 && w <= 18);
-  let updated = false;
-  await Promise.all(weeks.map(async wk => {
+// Dynamic Season Schedule & Bye-Week Sync (Automatically fetches & caches any NFL season 2026, 2027, 2028+)
+async function syncFullSeasonNflSchedule(seasonYear) {
+  const yr = String(seasonYear || state.season || new Date().getFullYear());
+  const cacheKey = `nfl_sched_${yr}`;
+
+  // 1. Check IndexedDB cache first (valid for 12 hours)
+  try {
+    const db = await openPlayerCacheDB();
+    const cached = await new Promise(res => {
+      const tx = db.transaction("kv", "readonly").objectStore("kv").get(cacheKey);
+      tx.onsuccess = () => {
+        const d = tx.result;
+        if (d && (Date.now() - d.ts < 43200000)) res(d.payload); else res(null);
+      };
+      tx.onerror = () => res(null);
+    });
+    if (cached && cached.sched && cached.byes) {
+      Object.keys(NFL_TEAM_NAMES).forEach(t => {
+        NFL_2026_SCHEDULE[t] = cached.sched[t] || {};
+        BYE_2026[t] = cached.byes[t] || 0;
+      });
+      BYE_2026.LA = BYE_2026.LAR || 0;
+      return;
+    }
+  } catch {}
+
+  // 2. Fetch all 18 regular-season weeks from ESPN for the active season year
+  const allWeeks = Array.from({ length: 18 }, (_, i) => i + 1);
+  const tempSched = {};
+  Object.keys(NFL_TEAM_NAMES).forEach(t => tempSched[t] = {});
+  let validWeeksFetched = 0;
+
+  await Promise.all(allWeeks.map(async wk => {
     try {
-      const res = await fetch(`https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard?dates=2026&seasontype=2&week=${wk}`).then(r => r.json());
+      const res = await fetch(`https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard?dates=${yr}&seasontype=2&week=${wk}`).then(r => r.json());
       const events = res?.events || [];
       if (events.length >= 10) {
-        Object.keys(NFL_TEAM_NAMES).forEach(t => { delete NFL_2026_SCHEDULE[t][wk]; });
+        validWeeksFetched++;
         events.forEach(ev => {
           const comp = ev.competitions?.[0];
           if (!comp || !comp.competitors || comp.competitors.length < 2) return;
@@ -99,22 +102,46 @@ async function syncLiveEspnSchedule(weeksToSync) {
           if (h === "WSH") h = "WAS"; if (a === "WSH") a = "WAS";
           if (h === "JAC") h = "JAX"; if (a === "JAC") a = "JAX";
           if (h === "LA") h = "LAR";  if (a === "LA") a = "LAR";
-          if (NFL_2026_SCHEDULE[h] && NFL_2026_SCHEDULE[a]) {
-            NFL_2026_SCHEDULE[h][wk] = { opp: a, isHome: true };
-            NFL_2026_SCHEDULE[a][wk] = { opp: h, isHome: false };
-            updated = true;
+          if (tempSched[h] && tempSched[a]) {
+            tempSched[h][wk] = { opp: a, isHome: true };
+            tempSched[a][wk] = { opp: h, isHome: false };
           }
         });
       }
     } catch {}
   }));
-  if (updated) {
-    if (document.getElementById("tab-sos")?.classList.contains("active")) renderSosTab();
-    if (document.getElementById("tab-bracket")?.classList.contains("active")) renderPlayoffBracketTab();
+
+  // 3. If ESPN returned the season schedule, overwrite schedule & auto-detect every team's Bye Week
+  if (validWeeksFetched >= 12) {
+    const detectedByes = {};
+    Object.keys(NFL_TEAM_NAMES).forEach(t => {
+      NFL_2026_SCHEDULE[t] = tempSched[t];
+      detectedByes[t] = 0;
+      for (let w = 4; w <= 14; w++) {
+        if (!tempSched[t][w]) {
+          detectedByes[t] = w;
+          break;
+        }
+      }
+      BYE_2026[t] = detectedByes[t];
+    });
+    BYE_2026.LA = BYE_2026.LAR || 0;
+
+    try {
+      const db = await openPlayerCacheDB();
+      const tx = db.transaction("kv", "readwrite");
+      tx.objectStore("kv").put({ ts: Date.now(), payload: { sched: tempSched, byes: detectedByes } }, cacheKey);
+    } catch {}
   }
 }
 
-// Verified 2026 NFL Defense vs. Position Rankings (Rank #1 = Toughest Shutdown Defense [Red], Rank #32 = Softest Smash Matchup [Green])
+// Keep syncLiveEspnSchedule as an alias so week-change listeners work seamlessly
+async function syncLiveEspnSchedule(weeksToSync) {
+  await syncFullSeasonNflSchedule(state.activeLeague?.season || state.season);
+  if (document.getElementById("tab-sos")?.classList.contains("active")) renderSosTab();
+  if (document.getElementById("tab-bracket")?.classList.contains("active")) renderPlayoffBracketTab();
+}
+
 const DVP_RANKS_2026 = (() => {
   const orderedByPos = {
     RB: ["JAX","TB","HOU","ATL","MIN","NE","KC","WAS","SEA","CHI","SF","BAL","PIT","DET","BUF","MIA","TEN","CLE","PHI","NYJ","LAC","CIN","ARI","NYG","GB","LAR","IND","DEN","LV","NO","CAR","DAL"],
@@ -131,11 +158,65 @@ const DVP_RANKS_2026 = (() => {
   return map;
 })();
 
+// Dynamically recalculates Defense vs. Position (DvP) rankings from live Sleeper stats & projections for any season
+function recomputeDynamicDvpRanks() {
+  const teams = Object.keys(NFL_TEAM_NAMES);
+  if (!Object.keys(state.players).length) return;
+
+  const is2026 = String(state.activeLeague?.season || state.season) === "2026";
+  const defMetrics = {};
+
+  teams.forEach(t => {
+    const defPlayer = state.players[t] || Object.values(state.players).find(p => p.position === "DEF" && p.team === t);
+    const st = state.rawStats[t] || (defPlayer ? state.rawStats[defPlayer.id] : null) || {};
+    const gp = Math.max(1, st.gp || st.gms_active || 1);
+
+    const ptsAllowPg = st.pts_allow !== undefined ? (st.pts_allow / gp) : 21.5;
+    const ydsAllowPg = st.yds_allow !== undefined ? (st.yds_allow / gp) : 335;
+    const sacksPg = st.sack !== undefined ? (st.sack / gp) : 2.4;
+    const takeawaysPg = ((st.int || 0) + (st.fum_rec || 0)) / gp;
+    const defSr = defPlayer?.searchRank && defPlayer.searchRank < 500 ? defPlayer.searchRank : 165;
+
+    // Higher toughness score = tougher defense (closer to Rank #1 Shutdown)
+    const runToughness = (36 - ptsAllowPg) * 2.1 + (390 - ydsAllowPg) * 0.08 + sacksPg * 2.6 + (220 - defSr) * 0.12;
+    const passToughness = (36 - ptsAllowPg) * 1.8 + sacksPg * 3.4 + takeawaysPg * 4.2 + (220 - defSr) * 0.14;
+
+    // Calculate how strong this NFL team's offense is (to rank opposing DEF matchups)
+    const teamOffPlayers = Object.values(state.players).filter(p => !p.isPick && p.team === t && p.isCurrentNfl && ["QB","RB","WR","TE"].includes(p.position));
+    teamOffPlayers.sort((a, b) => (b.seasonPpg || b.projectedPoints) - (a.seasonPpg || a.projectedPoints));
+    const topOffPpg = teamOffPlayers.slice(0, 5).reduce((sum, p) => sum + (p.seasonPpg || p.projectedPoints || 8), 0);
+
+    defMetrics[t] = {
+      RB: runToughness,
+      QB: passToughness,
+      WR: passToughness * 0.95 + takeawaysPg * 1.8,
+      TE: (runToughness * 0.45 + passToughness * 0.55),
+      DEF: topOffPpg // Higher offensive PPG = tougher matchup for opposing fantasy DEF
+    };
+  });
+
+  ["RB", "QB", "WR", "TE", "DEF"].forEach(pos => {
+    const ranked = [...teams].sort((a, b) => {
+      if (is2026) {
+        // In 2026, blend verified 2026 rankings (75%) with live stat toughness (25%)
+        const baseA = (33 - (DVP_RANKS_2026[pos]?.[a] || 16)) * 3.0;
+        const baseB = (33 - (DVP_RANKS_2026[pos]?.[b] || 16)) * 3.0;
+        return (baseB + defMetrics[b][pos] * 0.25) - (baseA + defMetrics[a][pos] * 0.25);
+      }
+      // In 2027+, rank 100% dynamically from live Sleeper stats & offensive/defensive strength
+      return defMetrics[b][pos] - defMetrics[a][pos];
+    });
+    ranked.forEach((team, idx) => {
+      DVP_RANKS_2026[pos][team] = idx + 1; // #1 = Toughest Shutdown, #32 = Easiest Smash
+    });
+  });
+}
+
 function calcDraftPickValue(season, round, slot, totalTeams, lg) {
   const baseVal = round === 1 ? 6200 : (round === 2 ? 2900 : (round === 3 ? 1350 : 550));
   const slotRatio = totalTeams > 1 ? (totalTeams - slot) / (totalTeams - 1) : 0.5;
   const slotMult = 0.76 + (slotRatio * 0.58);
-  const curYr = parseInt(lg?.season || "2026", 10) || 2026;
+  const curYr = parseInt(lg?.season || state.season || new Date().getFullYear(), 10);
   const yrDisc = Math.pow(0.88, Math.max(0, season - (curYr + 1)));
   const fmtMult = lg?.leagueType === 2 ? 1.0 : (lg?.leagueType === 1 ? 0.65 : 0.35);
   return Math.max(150, Math.round(baseVal * slotMult * yrDisc * fmtMult));
@@ -700,21 +781,32 @@ function calcPlayoffWindowAvgLineupPpg(rosterIds) {
   return sum / Math.max(1, poWeeks.length);
 }
 
+function updateDynamicSeasonLabels() {
+  const activeYr = String(state.activeLeague?.season || state.season || new Date().getFullYear());
+  const nextYr1 = parseInt(activeYr, 10) + 1;
+  const nextYr2Short = String(nextYr1 + 1).slice(-2);
+  const pickLbl = document.querySelector('#finderPickModeWrap label');
+  if (pickLbl) pickLbl.textContent = `${nextYr1}–${nextYr2Short} Picks:`;
+}
+
 async function initApp() {
   ensureDynamicTradeControls();
   updateAnalyticsDropdownOptions();
+  state.season = String(new Date().getFullYear());
+
   try {
     const stRes = await fetch("https://api.sleeper.app/v1/state/nfl").then(r => r.json());
-    state.week = Math.min(18, Math.max(1, stRes.display_week || stRes.week || 6));
+    state.week = Math.min(18, Math.max(1, stRes.display_week || stRes.week || 1));
     if (stRes.season) state.season = String(stRes.season);
     if (weekSelect) weekSelect.value = state.week;
   } catch {}
 
-  syncLiveEspnSchedule([state.week, state.week + 1, state.week + 2, state.week + 3, 14, 15, 16, 17]);
+  updateDynamicSeasonLabels();
+  await syncFullSeasonNflSchedule(state.season);
 
   let rawPlayers = await getCachedPlayers();
   if (!rawPlayers) {
-    setStatus("Downloading NFL player database (cached for 24h)...");
+    setStatus(`Downloading ${state.season} NFL player database (cached for 24h)...`);
     rawPlayers = await fetch("https://api.sleeper.app/v1/players/nfl").then(r => r.json());
     await setCachedPlayers(rawPlayers);
   }
@@ -741,11 +833,12 @@ async function initApp() {
   } catch {}
 
   recalcAllPlayers();
+  recomputeDynamicDvpRanks();
   buildTradeDatabase();
   drawSingleAnalyticsChart();
   renderSosTab();
   renderPlayoffBracketTab();
-  setStatus(`Ready | ${Object.keys(state.players).length.toLocaleString()} NFL profiles loaded`);
+  setStatus(`Ready | ${state.season} NFL Season • ${Object.keys(state.players).length.toLocaleString()} profiles loaded`);
 
   const params = new URLSearchParams(location.search);
   if (params.get("week")) {
@@ -995,7 +1088,7 @@ function renderSuperlatives(matchups) {
 function renderRosterTable(tblId, pids) {
   const tbl = document.getElementById(tblId);
   if (!tbl) return;
-  tbl.innerHTML = `<thead><tr><th>Pos</th><th style="text-align:left;">Player</th><th>NFL Team</th><th>Health Status</th><th>2026 Bye</th><th>Season PPG</th><th>Week ${state.week} Proj</th><th>Age / Exp</th></tr></thead><tbody></tbody>`;
+  tbl.innerHTML = `<thead><tr><th>Pos</th><th style="text-align:left;">Player</th><th>NFL Team</th><th>Health Status</th><th>${state.season} Bye</th><th>Season PPG</th><th>Week ${state.week} Proj</th><th>Age / Exp</th></tr></thead><tbody></tbody>`;
   const tbody = tbl.querySelector("tbody");
   pids.forEach(pid => {
     const m = state.players[pid] || { id: pid, name: `Player #${pid}`, position: "FLEX", team: "FA", injuryStatus: "Healthy", byeWeek: 0, seasonPpg: 0, projectedPoints: 0, age: 0, exp: 0, posRank: 99, ovrRank: 999 };
@@ -2031,7 +2124,7 @@ function renderWaiversTab() {
 
   const tbl = document.getElementById("waiverTbl");
   if (!tbl) return;
-  tbl.innerHTML = `<thead><tr><th>Pos</th><th style="text-align:left;">Player</th><th>NFL Team</th><th>Health Status</th><th>2026 Bye</th><th>Season PPG</th><th>Week ${state.week} Proj</th><th>VORP / FAAB</th></tr></thead><tbody></tbody>`;
+  tbl.innerHTML = `<thead><tr><th>Pos</th><th style="text-align:left;">Player</th><th>NFL Team</th><th>Health Status</th><th>${state.season} Bye</th><th>Season PPG</th><th>Week ${state.week} Proj</th><th>VORP / FAAB</th></tr></thead><tbody></tbody>`;
   const tbody = tbl.querySelector("tbody");
 
   state.waiverTargets.forEach(fa => {
@@ -2345,7 +2438,7 @@ function renderSosTab() {
   rows.forEach((r, idx) => {
     const tr = document.createElement("tr");
     tr.className = "table-row-hover";
-    const envMeta = isPlayoffs ? `${r.sos.domeCount} Dome Game(s) • ${r.sos.smashCount} Smash Matchup(s)` : `2026 Bye: Week ${BYE_2026[r.team] || '--'} • ${r.sos.smashCount} Smash Matchup(s)`;
+    const envMeta = isPlayoffs ? `${r.sos.domeCount} Dome Game(s) • ${r.sos.smashCount} Smash Matchup(s)` : `${state.season} Bye: Week ${BYE_2026[r.team] || '--'} • ${r.sos.smashCount} Smash Matchup(s)`;
     const subjectHTML = r.isTeamRow
       ? `<div class="player-cell"><img class="avatar" src="${teamLogoUrl(r.team)}" onerror="this.style.display='none'" /><div><div style="font-weight:800;font-size:14px;">${r.name} (${r.team})</div><div style="font-size:11px;color:var(--text-muted);">${envMeta}</div></div></div>`
       : `<div class="player-cell"><img class="avatar" src="${avatarUrl(r.player)}" onerror="this.style.display='none'" /><div><div style="font-weight:700;font-size:14px;"><img class="team-logo-sm" src="${teamLogoUrl(r.team)}" onerror="this.style.display='none'"/>${r.player.name}</div><div style="font-size:11px;color:var(--text-muted);">${r.player.position} #${r.player.posRank} (${r.team}) • ${r.player.seasonPpg.toFixed(1)} PPG • VAL ${r.player.baseValue}</div></div></div>`;
@@ -2484,7 +2577,7 @@ function renderPlayoffBracketTab() {
       <div class="bracket-col">
         <div class="bracket-col-hdr"><div><div style="font-size:13px;font-weight:800;color:var(--good);">ROUND 2: CHAMPIONSHIP FINALS</div><div style="font-size:11px;color:var(--text-muted);">${fmtWkTag(roundWeeks[1])} • League Title & 3rd Place</div></div><span class="badge badge-green">${fmtWkTag(roundWeeks[1])}</span></div>
         ${renderMatchupCardHTML(`LEAGUE CHAMPIONSHIP (#${sf1.winner.seed} VS #${sf2.winner.seed})`, champ)}
-        <div class="champ-callout"><div style="font-size:10px;font-weight:800;color:var(--good);letter-spacing:0.8px;">PROJECTED 2026 LEAGUE CHAMPION</div><div style="font-size:17px;font-weight:900;margin-top:4px;">#${champ.winner.seed} ${champ.winner.teamName.split(" (")[0]}</div><div style="font-size:11px;color:var(--text-muted);margin-top:2px;">Finals Projection: <b style="color:var(--good);">${(champ.winner.roundScores[1] || 0).toFixed(2)} pts</b> • Core: ${champ.winner.coreNames}</div></div>
+        <div class="champ-callout"><div style="font-size:10px;font-weight:800;color:var(--good);letter-spacing:0.8px;">PROJECTED ${state.season} LEAGUE CHAMPION</div><div style="font-size:17px;font-weight:900;margin-top:4px;">#${champ.winner.seed} ${champ.winner.teamName.split(" (")[0]}</div><div style="font-size:11px;color:var(--text-muted);margin-top:2px;">Finals Projection: <b style="color:var(--good);">${(champ.winner.roundScores[1] || 0).toFixed(2)} pts</b> • Core: ${champ.winner.coreNames}</div></div>
         ${renderMatchupCardHTML(`3RD PLACE GAME (#${sf1.loser.seed} VS #${sf2.loser.seed})`, third)}
       </div>`;
   } else {
@@ -2551,7 +2644,7 @@ function renderPlayoffBracketTab() {
       <div class="bracket-col">
         <div class="bracket-col-hdr"><div><div style="font-size:13px;font-weight:800;color:var(--good);">ROUND 3: FINALS</div><div style="font-size:11px;color:var(--text-muted);">${fmtWkTag(roundWeeks[2])} • Championship & 3rd Place</div></div><span class="badge badge-green">${fmtWkTag(roundWeeks[2])}</span></div>
         ${renderMatchupCardHTML(`LEAGUE CHAMPIONSHIP (#${sf1.winner.seed} VS #${sf2.winner.seed})`, champ)}
-        <div class="champ-callout"><div style="font-size:10px;font-weight:800;color:var(--good);letter-spacing:0.8px;">PROJECTED 2026 LEAGUE CHAMPION</div><div style="font-size:17px;font-weight:900;margin-top:4px;">#${champ.winner.seed} ${champ.winner.teamName.split(" (")[0]}</div><div style="font-size:11px;color:var(--text-muted);margin-top:2px;">Finals Projection: <b style="color:var(--good);">${(champ.winner.roundScores[2] || 0).toFixed(2)} pts</b> • Core: ${champ.winner.coreNames}</div></div>
+        <div class="champ-callout"><div style="font-size:10px;font-weight:800;color:var(--good);letter-spacing:0.8px;">PROJECTED ${state.season} LEAGUE CHAMPION</div><div style="font-size:17px;font-weight:900;margin-top:4px;">#${champ.winner.seed} ${champ.winner.teamName.split(" (")[0]}</div><div style="font-size:11px;color:var(--text-muted);margin-top:2px;">Finals Projection: <b style="color:var(--good);">${(champ.winner.roundScores[2] || 0).toFixed(2)} pts</b> • Core: ${champ.winner.coreNames}</div></div>
         ${renderMatchupCardHTML(`3RD PLACE GAME (#${sf1.loser.seed} VS #${sf2.loser.seed})`, third)}
       </div>`;
   }
