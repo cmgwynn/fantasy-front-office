@@ -1,3 +1,7 @@
+// ==========================================
+// SLEEPER COMMAND CENTER — MAIN APPLICATION (app.js)
+// ==========================================
+
 const NFL_TEAMS = ["ari","atl","bal","buf","car","chi","cin","cle","dal","den","det","gb","hou","ind","jax","kc","lv","lac","lar","mia","min","ne","no","nyg","nyj","phi","pit","sf","sea","tb","ten","was"];
 const NFL_TEAM_NAMES = {
   ARI:"Arizona Cardinals", ATL:"Atlanta Falcons", BAL:"Baltimore Ravens", BUF:"Buffalo Bills",
@@ -126,45 +130,10 @@ const DVP_RANKS_2026 = (() => {
   return map;
 })();
 
-const ANALYTICS_CONFIGS = {
-  QB: [
-    { title: "QB View 1: Passing Yards per Game vs. Passing Touchdowns per Game", xKey: "passYdsPerGame", yKey: "passTdPerGame", xLbl: "Passing Yards per Game", yLbl: "Passing TDs per Game" },
-    { title: "QB View 2: Completion Pct Over Expected (CPOE) vs. EPA per Play", xKey: "cpoeVal", yKey: "epaPerPlay", xLbl: "Completion % Over Expected (CPOE)", yLbl: "Expected Points Added (EPA/Play)" },
-    { title: "QB View 3: Rushing Attempts per Game vs. Season Fantasy PPG", xKey: "rushAttPerGame", yKey: "seasonPpg", xLbl: "Rushing Attempts per Game", yLbl: "Season Fantasy PPG" }
-  ],
-  RB: [
-    { title: "RB View 1: Projected Gold Touches (RZ + GL) vs. Projected Receiving Targets", xKey: "goldTouchesPerGame", yKey: "targetsPerGame", xLbl: "Gold Touches / Gm (RZ + GL)", yLbl: "Receiving Targets / Gm" },
-    { title: "RB View 2: Offensive Snap Share (%) vs. Rush Yards Over Expected (RYOE/Gm)", xKey: "snapSharePct", yKey: "ryoePerGame", xLbl: "Offensive Snap Share (%)", yLbl: "Rush Yds Over Expected / Gm" },
-    { title: "RB View 3: Total Touches per Game vs. Season Fantasy PPG", xKey: "touchesPerGame", yKey: "seasonPpg", xLbl: "Total Touches per Game", yLbl: "Season Fantasy PPG" }
-  ],
-  WR: [
-    { title: "WR View 1: Targets per Route Run (TPRR) vs. Yards per Route Run (YPRR)", xKey: "tprrPct", yKey: "yprrVal", xLbl: "Targets per Route Run (%)", yLbl: "Yards per Route Run (YPRR)" },
-    { title: "WR View 2: Target Volume (Tgts/Gm) vs. Yards per Target Over Expected (YPTOE)", xKey: "targetsPerGame", yKey: "yptoeVal", xLbl: "Targets per Game", yLbl: "Yards / Target Over Expected" },
-    { title: "WR View 3: Receptions per Game vs. Season Fantasy PPG", xKey: "receptionsPerGame", yKey: "seasonPpg", xLbl: "Receptions per Game", yLbl: "Season Fantasy PPG" }
-  ],
-  TE: [
-    { title: "TE View 1: Route Participation (%) vs. Targets per Route Run (TPRR %)", xKey: "snapSharePct", yKey: "tprrPct", xLbl: "Route Participation (%)", yLbl: "Targets per Route Run (%)" },
-    { title: "TE View 2: Red Zone Target Share vs. Season Fantasy PPG", xKey: "targetsPerGame", yKey: "seasonPpg", xLbl: "Targets per Game", yLbl: "Season Fantasy PPG" },
-    { title: "TE View 3: Yards per Route Run (YPRR) vs. Dynasty Trade Value", xKey: "yprrVal", yKey: "baseValue", xLbl: "Yards per Route Run (YPRR)", yLbl: "Market Trade Value" }
-  ],
-  DEF: [
-    { title: "DEF View 1: Sacks per Game vs. Takeaways per Game (INT + Fumble Rec)", xKey: "sacksPerGame", yKey: "takeawaysPerGame", xLbl: "Sacks per Game", yLbl: "Takeaways per Game" },
-    { title: "DEF View 2: Havoc Plays per Game (Sacks + Takeaways) vs. Season Fantasy PPG", xKey: "defPlaysPerGame", yKey: "seasonPpg", xLbl: "Havoc Plays / Gm (Sacks + TO)", yLbl: "Season Fantasy PPG" },
-    { title: "DEF View 3: Season Fantasy PPG vs. Weekly Projected Points", xKey: "seasonPpg", yKey: "projectedPoints", xLbl: "Season Fantasy PPG", yLbl: "Weekly Projected Points" }
-  ]
-};
-
-const state = {
-  season: "2026", week: 6, userId: "", leagues: [], activeLeague: null,
-  players: {}, rawProj: {}, rawStats: {}, managers: [],
-  tradeSideA: [], tradeSideB: [], dbTrades: [], waiverTargets: [],
-  weakestPosByTeam: {}, sosWindowMode: "NEXT4", bracketOverrides: {}
-};
-
-const weekSelect = document.getElementById("weekSelect");
+const wkSelectEl = document.getElementById("weekSelect");
 for (let w = 1; w <= 18; w++) {
   const opt = document.createElement("option"); opt.value = w; opt.textContent = `Week ${w}`;
-  weekSelect.appendChild(opt);
+  wkSelectEl.appendChild(opt);
 }
 
 function switchTradeMode(modeIdx) {
@@ -708,7 +677,6 @@ async function loadLeague(idx) {
     m.playoffPct = Math.min(99, Math.max(4, rf * 68 + (m.projW / regSeasonWks) * 25 + spotBoost - 8));
   });
 
-  // Build Draft Pick Ownership Map if league format supports picks
   if (isPickTradingAllowedInLeague()) {
     const nextYr = (parseInt(state.activeLeague.season, 10) || 2026) + 1;
     const maxR = Math.min(4, Math.max(3, state.activeLeague.draftRounds || 4));
@@ -776,329 +744,305 @@ async function loadLeague(idx) {
   setStatus(`Synced ${state.activeLeague.name} (${state.activeLeague.playoffTeams}-Team Playoff) • Week ${state.week}`);
 }
 
-function classifyManagerArchetype(mgr) {
-  if (!mgr || !state.managers.length) {
-    return { code: "BUBBLE", label: "PLAYOFF BUBBLE", roleTag: "WIN-NOW SWAPS", badgeCls: "badge-yellow" };
-  }
-  const pSpots = getResolvedPlayoffTeamCount();
-  const topContenderCut = Math.max(2, Math.ceil(pSpots * 0.67));
-
-  if (mgr.currentRank <= topContenderCut || mgr.playoffPct >= 68) {
-    return { code: "CONTENDER", label: "TITLE CONTENDER", roleTag: "BUYING VETERANS", badgeCls: "badge-green" };
-  }
-  if (mgr.currentRank > pSpots + 1 || mgr.playoffPct <= 38) {
-    return { code: "REBUILDER", label: "REBUILDER • SELLER", roleTag: "WANTS PICKS / YOUTH", badgeCls: "badge-red" };
-  }
-  return { code: "BUBBLE", label: "PLAYOFF BUBBLE", roleTag: "URGENT WIN-NOW", badgeCls: "badge-yellow" };
+function renderSuperlatives(matchups) {
+  let hiScore = -1, hiId = -1, maxBench = -1, benchId = -1, minMargin = 9999, winId = -1, loseId = -1;
+  const games = {};
+  matchups.forEach(m => {
+    (games[m.matchup_id] = games[m.matchup_id] || []).push(m);
+    const pts = m.points || 0;
+    if (pts > hiScore) { hiScore = pts; hiId = m.roster_id; }
+    const totPts = Object.values(m.players_points || {}).reduce((a, b) => a + b, 0);
+    const bPts = Math.max(0, totPts - pts);
+    if (bPts > maxBench) { maxBench = bPts; benchId = m.roster_id; }
+  });
+  Object.values(games).forEach(g => {
+    if (g.length === 2) {
+      const p0 = g[0].points || 0, p1 = g[1].points || 0;
+      if (p0 <= 0.01 && p1 <= 0.01) return;
+      const d = Math.abs(p0 - p1);
+      if (d < minMargin) {
+        minMargin = d;
+        const g0W = p0 >= p1;
+        winId = g[g0W ? 0 : 1].roster_id; loseId = g[g0W ? 1 : 0].roster_id;
+      }
+    }
+  });
+  const tName = rid => (state.managers.find(m => m.rosterId === rid)?.teamName || `Team ${rid}`).split(" (")[0];
+  if (hiScore > 0) document.getElementById("supJug").textContent = `TOP SCORER: ${tName(hiId)} (${hiScore.toFixed(1)} pts)`;
+  if (maxBench > 0) document.getElementById("supBench").textContent = `BENCH POINTS LEFT: ${tName(benchId)} (${maxBench.toFixed(1)} pts)`;
+  if (minMargin < 999 && winId !== -1) document.getElementById("supHeart").textContent = `NARROWEST LOSS: ${tName(loseId)} vs ${tName(winId)} (-${minMargin.toFixed(2)} pts)`;
 }
 
-function renderTradeFinder() {
-  const myIdx = parseInt(document.getElementById("tradeTeamA").value, 10) || 0;
-  const myTm = state.managers[myIdx];
-  const arrow = k => (finderSortKey === k ? (finderSortDir === -1 ? " ▼" : " ▲") : "");
-  const tbl = document.getElementById("finderTable");
-  tbl.innerHTML = `<thead><tr><th style="text-align:left;width:245px;cursor:pointer;" data-fsort="partnerRank">Trade Partner & Archetype Fit${arrow("partnerRank")}</th><th style="text-align:left;cursor:pointer;color:var(--bad);" data-fsort="giveVal">You Send (Val)${arrow("giveVal")}</th><th style="text-align:left;cursor:pointer;color:var(--good);" data-fsort="getVal">You Receive (Val)${arrow("getVal")}</th><th style="width:140px;cursor:pointer;" data-fsort="match">Package Match${arrow("match")}</th><th style="width:190px;cursor:pointer;color:var(--accent);" data-fsort="dMy">ROS & Playoff PPG Impact${arrow("dMy")}</th><th style="width:135px;">Modify Trade</th></tr></thead><tbody></tbody>`;
-
-  tbl.querySelectorAll("th[data-fsort]").forEach(th => {
-    th.onclick = () => {
-      const k = th.dataset.fsort;
-      if (finderSortKey === k) finderSortDir *= -1;
-      else { finderSortKey = k; finderSortDir = -1; }
-      renderTradeFinder();
-    };
-  });
-
+function renderRosterTable(tblId, pids) {
+  const tbl = document.getElementById(tblId);
+  tbl.innerHTML = `<thead><tr><th>Pos</th><th style="text-align:left;">Player</th><th>NFL Team</th><th>Health Status</th><th>2026 Bye</th><th>Season PPG</th><th>Week ${state.week} Proj</th><th>Age / Exp</th></tr></thead><tbody></tbody>`;
   const tbody = tbl.querySelector("tbody");
-  if (!myTm || state.managers.length < 2) {
-    document.getElementById("posGradesGrid").innerHTML = "";
-    tbody.innerHTML = `<tr><td colspan="6" style="padding:24px;color:var(--text-muted);">Sync your Sleeper account above to analyze positional grades, Contender vs. Rebuilder tags, and archetype-matched trades.</td></tr>`;
-    document.getElementById("finderCountLbl").textContent = "0 proposals";
-    return;
-  }
-
-  const diag = computeLeaguePositionalGrades(myIdx);
-  const rawPosSel = document.getElementById("finderPos").value;
-  const targetPos = rawPosSel === "AUTO" ? diag.weakestPos : rawPosSel;
-  const partnerTypeFilter = document.getElementById("finderPartnerType")?.value || "ALL";
-  const pkgTypeFilter = document.getElementById("finderPkgType").value || "ALL";
-  const pickMode = document.getElementById("finderPickMode")?.value || "AUTO";
-  const sosBoostMode = document.getElementById("finderSosBoost").value || "BOOST";
-  const strat = parseInt(document.getElementById("finderStrat").value || "0", 10);
-
-  const leagueSupportsPicks = isPickTradingAllowedInLeague();
-  const allowPicks = leagueSupportsPicks && (pickMode !== "OFF");
-
-  const myBase = calcOptimalLineup(myTm.players, true).total;
-  const myPlayoffBase = calcPlayoffWindowAvgLineupPpg(myTm.players);
-  const myPl = myTm.players.map(id => state.players[id])
-    .filter(p => p && !p.isPick && p.isCurrentNfl && ["QB","RB","WR","TE"].includes(p.position) && p.baseValue >= 900)
-    .sort((a, b) => b.baseValue - a.baseValue);
-  const myPicks = allowPicks ? (myTm.ownedPicks || []).slice().sort((a, b) => b.baseValue - a.baseValue) : [];
-
-  const props = [];
-  const seenKeys = new Set();
-
-  function findBestBalancingPick(picksPool, neededValue) {
-    if (!picksPool || !picksPool.length || neededValue < 250) return null;
-    let bestPick = null, minDiff = Infinity;
-    for (const pk of picksPool) {
-      const diff = Math.abs(pk.baseValue - neededValue);
-      if (diff < minDiff) { minDiff = diff; bestPick = pk; }
-    }
-    return bestPick;
-  }
-
-  function evaluateAndPushCandidate(part, tIdx, partArch, partBase, giveIds, getIds, dealType, badgeCls, customNote) {
-    if (partnerTypeFilter !== "ALL" && partArch.code !== partnerTypeFilter) return;
-    const hasPickInDeal = giveIds.some(id => String(id).startsWith("PICK_")) || getIds.some(id => String(id).startsWith("PICK_"));
-    if (!allowPicks && hasPickInDeal) return;
-    if (pkgTypeFilter === "PICK_PKG" && !hasPickInDeal) return;
-
-    const key = [...giveIds].sort().join(",") + "|" + [...getIds].sort().join(",");
-    if (seenKeys.has(key)) return;
-
-    const getObjs = getIds.map(id => state.players[id]).filter(Boolean);
-    const giveObjs = giveIds.map(id => state.players[id]).filter(Boolean);
-    const getPlayersOnly = getObjs.filter(p => !p.isPick);
-    const givePlayersOnly = giveObjs.filter(p => !p.isPick);
-    if (!getPlayersOnly.length || !givePlayersOnly.length) return;
-
-    if (targetPos !== "ALL") {
-      const bestInAtTarget = Math.max(0, ...getPlayersOnly.filter(p => p.position === targetPos).map(p => p.baseValue));
-      const bestOutAtTarget = Math.max(0, ...givePlayersOnly.filter(p => p.position === targetPos).map(p => p.baseValue));
-      if (bestInAtTarget <= bestOutAtTarget) return;
-    }
-
-    const inSosList = getPlayersOnly.map(getPlayerPlayoffSosProfile);
-    const outSosList = givePlayersOnly.map(getPlayerPlayoffSosProfile);
-    const hasElitePlayoffTarget = inSosList.some(s => s.isElite);
-    const avgInDvP = inSosList.reduce((s, x) => s + x.avgRank, 0) / Math.max(1, inSosList.length);
-    const avgOutDvP = outSosList.reduce((s, x) => s + x.avgRank, 0) / Math.max(1, outSosList.length);
-    const netDvPGain = avgInDvP - avgOutDvP;
-
-    if (sosBoostMode === "STRICT" && !hasElitePlayoffTarget) return;
-
-    const rawGive = giveObjs.reduce((s, p) => s + p.baseValue, 0);
-    const rawGet = getObjs.reduce((s, p) => s + p.baseValue, 0);
-    const cA = giveIds.length, cB = getIds.length;
-    let adjGive = rawGive, adjGet = rawGet;
-    if (cA !== cB) {
-      const tax = 1 - Math.min(0.16, Math.abs(cA - cB) * 0.06);
-      if (cA > cB) adjGive = Math.round(rawGive * tax);
-      else adjGet = Math.round(rawGet * tax);
-    }
-
-    const maxV = Math.max(adjGive, adjGet);
-    const match = maxV > 0 ? (1 - Math.abs(adjGive - adjGet) / maxV) * 100 : 0;
-    if (match < 85) return;
-    if (strat === 2 && match < 92) return;
-
-    const givePlayerIds = giveIds.filter(id => !String(id).startsWith("PICK_"));
-    const getPlayerIds = getIds.filter(id => !String(id).startsWith("PICK_"));
-    const myAfter = myTm.players.filter(id => !givePlayerIds.includes(id)).concat(getPlayerIds);
-    const ptAfter = part.players.filter(id => !getPlayerIds.includes(id)).concat(givePlayerIds);
-    const dMy = calcOptimalLineup(myAfter, true).total - myBase;
-    const dPt = calcOptimalLineup(ptAfter, true).total - partBase;
-    const dPlayoffMy = calcPlayoffWindowAvgLineupPpg(myAfter) - myPlayoffBase;
-
-    const partnerGetsPick = giveIds.some(id => String(id).startsWith("PICK_"));
-    const partnerGetsYoungAsset = givePlayersOnly.some(p => p.age > 0 && p.age <= 25);
-    const partnerGetsVeteranStarter = givePlayersOnly.some(p => p.seasonPpg >= 11.2 || p.age >= 26);
-
-    let archetypeFitBonus = 0;
-    let archetypeReason = "";
-
-    if (partArch.code === "REBUILDER") {
-      if (partnerGetsPick && weGetVeteranStarter) { archetypeFitBonus += 1.85; archetypeReason = "Rebuilder receives future pick for starting vet"; }
-      else if (partnerGetsYoungAsset && weGetVeteranStarter) { archetypeFitBonus += 1.25; archetypeReason = "Rebuilder gets younger asset (≤25yo) for vet starter"; }
-      else if (givePlayersOnly.length > getPlayersOnly.length) { archetypeFitBonus += 0.90; archetypeReason = "Rebuilder acquires multiple roster assets for stud"; }
-      if (weGetPick && !partnerGetsPick) archetypeFitBonus -= 1.50;
-    } else if (partArch.code === "CONTENDER") {
-      if (dPt >= 0.25 && partnerGetsVeteranStarter) { archetypeFitBonus += 1.65; archetypeReason = `Contender gains +${dPt.toFixed(1)} starting PPG for title push`; }
-      else if (weGetPick && partnerGetsVeteranStarter) { archetypeFitBonus += 1.45; archetypeReason = "Contender trades future pick for win-now starter"; }
-    } else {
-      if (dPt >= 0.15 && dMy >= 0.15) { archetypeFitBonus += 1.15; archetypeReason = "Win-now starter swap for Playoff Bubble team"; }
-    }
-
-    const effectiveMyGain = sosBoostMode !== "OFF" ? Math.max(dMy, dPlayoffMy) : dMy;
-    let minPartnerDelta = -0.25;
-    if (partArch.code === "REBUILDER" && (partnerGetsPick || partnerGetsYoungAsset || givePlayersOnly.length > getPlayersOnly.length)) minPartnerDelta = -3.50;
-    else if (partnerGetsPick) minPartnerDelta = -1.50;
-
-    if (strat === 0 && (effectiveMyGain < 0.05 || dPt < minPartnerDelta)) return;
-    if (strat === 1 && effectiveMyGain < 0.25) return;
-    if (strat === 2 && (effectiveMyGain <= 0 && dPt <= 0 && archetypeFitBonus <= 0)) return;
-
-    let sosRankBonus = 0;
-    if (sosBoostMode !== "OFF") {
-      if (hasElitePlayoffTarget) sosRankBonus += 1.35;
-      sosRankBonus += (netDvPGain / 10) * 0.75;
-      sosRankBonus += (dPlayoffMy - dMy) * 0.85;
-    }
-    if (hasPickInDeal && allowPicks) sosRankBonus += 0.45;
-
-    const compositeScore = dMy * 1.35 + Math.max(-0.5, dPt * 0.65) + sosRankBonus + archetypeFitBonus;
-    seenKeys.add(key);
-    props.push({
-      part, partnerIdx: tIdx, partnerRank: part.currentRank, partArch,
-      giveIds, getIds, giveVal: adjGive, getVal: adjGet,
-      match, dMy, dPt, dPlayoffMy, compositeScore,
-      hasElitePlayoffTarget, hasPickInDeal, sosRankBonus, archetypeFitBonus,
-      archetypeReason: archetypeReason || customNote, dealType, badgeCls, note: customNote
-    });
-  }
-
-  state.managers.forEach((part, tIdx) => {
-    if (tIdx === myIdx) return;
-    const partArch = classifyManagerArchetype(part);
-    if (partnerTypeFilter !== "ALL" && partArch.code !== partnerTypeFilter) return;
-
-    const partBase = calcOptimalLineup(part.players, true).total;
-    const thPl = part.players.map(id => state.players[id])
-      .filter(p => p && !p.isPick && p.isCurrentNfl && ["QB","RB","WR","TE"].includes(p.position) && p.baseValue >= 900)
-      .sort((a, b) => b.baseValue - a.baseValue);
-    const thPicks = allowPicks ? (part.ownedPicks || []).slice().sort((a, b) => b.baseValue - a.baseValue) : [];
-
-    if (pkgTypeFilter === "ALL" || pkgTypeFilter === "MULTI" || pkgTypeFilter === "2FOR1" || pkgTypeFilter === "PICK_PKG") {
-      thPl.slice(0, 7).forEach(stud => {
-        if (targetPos !== "ALL" && stud.position !== targetPos) return;
-        if (stud.baseValue < 2400) return;
-        for (let m1 = 0; m1 < Math.min(10, myPl.length); m1++) {
-          if (myPl[m1].baseValue >= stud.baseValue * 0.92) continue;
-          for (let m2 = m1 + 1; m2 < Math.min(11, myPl.length); m2++) {
-            const pairVal = Math.round((myPl[m1].baseValue + myPl[m2].baseValue) * 0.94);
-            if (pkgTypeFilter !== "PICK_PKG") evaluateAndPushCandidate(part, tIdx, partArch, partBase, [myPl[m1].id, myPl[m2].id], [stud.id], "2-FOR-1 CONSOLIDATION", "badge-purple", `Package ${myPl[m1].position}+${myPl[m2].position} depth for elite ${stud.position}1`);
-            if (allowPicks) {
-              const gap = stud.baseValue - pairVal;
-              if (gap > 300 && gap < 3600) {
-                const balPick = findBestBalancingPick(myPicks, gap);
-                if (balPick) evaluateAndPushCandidate(part, tIdx, partArch, partBase, [myPl[m1].id, myPl[m2].id, balPick.id], [stud.id], "2-FOR-1 + PICK", "badge-purple", `Offer ${balPick.season} Rd ${balPick.round} + depth to ${partArch.code === 'REBUILDER' ? 'Rebuilder' : 'partner'} for ${stud.name.split(" ").pop()}`);
-              } else if (gap < -350 && gap > -3200 && partArch.code !== "REBUILDER") {
-                const retPick = findBestBalancingPick(thPicks, Math.abs(gap));
-                if (retPick) evaluateAndPushCandidate(part, tIdx, partArch, partBase, [myPl[m1].id, myPl[m2].id], [stud.id, retPick.id], "2-FOR-1 + PICK RETURN", "badge-purple", `Consolidate for ${stud.name.split(" ").pop()} + ${retPick.season} Rd ${retPick.round} pick back`);
-              }
-            }
-          }
-        }
-      });
-    }
-
-    if (pkgTypeFilter === "ALL" || pkgTypeFilter === "1FOR1" || pkgTypeFilter === "PICK_PKG") {
-      myPl.slice(0, 11).forEach(gP => {
-        thPl.slice(0, 11).forEach(rP => {
-          if (pkgTypeFilter !== "PICK_PKG" && gP.position !== rP.position) {
-            if (targetPos === "ALL" || rP.position === targetPos) {
-              const swapNote = partArch.code === "REBUILDER" && gP.age <= 25 && rP.age >= 26 ? `Send young ${gP.age}yo ${gP.position} to Rebuilder for veteran ${rP.position} starter` : `Direct ${gP.position} surplus for ${rP.position} starter swap`;
-              evaluateAndPushCandidate(part, tIdx, partArch, partBase, [gP.id], [rP.id], "1-FOR-1 SWAP", "badge-blue", swapNote);
-            }
-          }
-          if (allowPicks && gP.id !== rP.id) {
-            if (targetPos !== "ALL" && rP.position !== targetPos) return;
-            const rawDiff = rP.baseValue - gP.baseValue;
-            if (rawDiff >= 350 && rawDiff <= 4500) {
-              const myBalPick = findBestBalancingPick(myPicks, Math.round(rawDiff * 1.06));
-              if (myBalPick) {
-                const dealLbl = partArch.code === "REBUILDER" ? "BUY VET FROM REBUILDER" : "PLAYER + PICK → STUD";
-                evaluateAndPushCandidate(part, tIdx, partArch, partBase, [gP.id, myBalPick.id], [rP.id], dealLbl, "badge-green", `Send ${myBalPick.season} Rd ${myBalPick.round} + ${gP.name.split(" ").pop()} to ${partArch.label.split(" ")[0]} for ${rP.name.split(" ").pop()}`);
-              }
-            } else if (rawDiff <= -350 && rawDiff >= -4200 && gP.position !== rP.position && partArch.code !== "REBUILDER") {
-              const thBalPick = findBestBalancingPick(thPicks, Math.round(Math.abs(rawDiff) * 1.06));
-              if (thBalPick) {
-                const dealLbl = partArch.code === "CONTENDER" ? "SELL VET TO CONTENDER" : "1-FOR-1 + PICK GAIN";
-                evaluateAndPushCandidate(part, tIdx, partArch, partBase, [gP.id], [rP.id, thBalPick.id], dealLbl, "badge-blue", `Sell ${gP.name.split(" ").pop()} to ${partArch.label.split(" ")[0]} for ${rP.name.split(" ").pop()} + ${thBalPick.season} Rd ${thBalPick.round}`);
-              }
-            }
-          }
-        });
-      });
-    }
-
-    if (pkgTypeFilter === "ALL" || pkgTypeFilter === "MULTI" || pkgTypeFilter === "2FOR2") {
-      thPl.slice(0, 7).forEach(t1 => {
-        if (targetPos !== "ALL" && t1.position !== targetPos) return;
-        for (let m1 = 0; m1 < Math.min(8, myPl.length); m1++) {
-          const g1 = myPl[m1];
-          if (g1.baseValue >= t1.baseValue * 0.92 || g1.baseValue < t1.baseValue * 0.45) continue;
-          for (let m2 = 0; m2 < Math.min(9, myPl.length); m2++) {
-            if (m2 === m1) continue;
-            const g2 = myPl[m2];
-            for (let ti2 = 1; ti2 < Math.min(10, thPl.length); ti2++) {
-              const t2 = thPl[ti2];
-              if (t2.id === t1.id || g2.baseValue <= t2.baseValue) continue;
-              evaluateAndPushCandidate(part, tIdx, partArch, partBase, [g1.id, g2.id], [t1.id, t2.id], "2-FOR-2 PACKAGE", "badge-green", `Upgrade to ${t1.name.split(" ").pop()} (${t1.position}) while balancing ${g2.position}/${t2.position}`);
-            }
-          }
-        }
-      });
-    }
-
-    if (pkgTypeFilter === "ALL" || pkgTypeFilter === "MULTI") {
-      myPl.slice(0, 4).forEach(myStud => {
-        if (myStud.baseValue < 3200 || (targetPos !== "ALL" && myStud.position === targetPos)) return;
-        for (let t1 = 0; t1 < Math.min(8, thPl.length); t1++) {
-          if (thPl[t1].baseValue >= myStud.baseValue * 0.90) continue;
-          for (let t2 = t1 + 1; t2 < Math.min(10, thPl.length); t2++) {
-            evaluateAndPushCandidate(part, tIdx, partArch, partBase, [myStud.id], [thPl[t1].id, thPl[t2].id], "1-FOR-2 DEPTH", "badge-yellow", `Sell ${myStud.position} stud to ${partArch.label.split(" ")[0]} for 2 startable upgrades`);
-          }
-        }
-      });
-    }
-  });
-
-  const dir = finderSortDir === 1 ? -1 : 1;
-  props.sort((a, b) => {
-    if (finderSortKey === "giveVal") return (b.giveVal - a.giveVal) * dir;
-    if (finderSortKey === "getVal") return (b.getVal - a.getVal) * dir;
-    if (finderSortKey === "match") return (b.match - a.match) * dir;
-    if (finderSortKey === "partnerRank") return (a.partnerRank - b.partnerRank) * dir;
-    if (finderSortKey === "dMy") return (b.dMy - a.dMy) * dir;
-    if (strat === 1) return ((b.dMy + b.sosRankBonus + b.archetypeFitBonus * 0.5) - (a.dMy + a.sosRankBonus + a.archetypeFitBonus * 0.5)) * dir;
-    if (strat === 2) return ((b.match + b.sosRankBonus * 2.5) - (a.match + a.sosRankBonus * 2.5)) * dir;
-    return (b.compositeScore - a.compositeScore) * dir;
-  });
-
-  const topProps = props.slice(0, 16);
-  document.getElementById("finderCountLbl").textContent = `${topProps.length} proposals`;
-
-  if (!topProps.length) {
-    tbody.innerHTML = `<tr><td colspan="6" style="padding:24px;color:var(--warn);">No strict matches for this filter combination. Try switching Partner Status to "All Partners" or Package Size to "All Packages".</td></tr>`;
-    return;
-  }
-
-  topProps.forEach(pr => {
+  pids.forEach(pid => {
+    const m = state.players[pid] || { id: pid, name: `Player #${pid}`, position: "FLEX", team: "FA", injuryStatus: "Healthy", byeWeek: 0, seasonPpg: 0, projectedPoints: 0, age: 0, exp: 0, posRank: 99, ovrRank: 999 };
+    const hCol = ["Questionable","Doubtful"].includes(m.injuryStatus) ? "var(--warn)" : (["Out","IR","PUP","Suspended"].includes(m.injuryStatus) ? "var(--bad)" : "var(--good)");
+    const isBye = m.byeWeek > 0 && m.byeWeek === state.week;
     const tr = document.createElement("tr");
-    tr.className = "table-row-hover";
-    const sosCalloutBadge = pr.hasElitePlayoffTarget ? `<span class="badge badge-green" style="margin-left:4px;">PLAYOFF SOS (A/A+)</span>` : "";
-    const pickCalloutBadge = pr.hasPickInDeal ? `<span class="badge badge-blue" style="margin-left:4px;">PICK BALANCED</span>` : "";
-
     tr.innerHTML = `
-      <td style="text-align:left;">
-        <div style="display:flex;align-items:center;flex-wrap:wrap;gap:4px;margin-bottom:5px;">
-          <span class="badge ${pr.partArch.badgeCls}">${pr.partArch.label}</span>
-          <span class="badge ${pr.badgeCls}">${pr.dealType}</span>${pickCalloutBadge}${sosCalloutBadge}
-        </div>
-        <div style="font-weight:800;font-size:13px;">${pr.part.teamName.split(" (")[0]}</div>
-        <div style="font-size:11px;color:var(--accent);font-weight:700;margin-top:2px;">Rank #${pr.part.currentRank} (${pr.part.wins}-${pr.part.losses} • ${pr.part.playoffPct.toFixed(0)}% Playoff Odds)</div>
-        <div style="font-size:11px;color:var(--text-muted);margin-top:3px;">${pr.archetypeReason}</div>
-      </td>
-      <td>${renderTradeAssetStackHTML(pr.giveIds)}</td>
-      <td>${renderTradeAssetStackHTML(pr.getIds)}</td>
-      <td>
-        <div style="display:flex;flex-direction:column;gap:5px;align-items:center;">
-          <span class="badge ${pr.match >= 92 ? 'badge-green' : 'badge-blue'}">${pr.match.toFixed(0)}% Value Match</span>
-          <div style="font-size:11px;color:var(--text-muted);font-weight:700;">${pr.giveVal} vs ${pr.getVal}</div>
-        </div>
-      </td>
-      <td>
-        <div style="display:flex;flex-direction:column;gap:5px;align-items:center;">
-          <span class="badge ${pr.dMy >= 0 ? 'badge-green' : 'badge-yellow'}">ROS: ${pr.dMy >= 0 ? '+' : ''}${pr.dMy.toFixed(2)} PPG</span>
-          <span class="badge ${pr.dPlayoffMy >= pr.dMy && pr.dPlayoffMy > 0 ? 'badge-green' : 'badge-purple'}">Playoffs: ${pr.dPlayoffMy >= 0 ? '+' : ''}${pr.dPlayoffMy.toFixed(2)} PPG</span>
-          <span style="font-size:10px;color:var(--text-muted);font-weight:700;">Partner: ${pr.dPt >= 0 ? '+' : ''}${pr.dPt.toFixed(2)} PPG</span>
-        </div>
-      </td>
-      <td><button class="btn-builder-action">Open in Builder →</button></td>`;
-    tr.querySelector("button").onclick = () => openTradeInBuilder(pr.giveIds, pr.getIds, myIdx, pr.partnerIdx);
+      <td><span class="pos-pill" style="${posBadgeStyle(m.position)}">${m.position}</span></td>
+      <td><div class="player-cell"><img class="avatar" src="${avatarUrl(m)}" onerror="this.style.display='none'" /><div><div style="font-weight:700;font-size:14px;color:var(--text-main);"><img class="team-logo-sm" src="${teamLogoUrl(m.team)}" onerror="this.style.display='none'"/>${m.name}</div><div style="font-size:11px;color:var(--text-muted);">${m.position} #${m.posRank} • OVR #${m.ovrRank}</div></div></div></td>
+      <td style="font-weight:700;">${m.team}</td>
+      <td style="font-weight:700;color:${hCol};">${m.injuryStatus}</td>
+      <td style="color:${isBye ? 'var(--bad)' : 'var(--text-muted)'};font-weight:${isBye ? '700' : '400'};">${m.byeWeek > 0 ? (isBye ? `Wk ${m.byeWeek} (BYE)` : `Wk ${m.byeWeek}`) : "--"}</td>
+      <td>${m.seasonPpg.toFixed(2)} pts</td>
+      <td style="color:var(--good);font-weight:700;">${m.projectedPoints.toFixed(2)} pts</td>
+      <td style="color:var(--text-muted);">${m.exp}y / ${m.age}yo</td>`;
     tbody.appendChild(tr);
   });
 }
-// === END BLOCK 2: STOP REPLACING RIGHT BEFORE function renderOptimizerTab(idx) { ===
+
+function renderRosterTab(idx) {
+  const tm = state.managers[idx];
+  if (!tm) return;
+  document.getElementById("rTeamName").textContent = tm.teamName;
+  document.getElementById("rRecord").textContent = `Record: ${tm.wins} - ${tm.losses}`;
+  document.getElementById("rAllPlay").textContent = `All-Play: ${tm.allPlayW} - ${tm.allPlayL}`;
+  document.getElementById("rPoints").textContent = `PF: ${tm.pf.toFixed(2)} (Max: ${tm.maxPf.toFixed(2)} | ${tm.eff.toFixed(1)}% Eff) | PA: ${tm.pa.toFixed(2)}`;
+  document.getElementById("rRank").textContent = `Power Rank: #${tm.currentRank} (${tm.power.toFixed(1)})`;
+
+  const posVal = { QB:0, RB:0, WR:0, TE:0 };
+  let inj = 0, byes = 0;
+  tm.players.forEach(pid => {
+    const p = state.players[pid];
+    if (!p || p.isPick) return;
+    posVal[p.position] = (posVal[p.position] || 0) + p.baseValue;
+    if (p.injuryStatus !== "Healthy" && p.injuryStatus !== "") inj++;
+    if (p.byeWeek === state.week) byes++;
+  });
+  document.getElementById("rPosStrength").textContent = `Positional Strength — QB: ${posVal.QB} • RB: ${posVal.RB} • WR: ${posVal.WR} • TE: ${posVal.TE}     |     Health Alerts: ${inj}     |     Week ${state.week} Byes: ${byes}`;
+
+  const stIds = tm.starters.filter(id => id && id !== "0");
+  const irIds = tm.reserve || [], txIds = tm.taxi || [];
+  const bnIds = tm.players.filter(id => !stIds.includes(id) && !irIds.includes(id) && !txIds.includes(id));
+
+  renderRosterTable("startersTbl", stIds);
+  renderRosterTable("benchTbl", bnIds);
+  document.getElementById("irSec").style.display = irIds.length ? "flex" : "none";
+  if (irIds.length) renderRosterTable("irTbl", irIds);
+  document.getElementById("taxiSec").style.display = txIds.length ? "flex" : "none";
+  if (txIds.length) renderRosterTable("taxiTbl", txIds);
+}
+
+function renderPowerTab() {
+  const tbl = document.getElementById("powerTbl");
+  tbl.innerHTML = `<thead><tr><th>Rank</th><th style="text-align:left;">Team / Manager</th><th>Record</th><th>Playoff %</th><th>Points For</th><th>Max PF</th><th>Efficiency</th><th>Points Against</th><th>All-Play</th><th>Luck Index</th><th>Power Score</th></tr></thead><tbody></tbody>`;
+  const tbody = tbl.querySelector("tbody");
+  state.managers.forEach(m => {
+    const poCol = m.playoffPct >= 65 ? "var(--good)" : (m.playoffPct <= 30 ? "var(--bad)" : "var(--warn)");
+    const efCol = m.eff >= 90 ? "var(--good)" : (m.eff <= 80 ? "var(--bad)" : "var(--warn)");
+    const lkCol = m.luck > 5 ? "var(--good)" : (m.luck < -5 ? "var(--bad)" : "var(--text-muted)");
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td style="font-weight:700;">#${m.currentRank}</td>
+      <td style="text-align:left;font-weight:700;">${m.teamName}</td>
+      <td>${m.wins} - ${m.losses}</td>
+      <td style="color:${poCol};font-weight:700;">${m.playoffPct.toFixed(0)}%</td>
+      <td>${m.pf.toFixed(2)}</td><td>${m.maxPf.toFixed(2)}</td>
+      <td style="color:${efCol};font-weight:700;">${m.eff.toFixed(1)}%</td>
+      <td>${m.pa.toFixed(2)}</td><td>${m.allPlayW} - ${m.allPlayL}</td>
+      <td style="color:${lkCol};font-weight:700;">${m.luck >= 0 ? "+" : ""}${m.luck.toFixed(1)}%</td>
+      <td style="font-weight:800;color:var(--accent);">${m.power.toFixed(1)}</td>`;
+    tbody.appendChild(tr);
+  });
+  drawPowerChart();
+}
+
+function drawPowerChart() {
+  const canvas = document.getElementById("powerCanvas");
+  const ctx = canvas.getContext("2d");
+  const dpr = window.devicePixelRatio || 1;
+  const W = canvas.clientWidth || 860, H = canvas.clientHeight || 300;
+  canvas.width = W * dpr; canvas.height = H * dpr;
+  ctx.scale(dpr, dpr);
+  ctx.clearRect(0, 0, W, H);
+
+  if (!state.managers.length) return;
+  const mode = parseInt(document.getElementById("powerChartMode").value, 10);
+
+  if (mode === 0) {
+    ctx.fillStyle = "#F2F4F8"; ctx.font = "700 12px -apple-system, sans-serif";
+    ctx.fillText(`WEEK 1 TO WEEK ${state.week} POWER RANKINGS TRAJECTORY (TOP 6 TEAMS)`, 20, 26);
+    const plot = { l: 65, t: 44, w: W - 265, h: H - 72 };
+    const cols = ["#30D158", "#0A84FF", "#64D2FF", "#FFD60A", "#FF9F0A", "#FF453A"];
+    const tot = state.managers.length, show = Math.min(tot, 6), wks = Math.max(2, state.week);
+    for (let i = 0; i < show; i++) {
+      const m = state.managers[i], c = cols[i % cols.length];
+      ctx.strokeStyle = c; ctx.lineWidth = 2.2; ctx.beginPath();
+      m.history.forEach((rk, wIdx) => {
+        const x = plot.l + (wIdx / (wks - 1)) * plot.w;
+        const y = plot.t + ((rk - 1) / Math.max(1, tot - 1)) * plot.h;
+        if (wIdx === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      });
+      ctx.stroke();
+      ctx.fillStyle = c; ctx.fillRect(plot.l + plot.w + 16, plot.t + i * 27, 10, 10);
+      ctx.fillStyle = "#F2F4F8"; ctx.font = "700 10px -apple-system, sans-serif";
+      const d = m.week1Rank - m.currentRank;
+      const tr = d > 0 ? `+${d}` : (d < 0 ? `${d}` : "0");
+      ctx.fillText(`#${m.currentRank} ${m.teamName.split(" (")[0].slice(0, 14)} (${tr})`, plot.l + plot.w + 32, plot.t + i * 27 + 9);
+    }
+  } else if (mode === 1) {
+    ctx.fillStyle = "#F2F4F8"; ctx.font = "700 12px -apple-system, sans-serif";
+    ctx.fillText("SEASONAL PROJECTION — CURRENT WINS (GREEN) VS. PROJECTED FINAL WINS (BLUE)", 20, 26);
+    const count = Math.min(8, state.managers.length);
+    const plot = { l: 195, t: 42, w: W - 355, h: H - 54 };
+    const rowH = plot.h / count;
+    for (let i = 0; i < count; i++) {
+      const m = state.managers[i], y = plot.t + i * rowH;
+      ctx.fillStyle = "#F2F4F8"; ctx.font = "700 11px -apple-system, sans-serif";
+      ctx.fillText(`#${i+1}  ${m.teamName.split(" (")[0].slice(0, 18)}`, 18, y + rowH * 0.5);
+      const pw = Math.min(1, m.projW / 14) * plot.w, aw = Math.min(1, m.wins / 14) * plot.w;
+      ctx.fillStyle = "#0A84FF"; ctx.fillRect(plot.l, y + rowH * 0.22, pw, rowH * 0.56);
+      if (m.wins > 0) { ctx.fillStyle = "#30D158"; ctx.fillRect(plot.l, y + rowH * 0.22, aw, rowH * 0.56); }
+      ctx.fillStyle = "#F2F4F8"; ctx.font = "700 10px -apple-system, sans-serif";
+      ctx.fillText(`Proj: ${m.projW}-${m.projL}  |  Playoff: ${m.playoffPct.toFixed(0)}%`, plot.l + pw + 10, y + rowH * 0.65);
+    }
+  } else {
+    ctx.fillStyle = "#F2F4F8"; ctx.font = "700 12px -apple-system, sans-serif";
+    ctx.fillText("SKILL VS. LUCK MATRIX — LINEUP EFFICIENCY (%) VS. POINTS AGAINST", 20, 24);
+    const plot = { l: 92, t: 38, w: W - 125, h: H - 96 };
+
+    const effs = state.managers.map(m => m.eff), pas = state.managers.map(m => m.pa);
+    let minE = Math.min(...effs) - 2, maxE = Math.max(...effs) + 2;
+    let minP = Math.min(...pas) - 15, maxP = Math.max(...pas) + 15;
+    if (maxE - minE < 2) { minE -= 2; maxE += 2; }
+    if (maxP - minP < 10) { minP -= 10; maxP += 10; }
+    const avgE = effs.reduce((a, b) => a + b, 0) / effs.length;
+    const avgP = pas.reduce((a, b) => a + b, 0) / pas.length;
+
+    ctx.strokeStyle = "#222836"; ctx.lineWidth = 1;
+    ctx.fillStyle = "#8E96AA"; ctx.font = "600 10px -apple-system, sans-serif";
+    for (let i = 0; i <= 4; i++) {
+      const r = i / 4;
+      const gx = plot.l + r * plot.w, gy = plot.t + (1 - r) * plot.h;
+      ctx.beginPath();
+      ctx.moveTo(gx, plot.t); ctx.lineTo(gx, plot.t + plot.h);
+      ctx.moveTo(plot.l, gy); ctx.lineTo(plot.l + plot.w, gy);
+      ctx.stroke();
+      ctx.textAlign = "center";
+      ctx.fillText((minE + r * (maxE - minE)).toFixed(1) + "%", gx, plot.t + plot.h + 18);
+      ctx.textAlign = "right";
+      ctx.fillText((minP + r * (maxP - minP)).toFixed(0), plot.l - 10, gy + 4);
+    }
+
+    ctx.strokeStyle = "#4A5568"; ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(plot.l, plot.t); ctx.lineTo(plot.l, plot.t + plot.h); ctx.lineTo(plot.l + plot.w, plot.t + plot.h);
+    ctx.stroke();
+
+    ctx.fillStyle = "#64D2FF"; ctx.font = "700 11px -apple-system, sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText("LINEUP EFFICIENCY (% OF MAX PF)", plot.l + plot.w / 2, plot.t + plot.h + 44);
+    ctx.save();
+    ctx.translate(24, plot.t + plot.h / 2); ctx.rotate(-Math.PI / 2);
+    ctx.fillText("POINTS AGAINST (PA)", 0, 0);
+    ctx.restore();
+
+    const xAvg = plot.l + ((avgE - minE) / (maxE - minE)) * plot.w;
+    const yAvg = plot.t + plot.h - ((avgP - minP) / (maxP - minP)) * plot.h;
+    ctx.strokeStyle = "#3B4254"; ctx.lineWidth = 1.5; ctx.setLineDash([5, 5]);
+    ctx.beginPath(); ctx.moveTo(xAvg, plot.t); ctx.lineTo(xAvg, plot.t + plot.h);
+    ctx.moveTo(plot.l, yAvg); ctx.lineTo(plot.l + plot.w, yAvg); ctx.stroke(); ctx.setLineDash([]);
+
+    state.managers.forEach(m => {
+      const x = plot.l + ((m.eff - minE) / (maxE - minE)) * plot.w;
+      const y = plot.t + plot.h - ((m.pa - minP) / (maxP - minP)) * plot.h;
+      ctx.fillStyle = (m.eff >= avgE && m.pa >= avgP) ? "#FFD60A" : (m.eff >= avgE ? "#30D158" : (m.pa >= avgP ? "#FF453A" : "#FF9F0A"));
+      ctx.beginPath(); ctx.arc(x, y, 6, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = "#090A0F"; ctx.lineWidth = 1.5; ctx.stroke();
+      ctx.fillStyle = "#F2F4F8"; ctx.font = "700 10px -apple-system, sans-serif";
+      const label = m.teamName.split(" (")[0].slice(0, 12);
+      const lw = ctx.measureText(label).width;
+      if (x + 12 + lw > W - 12) { ctx.textAlign = "right"; ctx.fillText(label, x - 10, y + 4); }
+      else { ctx.textAlign = "left"; ctx.fillText(label, x + 10, y + 4); }
+    });
+    ctx.textAlign = "left";
+  }
+}
+
+// --- Event Listeners & Boot ---
+document.querySelectorAll(".nav-btn").forEach(btn => {
+  btn.onclick = () => {
+    document.querySelectorAll(".nav-btn").forEach(b => b.classList.remove("active"));
+    document.querySelectorAll(".tab-page").forEach(p => p.classList.remove("active"));
+    btn.classList.add("active");
+    document.getElementById(btn.dataset.tab).classList.add("active");
+    drawPowerChart(); drawWaiverChart(); drawSingleAnalyticsChart(); renderSosTab(); renderPlayoffBracketTab();
+  };
+});
+
+document.querySelectorAll(".seg-btn").forEach(btn => { btn.onclick = () => switchTradeMode(parseInt(btn.dataset.tmode, 10)); });
+document.querySelectorAll(".sos-mode-btn").forEach(btn => {
+  btn.onclick = () => {
+    document.querySelectorAll(".sos-mode-btn").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active"); state.sosWindowMode = btn.dataset.sosmode; renderSosTab();
+  };
+});
+
+document.getElementById("syncBtn").onclick = syncUserAccount;
+document.getElementById("usernameInput").onkeydown = e => { if (e.key === "Enter") syncUserAccount(); };
+document.getElementById("leagueSelect").onchange = e => loadLeague(parseInt(e.target.value, 10));
+document.getElementById("teamSelect").onchange = e => {
+  const idx = parseInt(e.target.value, 10);
+  document.getElementById("tradeTeamA").value = idx;
+  renderRosterTab(idx); renderOptimizerTab(idx); renderSosTab(); renderTradeFinder(); buildTradeDatabase();
+};
+weekSelect.onchange = async e => {
+  state.week = parseInt(e.target.value, 10);
+  syncLiveEspnSchedule([state.week, state.week + 1, state.week + 2, state.week + 3]);
+  renderSosTab();
+  if (state.activeLeague) await loadLeague(document.getElementById("leagueSelect").value);
+};
+document.getElementById("powerChartMode").onchange = drawPowerChart;
+document.getElementById("tradeTeamA").onchange = e => {
+  document.getElementById("teamSelect").value = e.target.value;
+  state.tradeSideA = [];
+  renderTradeBuilderSide(true); updateTradeEvaluation();
+  buildTradeDatabase();
+};
+document.getElementById("tradeTeamB").onchange = () => { state.tradeSideB = []; renderTradeBuilderSide(false); updateTradeEvaluation(); };
+document.getElementById("clearTradeBtn").onclick = () => { state.tradeSideA = []; state.tradeSideB = []; renderTradeBuilderSide(true); renderTradeBuilderSide(false); updateTradeEvaluation(); };
+document.getElementById("dbSearch").oninput = renderTradeDatabase;
+document.getElementById("dbRosterScope").onchange = renderTradeDatabase;
+document.getElementById("dbPosFilter").onchange = renderTradeDatabase;
+document.getElementById("dbSrcFilter").onchange = renderTradeDatabase;
+document.getElementById("finderPos").onchange = renderTradeFinder;
+document.getElementById("finderPkgType").onchange = renderTradeFinder;
+document.getElementById("finderPickMode").onchange = renderTradeFinder;
+document.getElementById("finderSosBoost").onchange = renderTradeFinder;
+document.getElementById("finderStrat").onchange = renderTradeFinder;
+document.getElementById("finderPartnerType").onchange = renderTradeFinder;
+document.getElementById("waiverPos").onchange = renderWaiversTab;
+document.getElementById("waiverChartMode").onchange = drawWaiverChart;
+document.getElementById("analyticsPos").onchange = () => { updateAnalyticsDropdownOptions(); drawSingleAnalyticsChart(); };
+document.getElementById("analyticsGraphSelect").onchange = drawSingleAnalyticsChart;
+document.getElementById("analyticsSortKey").onchange = () => { analyticsSortDir = -1; drawSingleAnalyticsChart(); };
+document.getElementById("toggleAnalyticsFormulaBtn").onclick = () => {
+  const el = document.getElementById("analyticsFormulaCard");
+  if (el) el.style.display = el.style.display === "none" ? "flex" : "none";
+};
+document.getElementById("toggleTradeFormulaBtn").onclick = () => {
+  const el = document.getElementById("tradeFormulaBox");
+  if (el) el.style.display = el.style.display === "none" ? "block" : "none";
+};
+document.getElementById("sosPos").onchange = renderSosTab;
+document.getElementById("sosScope").onchange = renderSosTab;
+document.getElementById("sosSort").onchange = renderSosTab;
+document.getElementById("bracketTeamsOverride").onchange = () => { state.bracketOverrides = {}; renderPlayoffBracketTab(); renderSosTab(); renderTradeFinder(); };
+document.getElementById("bracketSeedMode").onchange = () => { state.bracketOverrides = {}; renderPlayoffBracketTab(); };
+document.getElementById("bracketReseedMode").onchange = () => { delete state.bracketOverrides.sf1; delete state.bracketOverrides.sf2; delete state.bracketOverrides.champ; delete state.bracketOverrides.third; renderPlayoffBracketTab(); };
+document.getElementById("resetBracketBtn").onclick = () => { state.bracketOverrides = {}; renderPlayoffBracketTab(); };
+document.getElementById("simTeamA").onchange = renderMatchupSim;
+document.getElementById("simTeamB").onchange = renderMatchupSim;
+document.getElementById("shareBtn").onclick = () => {
+  const u = document.getElementById("usernameInput").value.trim();
+  const url = `${location.origin}${location.pathname}?user=${encodeURIComponent(u)}&week=${state.week}`;
+  navigator.clipboard.writeText(url);
+  setStatus("Shareable link copied to clipboard!");
+};
+window.addEventListener("resize", () => { drawPowerChart(); drawWaiverChart(); drawSingleAnalyticsChart(); });
+
+initApp();
