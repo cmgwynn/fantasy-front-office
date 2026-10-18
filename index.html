@@ -3,23 +3,31 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Sleeper Fantasy Command Center</title>
+  <title>Fantasy Front Office</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
 
 <div class="top-nav">
   <div class="top-brand-row">
-    <div class="title-label">SLEEPER COMMAND CENTER</div>
-    <div style="display:flex; gap:10px; align-items:center;">
+    <div class="title-label">FANTASY FRONT OFFICE</div>
+    <div class="header-status-group" style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
       <button id="shareBtn" style="background:#232834; font-size:12px; padding:5px 12px;">Copy Share Link</button>
-      <div id="statusLabel" class="status-pill">Enter your Sleeper username to sync leagues</div>
+      <div id="statusLabel" class="status-pill">Connect a fantasy league to get started</div>
+      <span id="dataFreshnessLabel" class="data-freshness">Data sources waiting</span>
+      <button id="retryDataBtn" class="btn-builder-action" type="button" hidden>Retry sync</button>
     </div>
   </div>
   <div class="controls-row">
-    <label>ACCOUNT</label>
+    <label for="providerSelect">PROVIDER</label>
+    <select id="providerSelect" aria-label="League provider">
+      <option value="" selected>Choose provider</option>
+      <option value="espn">ESPN Fantasy</option>
+      <option value="sleeper">Sleeper</option>
+    </select>
+    <label id="providerInputLabel" for="usernameInput">ACCOUNT</label>
     <input id="usernameInput" placeholder="Sleeper username..." style="width:175px;" />
-    <button id="syncBtn">Sync Account</button>
+    <button id="syncBtn">Connect</button>
     <label style="margin-left:6px;">LEAGUE</label>
     <select id="leagueSelect" class="grow"><option>-- Sync account first --</option></select>
     <label style="margin-left:6px;">ROSTER</label>
@@ -27,6 +35,7 @@
     <label style="margin-left:6px;">WEEK</label>
     <select id="weekSelect" style="width:115px;"></select>
   </div>
+  <div id="providerHelp" class="provider-help" aria-live="polite"></div>
 </div>
 
 <div class="body-layout">
@@ -35,6 +44,8 @@
     <button class="nav-btn" data-tab="tab-power">Power Rankings</button>
     <button class="nav-btn" data-tab="tab-trade">Trade Center</button>
     <button class="nav-btn" data-tab="tab-opt">Lineup Optimizer</button>
+    <button class="nav-btn" data-tab="tab-draft">Draft Room</button>
+    <button class="nav-btn" data-tab="tab-intel">League Intel</button>
     <button class="nav-btn" data-tab="tab-waiver">Waiver Wire</button>
     <button class="nav-btn" data-tab="tab-analytics">Player Analytics</button>
     <button class="nav-btn" data-tab="tab-sos">SOS Heat-Map</button>
@@ -121,7 +132,7 @@
           </div>
           <div id="tradeFormulaBox" style="display:none; background:#10121A; border:1px solid var(--accent); padding:10px; border-radius:8px; font-size:11px; line-height:1.5; color:var(--text-main);">
             <b style="color:var(--accent);">How Trade Value (0–9999) Is Calculated:</b><br>
-            • <b>Rank Curve:</b> <code>7800 × e^(-0.0105 × (SleeperRank - 1))</code><br>
+            • <b>Rank Curve:</b> <code>7800 × e^(-0.0105 × (PlatformRank - 1))</code><br>
             • <b>PPG Production:</b> <code>(Player PPG ÷ Position Baseline PPG) × 3400</code><br>
             • <b>League Format Weight:</b> Redraft weights 60% PPG / 40% Rank; Dynasty weights 68% Rank / 32% PPG × Age Multiplier.<br>
             • <b>Consolidation Tax:</b> Multi-asset packages (e.g., 2-for-1) apply a 6%–18% roster-spot tax to the side sending more assets.<br>
@@ -185,7 +196,7 @@
           </div>
           <div id="posGradesGrid" class="grade-grid"></div>
           <div id="rosterNeedsSummary" style="background:#10121A; border:1px solid var(--border); border-radius:9px; padding:10px 14px; font-size:12px; line-height:1.5;">
-            Sync your Sleeper league above to generate positional grades, Contender vs. Rebuilder tags, and archetype-matched trade recommendations.
+            Connect a league above to generate positional grades, Contender vs. Rebuilder tags, and archetype-matched trade recommendations.
           </div>
         </div>
         <div class="card-banner" style="padding:12px 16px;">
@@ -268,6 +279,22 @@
           </select>
         </div>
       </div>
+      <section class="faab-planner">
+        <div class="faab-settings">
+          <label>Budget remaining <span><input id="faabBudget" type="number" min="0" max="1000" value="100" /> <b>$</b></span></label>
+          <label>Weeks remaining <span><input id="faabWeeks" type="number" min="1" max="18" value="12" /></span></label>
+          <label>Bid style
+            <select id="faabStrategy">
+              <option value="conservative">Conservative</option>
+              <option value="balanced" selected>Balanced</option>
+              <option value="aggressive">Aggressive</option>
+            </select>
+          </label>
+          <div id="faabBudgetSummary" class="faab-budget-summary">$100 available</div>
+        </div>
+        <div class="faab-claims-heading"><h3>Queued Claims</h3><span id="faabClaimCount" class="draft-subtitle">0 claims</span></div>
+        <div id="faabClaims" class="faab-claims"></div>
+      </section>
       <canvas id="waiverCanvas" class="chart-canvas" style="height:280px;"></canvas>
       <div class="sec-hdr" style="color:var(--good);">TOP AVAILABLE WAIVER TARGETS</div>
       <div class="table-wrap"><table id="waiverTbl"></table></div>
@@ -299,14 +326,14 @@
       </div>
 
       <div id="analyticsFormulaCard" class="card-banner" style="display:none; background:#12151E; border:1px solid var(--accent); font-size:12px; line-height:1.6;">
-        <div style="font-weight:800; color:var(--accent); font-size:13px;">HOW PLAYER ANALYTICS & TRADE VALUE ARE CALCULATED (REAL SLEEPER BOX-SCORE STATS)</div>
+        <div style="font-weight:800; color:var(--accent); font-size:13px;">HOW PLAYER ANALYTICS & TRADE VALUE ARE CALCULATED</div>
         <div>• <b>TPRR % (Targets per Route Run):</b> <code>(Targets/Gm ÷ Estimated Routes Run/Gm) × 100</code> derived from actual offensive snaps (<code>off_snp</code>).</div>
         <div>• <b>YPRR (Yards per Route Run):</b> <code>Receiving Yards/Gm (rec_yd) ÷ Estimated Routes Run/Gm</code>.</div>
         <div>• <b>YPTOE (Yards per Target Over Expected):</b> <code>(Rec Yards ÷ Targets) - Positional NFL Baseline (8.3 WR / 7.4 TE)</code>.</div>
         <div>• <b>RB Gold Touches / Gm:</b> <code>Red Zone Carries/Gm (rush_rz_att) + Red Zone Targets/Gm (rec_rz_tgt)</code>.</div>
         <div>• <b>RYOE / Gm (Rush Yards Over Expected):</b> <code>(Player YPC - 4.15 NFL Baseline YPC) × Rush Attempts/Gm</code>.</div>
         <div>• <b>QB CPOE & EPA/Play:</b> <code>Completion % (pass_cmp ÷ pass_att) - 64.2% Expected</code> and efficiency per dropback from yards, TDs, and INTs.</div>
-        <div>• <b>Trade Value (0–9999):</b> Exponential Sleeper Rank curve (<code>7800 × e^(-0.0105×Rank)</code>) blended with PPG production ratio (<code>PPG ÷ Baseline × 3400</code>), Superflex/TEP multipliers, and Dynasty Age Curve.</div>
+        <div>• <b>Trade Value (0–9999):</b> Exponential player-rank curve (<code>7800 × e^(-0.0105×Rank)</code>) blended with PPG production ratio (<code>PPG ÷ Baseline × 3400</code>), Superflex/TEP multipliers, and Dynasty Age Curve.</div>
       </div>
 
       <div class="card-banner" style="padding:16px;">
@@ -375,7 +402,7 @@
             <span id="bracketFormatBadge" class="badge badge-green">LEAGUE FORMAT: 6-TEAM PLAYOFF • STARTS WK 15</span>
           </div>
           <div style="font-size:12px; color:var(--text-muted); margin-top:2px;">
-            Automatically syncs your Sleeper league's playoff team count (4, 6, 7, or 8 teams), start week, and seeding rules. Click any team card to force an upset.
+            Uses the connected league's playoff team count, start week, and seeding rules. Click any team card to force an upset.
           </div>
         </div>
         <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
@@ -428,6 +455,157 @@
         </div>
       </div>
       <div id="simRows" style="display:flex; flex-direction:column; gap:8px;"></div>
+    </div>
+
+    <!-- LEAGUE INTELLIGENCE -->
+    <div id="tab-intel" class="tab-page">
+      <div class="draft-heading">
+        <div><div class="draft-eyebrow">MULTI-LEAGUE VIEW</div><h2>League Intel</h2></div>
+        <button id="refreshIntelBtn" class="btn-builder-action" type="button">Refresh analysis</button>
+      </div>
+      <section class="portfolio-panel">
+        <div class="draft-panel-heading"><div><h3>Tracked Rosters</h3><span id="portfolioMeta" class="draft-subtitle">Choose your roster for each connected league.</span></div></div>
+        <div id="portfolioRosterSelectors" class="portfolio-roster-selectors"></div>
+        <div id="portfolioSummary" class="portfolio-summary"></div>
+        <div class="table-wrap"><table id="portfolioExposureTable"></table></div>
+      </section>
+      <section class="portfolio-panel">
+        <div class="draft-panel-heading"><div><h3>Bye-Week Concentration</h3><span class="draft-subtitle">Shared absences across your tracked rosters</span></div></div>
+        <div class="table-wrap"><table id="portfolioByeTable"></table></div>
+      </section>
+      <section class="portfolio-panel">
+        <div class="draft-panel-heading"><div><h3>Manager Tendencies</h3><span id="tendencyMeta" class="draft-subtitle">Recent transaction activity from the active league</span></div></div>
+        <div class="table-wrap"><table id="managerTendencyTable"></table></div>
+      </section>
+    </div>
+
+    <!-- SEASONAL DRAFT ROOM -->
+    <div id="tab-draft" class="tab-page">
+      <div class="draft-heading">
+        <div>
+          <div class="draft-eyebrow">SEASONAL FANTASY</div>
+          <h2>Draft Room</h2>
+        </div>
+        <span id="draftSeasonBadge" class="badge badge-blue">2026 Season</span>
+      </div>
+
+      <section class="draft-settings">
+        <label>Draft format
+          <select id="draftType">
+            <option value="redraft">Redraft</option>
+            <option value="dynasty">Dynasty</option>
+            <option value="keeper">Keeper</option>
+            <option value="custom">Custom</option>
+          </select>
+        </label>
+        <label>Teams
+          <input id="draftTeams" type="number" min="4" max="32" value="12" />
+        </label>
+        <label>Your slot
+          <select id="draftSlot"></select>
+        </label>
+        <label>Rounds
+          <input id="draftRounds" type="number" min="1" max="30" value="15" />
+        </label>
+        <label>Scoring
+          <select id="draftScoring">
+            <option value="standard">Standard</option>
+            <option value="half">Half-PPR</option>
+            <option value="ppr" selected>PPR</option>
+            <option value="tep">TE Premium</option>
+          </select>
+        </label>
+        <label>Roster format
+          <select id="draftRosterFormat">
+            <option value="standard">1 QB</option>
+            <option value="superflex">Superflex</option>
+          </select>
+        </label>
+        <label id="draftDynastySettings" class="draft-setting-extra" hidden>Value horizon
+          <select id="draftDynastyYears">
+            <option value="2">2 years</option>
+            <option value="3" selected>3 years</option>
+            <option value="5">5 years</option>
+          </select>
+        </label>
+        <label id="draftKeeperSettings" class="draft-setting-extra" hidden>Keepers per team
+          <select id="draftKeeperSlots">
+            <option value="0">None</option>
+            <option value="1">1 keeper</option>
+            <option value="2" selected>2 keepers</option>
+            <option value="3">3 keepers</option>
+            <option value="4">4 keepers</option>
+            <option value="5">5 keepers</option>
+          </select>
+        </label>
+        <label id="draftKeeperYearsSettings" class="draft-setting-extra" hidden>Keeper window
+          <select id="draftKeeperYears">
+            <option value="1">1 year</option>
+            <option value="2" selected>2 years</option>
+            <option value="3">3 years</option>
+          </select>
+        </label>
+        <div class="draft-setting-actions">
+          <label class="draft-adp-upload">Import ADP CSV<input id="draftAdpCsv" type="file" accept=".csv,text/csv" /></label>
+          <button id="draftImportLeagueBtn" class="btn-builder-action" type="button">Use League Settings</button>
+          <button id="draftSaveBtn" class="btn-builder-action" type="button">Save Draft</button>
+          <button id="draftStartBtn" type="button">Start / Reset Draft</button>
+        </div>
+      </section>
+
+      <div id="draftNotice" class="draft-notice" aria-live="polite"></div>
+
+      <div class="draft-summary">
+        <div><span>On the clock</span><strong id="draftClock">Round 1 • Overall 6</strong></div>
+        <div><span>Your slot</span><strong id="draftSlotSummary">6 of 12</strong></div>
+        <div><span>Your picks</span><strong id="draftPickCount">0</strong></div>
+        <div><span>Available</span><strong id="draftAvailableCount">0</strong></div>
+      </div>
+
+      <div class="draft-workspace">
+        <section class="draft-board-panel">
+          <div class="draft-panel-heading">
+            <div>
+              <h3>Available Players</h3>
+              <span id="draftBoardMeta" class="draft-subtitle">Top recommendations</span>
+            </div>
+            <div class="draft-filters">
+              <input id="draftSearch" type="search" placeholder="Find a player" aria-label="Find a player" />
+              <select id="draftPosition" aria-label="Filter by position">
+                <option value="ALL">All positions</option>
+                <option value="QB">QB</option><option value="RB">RB</option>
+                <option value="WR">WR</option><option value="TE">TE</option>
+                <option value="K">K</option><option value="DEF">DEF</option>
+              </select>
+            </div>
+          </div>
+          <div class="table-wrap draft-table-wrap">
+            <table id="draftBoardTable" class="draft-board-table"></table>
+          </div>
+        </section>
+
+        <aside class="draft-roster-panel">
+          <div class="draft-panel-heading">
+            <div><h3>Your Roster</h3><span class="draft-subtitle">Snake draft picks</span></div>
+            <button id="draftUndoBtn" class="btn-builder-action" type="button" title="Undo your last pick">Undo</button>
+          </div>
+          <div id="draftRosterCounts" class="draft-roster-counts"></div>
+          <div id="draftUserPicks" class="draft-user-picks"></div>
+          <div class="draft-keeper-section">
+            <div class="draft-panel-heading"><div><h3>Keeper Ledger</h3><span class="draft-subtitle">Cost and years remaining</span></div></div>
+            <label>Player
+              <select id="draftKeeperPlayer"><option value="">Sync a league to select a roster player</option></select>
+            </label>
+            <div class="draft-keeper-fields">
+              <label>Cost type<select id="draftKeeperCostType"><option value="round">Draft round</option><option value="salary">Salary</option></select></label>
+              <label>Cost<input id="draftKeeperCost" type="number" min="0" step="1" value="1" /></label>
+              <label>Years<input id="draftKeeperContractYears" type="number" min="1" max="5" value="1" /></label>
+            </div>
+            <button id="draftAddKeeperBtn" class="btn-builder-action" type="button">Add keeper</button>
+            <div id="draftKeeperLedger" class="draft-user-picks"></div>
+          </div>
+        </aside>
+      </div>
     </div>
   </div>
 </div>

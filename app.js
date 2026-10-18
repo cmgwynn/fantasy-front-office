@@ -1,5 +1,5 @@
 // ============================================================================
-// SLEEPER COMMAND CENTER — COMPLETE & VERIFIED APPLICATION SCRIPT (app.js)
+// FANTASY FRONT OFFICE — PROVIDER-NEUTRAL FANTASY FOOTBALL ANALYTICS
 // ============================================================================
 
 // 1. Top-Level Tab & Sub-Tab Switcher
@@ -11,11 +11,15 @@ document.addEventListener("click", e => {
     navBtn.classList.add("active");
     const targetPage = document.getElementById(navBtn.dataset.tab);
     if (targetPage) targetPage.classList.add("active");
-    drawPowerChart();
-    drawWaiverChart();
-    drawSingleAnalyticsChart();
-    renderSosTab();
-    renderPlayoffBracketTab();
+    switch (navBtn.dataset.tab) {
+      case "tab-power": drawPowerChart(); break;
+      case "tab-waiver": drawWaiverChart(); break;
+      case "tab-analytics": drawSingleAnalyticsChart(); break;
+      case "tab-sos": renderSosTab(); break;
+      case "tab-bracket": renderPlayoffBracketTab(); break;
+      case "tab-draft": renderDraftRoom(); break;
+      case "tab-intel": renderLeagueIntelTab(); break;
+    }
     return;
   }
 
@@ -46,20 +50,102 @@ const NFL_TEAM_NAMES = {
   NYJ:"New York Jets", PHI:"Philadelphia Eagles", PIT:"Pittsburgh Steelers", SF:"San Francisco 49ers",
   SEA:"Seattle Seahawks", TB:"Tampa Bay Buccaneers", TEN:"Tennessee Titans", WAS:"Washington Commanders"
 };
+const ESPN_TEAM_CODES = { 1:"ATL", 2:"BUF", 3:"CHI", 4:"CIN", 5:"CLE", 6:"DAL", 7:"DEN", 8:"DET", 9:"GB", 10:"TEN", 11:"IND", 12:"KC", 13:"LV", 14:"LAR", 15:"MIA", 16:"MIN", 17:"NE", 18:"NO", 19:"NYG", 20:"NYJ", 21:"PHI", 22:"ARI", 23:"PIT", 24:"LAC", 25:"SF", 26:"SEA", 27:"TB", 28:"WAS", 29:"CAR", 30:"JAX", 33:"BAL", 34:"HOU" };
+const ESPN_POSITION_CODES = { 1:"QB", 2:"RB", 3:"WR", 4:"TE", 5:"K", 16:"DEF" };
+const ESPN_PLAYER_TO_INTERNAL_ID = new Map();
 const DOME_TEAMS = new Set(["ARI","ATL","DAL","DET","HOU","IND","LAC","LAR","LV","MIN","NO"]);
-const BYE_2026 = {
+const DEFAULT_SEASON = String(new Date().getFullYear());
+const normalizeTeamCode = (team) => {
+  if (!team) return "";
+  let code = String(team).toUpperCase().trim();
+  if (code === "JAC") code = "JAX"; if (code === "WSH") code = "WAS"; if (code === "LA") code = "LAR";
+  return code;
+};
+const DEFAULT_BYE_WEEKS = {
   CAR:5, KC:5, CIN:6, DET:6, MIA:6, MIN:6, BUF:7, JAX:7, LAC:7, WAS:7,
   HOU:8, NO:8, NYG:8, SF:8, PIT:9, TEN:9, CHI:10, DEN:10, PHI:10, TB:10,
   ATL:11, CLE:11, GB:11, LAR:11, LA:11, NE:11, SEA:11, BAL:13, IND:13, LV:13, NYJ:13, ARI:14, DAL:14
 };
+const SEASON_BYE_CACHE = {};
+const SEASON_SCHEDULE_CACHE = {};
+function getSeasonKey(seasonYear) {
+  return String(seasonYear || state.season || DEFAULT_SEASON || new Date().getFullYear());
+}
+function getSeasonScheduleContext(seasonYear) {
+  const key = getSeasonKey(seasonYear);
+  if (!SEASON_SCHEDULE_CACHE[key]) {
+    SEASON_SCHEDULE_CACHE[key] = (() => {
+      const sched = {};
+      Object.keys(NFL_TEAM_NAMES).forEach(t => sched[t] = {});
+      const fullSeasonPairs = {
+        1: [["NE","SEA"],["SF","LAR"],["ATL","PIT"],["BAL","IND"],["BUF","HOU"],["CHI","CAR"],["CLE","JAX"],["NO","DET"],["NYJ","TEN"],["TB","CIN"],["ARI","LAC"],["GB","MIN"],["MIA","LV"],["WAS","PHI"],["DAL","NYG"],["DEN","KC"]],
+        2: [["DET","BUF"],["CAR","ATL"],["CIN","HOU"],["CLE","TB"],["GB","NYJ"],["MIN","CHI"],["NO","BAL"],["PHI","TEN"],["PIT","NE"],["JAX","DEN"],["LV","LAC"],["MIA","SF"],["SEA","ARI"],["WAS","DAL"],["IND","KC"],["NYG","LAR"]],
+        3: [["ATL","GB"],["CAR","CLE"],["CIN","PIT"],["HOU","IND"],["KC","MIA"],["LAC","BUF"],["NE","JAX"],["NYJ","DET"],["SEA","WAS"],["TEN","NYG"],["ARI","SF"],["MIN","TB"],["BAL","DAL"],["LV","NO"],["LAR","DEN"],["PHI","CHI"]],
+        4: [["PIT","CLE"],["IND","WAS"],["ARI","NYG"],["DAL","HOU"],["GB","TB"],["JAX","CIN"],["LAR","PHI"],["NE","BUF"],["NYJ","CHI"],["TEN","BAL"],["MIA","MIN"],["DEN","SF"],["KC","LV"],["LAC","SEA"],["DET","CAR"],["ATL","NO"]],
+        5: [["TB","DAL"],["PHI","JAX"],["NYG","WAS"],["CLE","NYJ"],["IND","PIT"],["HOU","TEN"],["MIN","NO"],["LV","NE"],["CIN","MIA"],["CHI","GB"],["DEN","LAC"],["DET","ARI"],["SF","SEA"],["BAL","ATL"],["BUF","LAR"]],
+        6: [["SEA","DEN"],["HOU","JAX"],["NYJ","NE"],["CAR","PHI"],["PIT","TB"],["BAL","CLE"],["CHI","ATL"],["NO","NYG"],["TEN","IND"],["ARI","LAR"],["LAC","KC"],["BUF","LV"],["DAL","GB"],["WAS","SF"]],
+        7: [["NE","CHI"],["PIT","NO"],["TB","CAR"],["MIA","NYJ"],["NYG","HOU"],["CIN","BAL"],["CLE","TEN"],["IND","MIN"],["SF","ATL"],["DEN","ARI"],["GB","DET"],["LAR","LV"],["KC","SEA"],["DAL","PHI"]],
+        8: [["CAR","GB"],["TEN","CIN"],["IND","JAX"],["CLE","PIT"],["BAL","BUF"],["ATL","TB"],["MIN","DET"],["LV","NYJ"],["KC","DEN"],["NE","MIA"],["PHI","WAS"],["CHI","SEA"],["ARI","DAL"],["LAR","LAC"]],
+        9: [["JAX","BAL"],["CIN","ATL"],["NYJ","KC"],["CLE","NO"],["DEN","CAR"],["DAL","IND"],["DET","MIA"],["GB","NE"],["ARI","SEA"],["TB","CHI"],["BUF","MIN"],["HOU","NYG"],["SF","LAR"],["LV","LAC"]],
+        10:[["WAS","NYG"],["NE","DET"],["BUF","NYJ"],["MIA","IND"],["KC","ATL"],["MIN","GB"],["JAX","TEN"],["PIT","CIN"],["LAC","BAL"],["LAR","ARI"],["SEA","LV"],["SF","DAL"],["NO","CAR"],["HOU","CLE"]],
+        11:[["IND","HOU"],["MIA","BUF"],["BAL","CAR"],["NO","CHI"],["TEN","DAL"],["TB","DET"],["ARI","KC"],["JAX","NYG"],["NYJ","LAC"],["LV","DEN"],["PIT","PHI"],["MIN","SF"],["CIN","WAS"]],
+        12:[["GB","LAR"],["CHI","DET"],["PHI","DAL"],["KC","BUF"],["DEN","PIT"],["NO","CIN"],["LV","CLE"],["BAL","HOU"],["WAS","ARI"],["SEA","SF"],["NE","LAC"],["CAR","TB"],["NYJ","MIA"],["TEN","JAX"],["MIN","ATL"],["IND","NYG"]],
+        13:[["KC","LAR"],["HOU","PIT"],["DAL","SEA"],["SF","NYG"],["GB","NO"],["JAX","CHI"],["PHI","ARI"],["MIA","DEN"],["CAR","MIN"],["BUF","NE"],["CLE","TEN"],["TB","ATL"],["DET","WAS"],["CIN","LAC"]],
+        14:[["MIN","NE"],["BUF","GB"],["PIT","JAX"],["IND","PHI"],["TB","BAL"],["NO","CAR"],["ATL","CLE"],["TEN","DET"],["CHI","MIA"],["LAC","LV"],["KC","CIN"],["LAR","SF"],["NYG","SEA"],["DEN","HOU"],["NYJ","WAS"]],
+        15:[["SF","LAC"],["DAL","LAR"],["CIN","CAR"],["CHI","BUF"],["ATL","WAS"],["DET","MIN"],["NO","TB"],["SEA","PHI"],["NE","KC"],["CLE","NYG"],["IND","TEN"],["MIA","GB"],["BAL","PIT"],["JAX","HOU"],["NYJ","ARI"],["DEN","LV"]],
+        16:[["CIN","IND"],["JAX","DAL"],["NYG","DET"],["LAR","SEA"],["SF","KC"],["ATL","TB"],["WAS","MIN"],["GB","CHI"],["ARI","NO"],["LAC","MIA"],["BUF","DEN"],["TEN","LV"],["NE","NYJ"],["CLE","BAL"],["HOU","PHI"],["CAR","PIT"]],
+        17:[["BAL","CIN"],["DET","CHI"],["WAS","JAX"],["NYG","DAL"],["NO","ATL"],["LAR","TB"],["KC","LAC"],["PHI","SF"],["LV","ARI"],["BUF","MIA"],["MIN","NYJ"],["DEN","NE"],["SEA","CAR"],["HOU","GB"],["PIT","TEN"],["IND","CLE"]],
+        18:[["SEA","LAR"],["ARI","SF"],["DAL","WAS"],["PHI","NYG"],["CHI","GB"],["DET","MIN"],["TB","ATL"],["CAR","NO"],["PIT","BAL"],["CIN","CLE"],["HOU","IND"],["JAX","TEN"],["BUF","NE"],["MIA","NYJ"],["KC","LV"],["DEN","LAC"]]
+      };
+      for (const [wkStr, pairs] of Object.entries(fullSeasonPairs)) {
+        const wk = parseInt(wkStr, 10);
+        pairs.forEach(([away, home]) => {
+          if (DEFAULT_BYE_WEEKS[away] !== wk && DEFAULT_BYE_WEEKS[home] !== wk) {
+            sched[away][wk] = { opp: home, isHome: false };
+            sched[home][wk] = { opp: away, isHome: true };
+          }
+        });
+      }
+      return sched;
+    })();
+  }
+  if (!SEASON_BYE_CACHE[key]) {
+    SEASON_BYE_CACHE[key] = { ...DEFAULT_BYE_WEEKS };
+    SEASON_BYE_CACHE[key].LA = SEASON_BYE_CACHE[key].LAR || 0;
+  }
+  return { schedule: SEASON_SCHEDULE_CACHE[key], byes: SEASON_BYE_CACHE[key] };
+}
+const currentSeasonContext = getSeasonScheduleContext(DEFAULT_SEASON);
+const CURRENT_NFL_SCHEDULE = currentSeasonContext.schedule;
+const CURRENT_BYE_WEEKS = currentSeasonContext.byes;
+const SEASON_DVP_CACHE = {};
+
+function refreshSeasonDerivedState(seasonYear) {
+  const key = getSeasonKey(seasonYear);
+  const context = getSeasonScheduleContext(key);
+  Object.keys(NFL_TEAM_NAMES).forEach(team => {
+    CURRENT_NFL_SCHEDULE[team] = context.schedule[team] || {};
+    CURRENT_BYE_WEEKS[team] = context.byes[team] || 0;
+  });
+  CURRENT_BYE_WEEKS.LA = CURRENT_BYE_WEEKS.LAR || 0;
+  CURRENT_DVP_RANKS = getDvpRanksForSeason(key);
+}
 
 const state = {
   season: String(new Date().getFullYear()),
   week: 6, userId: "", leagues: [], activeLeague: null,
+  provider: "", portfolioRosterSelections: {}, managerTendencies: [],
   players: {}, rawProj: {}, rawStats: {}, managers: [],
   tradeSideA: [], tradeSideB: [], dbTrades: [], waiverTargets: [],
-  weakestPosByTeam: {}, sosWindowMode: "NEXT4", bracketOverrides: {}
+  weakestPosByTeam: {}, sosWindowMode: "NEXT4", bracketOverrides: {},
+  dataFreshness: { season: 0, schedule: 0, players: 0, stats: 0, projections: 0, account: 0 }, dataErrors: {}
 };
+const portfolioState = { rostersByLeague: new Map(), loading: false };
+const draftState = {
+  settings: { type: "redraft", teams: 12, slot: 6, rounds: 15, scoring: "ppr", rosterFormat: "standard", dynastyYears: 3, keeperSlots: 2, keeperYears: 2 },
+  userPicks: [], adpByName: {}, keepers: [], loadedSessionKey: ""
+};
+const faabState = { budget: 100, weeksRemaining: 12, strategy: "balanced", claims: [], loadedKey: "" };
 
 let dbSortKey = "matchPct", dbSortDir = -1;
 let finderSortKey = "Composite", finderSortDir = -1;
@@ -94,42 +180,7 @@ function getTeamLogoImage(team) {
 }
 
 // 4. Schedule, Dynamic Season Sync & DvP Rankings
-const NFL_2026_SCHEDULE = (() => {
-  const sched = {};
-  Object.keys(NFL_TEAM_NAMES).forEach(t => sched[t] = {});
-  const fullSeasonPairs = {
-    1: [["NE","SEA"],["SF","LAR"],["ATL","PIT"],["BAL","IND"],["BUF","HOU"],["CHI","CAR"],["CLE","JAX"],["NO","DET"],["NYJ","TEN"],["TB","CIN"],["ARI","LAC"],["GB","MIN"],["MIA","LV"],["WAS","PHI"],["DAL","NYG"],["DEN","KC"]],
-    2: [["DET","BUF"],["CAR","ATL"],["CIN","HOU"],["CLE","TB"],["GB","NYJ"],["MIN","CHI"],["NO","BAL"],["PHI","TEN"],["PIT","NE"],["JAX","DEN"],["LV","LAC"],["MIA","SF"],["SEA","ARI"],["WAS","DAL"],["IND","KC"],["NYG","LAR"]],
-    3: [["ATL","GB"],["CAR","CLE"],["CIN","PIT"],["HOU","IND"],["KC","MIA"],["LAC","BUF"],["NE","JAX"],["NYJ","DET"],["SEA","WAS"],["TEN","NYG"],["ARI","SF"],["MIN","TB"],["BAL","DAL"],["LV","NO"],["LAR","DEN"],["PHI","CHI"]],
-    4: [["PIT","CLE"],["IND","WAS"],["ARI","NYG"],["DAL","HOU"],["GB","TB"],["JAX","CIN"],["LAR","PHI"],["NE","BUF"],["NYJ","CHI"],["TEN","BAL"],["MIA","MIN"],["DEN","SF"],["KC","LV"],["LAC","SEA"],["DET","CAR"],["ATL","NO"]],
-    5: [["TB","DAL"],["PHI","JAX"],["NYG","WAS"],["CLE","NYJ"],["IND","PIT"],["HOU","TEN"],["MIN","NO"],["LV","NE"],["CIN","MIA"],["CHI","GB"],["DEN","LAC"],["DET","ARI"],["SF","SEA"],["BAL","ATL"],["BUF","LAR"]],
-    6: [["SEA","DEN"],["HOU","JAX"],["NYJ","NE"],["CAR","PHI"],["PIT","TB"],["BAL","CLE"],["CHI","ATL"],["NO","NYG"],["TEN","IND"],["ARI","LAR"],["LAC","KC"],["BUF","LV"],["DAL","GB"],["WAS","SF"]],
-    7: [["NE","CHI"],["PIT","NO"],["TB","CAR"],["MIA","NYJ"],["NYG","HOU"],["CIN","BAL"],["CLE","TEN"],["IND","MIN"],["SF","ATL"],["DEN","ARI"],["GB","DET"],["LAR","LV"],["KC","SEA"],["DAL","PHI"]],
-    8: [["CAR","GB"],["TEN","CIN"],["IND","JAX"],["CLE","PIT"],["BAL","BUF"],["ATL","TB"],["MIN","DET"],["LV","NYJ"],["KC","DEN"],["NE","MIA"],["PHI","WAS"],["CHI","SEA"],["ARI","DAL"],["LAR","LAC"]],
-    9: [["JAX","BAL"],["CIN","ATL"],["NYJ","KC"],["CLE","NO"],["DEN","CAR"],["DAL","IND"],["DET","MIA"],["GB","NE"],["ARI","SEA"],["TB","CHI"],["BUF","MIN"],["HOU","NYG"],["SF","LAR"],["LV","LAC"]],
-    10:[["WAS","NYG"],["NE","DET"],["BUF","NYJ"],["MIA","IND"],["KC","ATL"],["MIN","GB"],["JAX","TEN"],["PIT","CIN"],["LAC","BAL"],["LAR","ARI"],["SEA","LV"],["SF","DAL"],["NO","CAR"],["HOU","CLE"]],
-    11:[["IND","HOU"],["MIA","BUF"],["BAL","CAR"],["NO","CHI"],["TEN","DAL"],["TB","DET"],["ARI","KC"],["JAX","NYG"],["NYJ","LAC"],["LV","DEN"],["PIT","PHI"],["MIN","SF"],["CIN","WAS"]],
-    12:[["GB","LAR"],["CHI","DET"],["PHI","DAL"],["KC","BUF"],["DEN","PIT"],["NO","CIN"],["LV","CLE"],["BAL","HOU"],["WAS","ARI"],["SEA","SF"],["NE","LAC"],["CAR","TB"],["NYJ","MIA"],["TEN","JAX"],["MIN","ATL"],["IND","NYG"]],
-    13:[["KC","LAR"],["HOU","PIT"],["DAL","SEA"],["SF","NYG"],["GB","NO"],["JAX","CHI"],["PHI","ARI"],["MIA","DEN"],["CAR","MIN"],["BUF","NE"],["CLE","TEN"],["TB","ATL"],["DET","WAS"],["CIN","LAC"]],
-    14:[["MIN","NE"],["BUF","GB"],["PIT","JAX"],["IND","PHI"],["TB","BAL"],["NO","CAR"],["ATL","CLE"],["TEN","DET"],["CHI","MIA"],["LAC","LV"],["KC","CIN"],["LAR","SF"],["NYG","SEA"],["DEN","HOU"],["NYJ","WAS"]],
-    15:[["SF","LAC"],["DAL","LAR"],["CIN","CAR"],["CHI","BUF"],["ATL","WAS"],["DET","MIN"],["NO","TB"],["SEA","PHI"],["NE","KC"],["CLE","NYG"],["IND","TEN"],["MIA","GB"],["BAL","PIT"],["JAX","HOU"],["NYJ","ARI"],["DEN","LV"]],
-    16:[["CIN","IND"],["JAX","DAL"],["NYG","DET"],["LAR","SEA"],["SF","KC"],["ATL","TB"],["WAS","MIN"],["GB","CHI"],["ARI","NO"],["LAC","MIA"],["BUF","DEN"],["TEN","LV"],["NE","NYJ"],["CLE","BAL"],["HOU","PHI"],["CAR","PIT"]],
-    17:[["BAL","CIN"],["DET","CHI"],["WAS","JAX"],["NYG","DAL"],["NO","ATL"],["LAR","TB"],["KC","LAC"],["PHI","SF"],["LV","ARI"],["BUF","MIA"],["MIN","NYJ"],["DEN","NE"],["SEA","CAR"],["HOU","GB"],["PIT","TEN"],["IND","CLE"]],
-    18:[["SEA","LAR"],["ARI","SF"],["DAL","WAS"],["PHI","NYG"],["CHI","GB"],["DET","MIN"],["TB","ATL"],["CAR","NO"],["PIT","BAL"],["CIN","CLE"],["HOU","IND"],["JAX","TEN"],["BUF","NE"],["MIA","NYJ"],["KC","LV"],["DEN","LAC"]]
-  };
-  for (const [wkStr, pairs] of Object.entries(fullSeasonPairs)) {
-    const wk = parseInt(wkStr, 10);
-    pairs.forEach(([away, home]) => {
-      if (BYE_2026[away] !== wk && BYE_2026[home] !== wk) {
-        sched[away][wk] = { opp: home, isHome: false };
-        sched[home][wk] = { opp: away, isHome: true };
-      }
-    });
-  }
-  return sched;
-})();
-
-const DVP_RANKS_2026 = (() => {
+const DEFAULT_DVP_RANKS = (() => {
   const orderedByPos = {
     RB: ["JAX","TB","HOU","ATL","MIN","NE","KC","WAS","SEA","CHI","SF","BAL","PIT","DET","BUF","MIA","TEN","CLE","PHI","NYJ","LAC","CIN","ARI","NYG","GB","LAR","IND","DEN","LV","NO","CAR","DAL"],
     QB: ["MIN","GB","SEA","DEN","HOU","PIT","CLE","SF","NYJ","BAL","KC","PHI","LAC","CHI","BUF","NE","NO","MIA","ATL","NYG","TEN","IND","LV","ARI","CIN","LAR","CAR","TB","JAX","DAL","WAS","DET"],
@@ -144,6 +195,15 @@ const DVP_RANKS_2026 = (() => {
   }
   return map;
 })();
+let CURRENT_DVP_RANKS = DEFAULT_DVP_RANKS;
+
+function getDvpRanksForSeason(seasonYear) {
+  const key = getSeasonKey(seasonYear);
+  if (!SEASON_DVP_CACHE[key]) {
+    SEASON_DVP_CACHE[key] = JSON.parse(JSON.stringify(DEFAULT_DVP_RANKS));
+  }
+  return SEASON_DVP_CACHE[key];
+}
 
 const ANALYTICS_CONFIGS = {
   QB: [
@@ -175,20 +235,21 @@ const ANALYTICS_CONFIGS = {
 
 function openPlayerCacheDB() {
   return new Promise((resolve, reject) => {
-    const req = indexedDB.open("SleeperCommandCacheV4", 1);
+    const req = indexedDB.open("FantasyFrontOfficeCacheV1", 1);
     req.onupgradeneeded = e => e.target.result.createObjectStore("kv");
     req.onsuccess = e => resolve(e.target.result);
     req.onerror = () => reject();
   });
 }
-async function getCachedPlayers() {
+async function getCachedPlayers(forceRefresh = false) {
   try {
     const db = await openPlayerCacheDB();
     return new Promise(res => {
-      const tx = db.transaction("kv", "readonly").objectStore("kv").get("nfl_players_v4");
+      const tx = db.transaction("kv", "readonly").objectStore("kv").get("nfl_players_v1");
       tx.onsuccess = () => {
         const d = tx.result;
-        if (d && (Date.now() - d.ts < 86400000)) res(d.payload); else res(null);
+        if (d && (Date.now() - d.ts < 86400000) && !forceRefresh) { markDataSource("players", null, d.ts); res(d.payload); }
+        else res(null);
       };
       tx.onerror = () => res(null);
     });
@@ -198,11 +259,13 @@ async function setCachedPlayers(payload) {
   try {
     const db = await openPlayerCacheDB();
     const tx = db.transaction("kv", "readwrite");
-    tx.objectStore("kv").put({ ts: Date.now(), payload }, "nfl_players_v4");
+    const ts = Date.now();
+    tx.objectStore("kv").put({ ts, payload }, "nfl_players_v1");
+    markDataSource("players", null, ts);
   } catch {}
 }
 
-async function syncFullSeasonNflSchedule(seasonYear) {
+async function syncFullSeasonNflSchedule(seasonYear, forceRefresh = false) {
   const yr = String(seasonYear || state.season || new Date().getFullYear());
   const cacheKey = `nfl_sched_${yr}`;
 
@@ -216,12 +279,13 @@ async function syncFullSeasonNflSchedule(seasonYear) {
       };
       tx.onerror = () => res(null);
     });
-    if (cached && cached.sched && cached.byes) {
+    if (cached && cached.sched && cached.byes && !forceRefresh) {
       Object.keys(NFL_TEAM_NAMES).forEach(t => {
-        NFL_2026_SCHEDULE[t] = cached.sched[t] || {};
-        BYE_2026[t] = cached.byes[t] || 0;
+        CURRENT_NFL_SCHEDULE[t] = cached.sched[t] || {};
+        CURRENT_BYE_WEEKS[t] = cached.byes[t] || 0;
       });
-      BYE_2026.LA = BYE_2026.LAR || 0;
+      CURRENT_BYE_WEEKS.LA = CURRENT_BYE_WEEKS.LAR || 0;
+      markDataSource("schedule", null, cached.ts);
       return;
     }
   } catch {}
@@ -260,25 +324,29 @@ async function syncFullSeasonNflSchedule(seasonYear) {
   if (validWeeksFetched >= 12) {
     const detectedByes = {};
     Object.keys(NFL_TEAM_NAMES).forEach(t => {
-      NFL_2026_SCHEDULE[t] = tempSched[t];
+      CURRENT_NFL_SCHEDULE[t] = tempSched[t];
       detectedByes[t] = 0;
       for (let w = 4; w <= 14; w++) {
         if (!tempSched[t][w]) { detectedByes[t] = w; break; }
       }
-      BYE_2026[t] = detectedByes[t];
+      CURRENT_BYE_WEEKS[t] = detectedByes[t];
     });
-    BYE_2026.LA = BYE_2026.LAR || 0;
+    CURRENT_BYE_WEEKS.LA = CURRENT_BYE_WEEKS.LAR || 0;
 
     try {
       const db = await openPlayerCacheDB();
       const tx = db.transaction("kv", "readwrite");
-      tx.objectStore("kv").put({ ts: Date.now(), payload: { sched: tempSched, byes: detectedByes } }, cacheKey);
+      const ts = Date.now();
+      tx.objectStore("kv").put({ ts, payload: { sched: tempSched, byes: detectedByes } }, cacheKey);
+      markDataSource("schedule", null, ts);
     } catch {}
-  }
+  } else markDataSource("schedule", new Error("Schedule feed did not return enough valid weeks."));
 }
 
 async function syncLiveEspnSchedule() {
-  await syncFullSeasonNflSchedule(state.activeLeague?.season || state.season);
+  const activeSeason = state.activeLeague?.season || state.season;
+  refreshSeasonDerivedState(activeSeason);
+  await syncFullSeasonNflSchedule(activeSeason);
   if (document.getElementById("tab-sos")?.classList.contains("active")) renderSosTab();
   if (document.getElementById("tab-bracket")?.classList.contains("active")) renderPlayoffBracketTab();
 }
@@ -286,11 +354,13 @@ async function syncLiveEspnSchedule() {
 function recomputeDynamicDvpRanks() {
   const teams = Object.keys(NFL_TEAM_NAMES);
   if (!Object.keys(state.players).length) return;
-  const is2026 = String(state.activeLeague?.season || state.season) === "2026";
+  const activeSeason = String(state.activeLeague?.season || state.season || DEFAULT_SEASON);
+  const seasonDvp = getDvpRanksForSeason(activeSeason);
   const defMetrics = {};
 
   teams.forEach(t => {
-    const defPlayer = state.players[t] || Object.values(state.players).find(p => p.position === "DEF" && p.team === t);
+    const teamPlayers = PLAYER_INDEX_BY_TEAM.get(t) || [];
+    const defPlayer = state.players[t] || teamPlayers.find(p => p.position === "DEF");
     const st = state.rawStats[t] || (defPlayer ? state.rawStats[defPlayer.id] : null) || {};
     const gp = Math.max(1, st.gp || st.gms_active || 1);
 
@@ -303,7 +373,7 @@ function recomputeDynamicDvpRanks() {
     const runToughness = (36 - ptsAllowPg) * 2.1 + (390 - ydsAllowPg) * 0.08 + sacksPg * 2.6 + (220 - defSr) * 0.12;
     const passToughness = (36 - ptsAllowPg) * 1.8 + sacksPg * 3.4 + takeawaysPg * 4.2 + (220 - defSr) * 0.14;
 
-    const teamOffPlayers = Object.values(state.players).filter(p => !p.isPick && p.team === t && p.isCurrentNfl && ["QB","RB","WR","TE"].includes(p.position));
+    const teamOffPlayers = teamPlayers.filter(p => !p.isPick && p.isCurrentNfl && ["QB","RB","WR","TE"].includes(p.position));
     teamOffPlayers.sort((a, b) => (b.seasonPpg || b.projectedPoints) - (a.seasonPpg || a.projectedPoints));
     const topOffPpg = teamOffPlayers.slice(0, 5).reduce((sum, p) => sum + (p.seasonPpg || p.projectedPoints || 8), 0);
 
@@ -318,14 +388,22 @@ function recomputeDynamicDvpRanks() {
 
   ["RB", "QB", "WR", "TE", "DEF"].forEach(pos => {
     const ranked = [...teams].sort((a, b) => {
-      if (is2026) {
-        const baseA = (33 - (DVP_RANKS_2026[pos]?.[a] || 16)) * 3.0;
-        const baseB = (33 - (DVP_RANKS_2026[pos]?.[b] || 16)) * 3.0;
-        return (baseB + defMetrics[b][pos] * 0.25) - (baseA + defMetrics[a][pos] * 0.25);
-      }
-      return defMetrics[b][pos] - defMetrics[a][pos];
+      const baseA = (33 - (seasonDvp[pos]?.[a] || 16)) * 3.0;
+      const baseB = (33 - (seasonDvp[pos]?.[b] || 16)) * 3.0;
+      return (baseB + defMetrics[b][pos] * 0.25) - (baseA + defMetrics[a][pos] * 0.25);
     });
-    ranked.forEach((team, idx) => { DVP_RANKS_2026[pos][team] = idx + 1; });
+    ranked.forEach((team, idx) => { seasonDvp[pos][team] = idx + 1; });
+  });
+  CURRENT_DVP_RANKS = seasonDvp;
+}
+
+const PLAYER_INDEX_BY_TEAM = new Map();
+function rebuildPlayerTeamIndex() {
+  PLAYER_INDEX_BY_TEAM.clear();
+  Object.values(state.players).forEach(player => {
+    if (!player.team) return;
+    if (!PLAYER_INDEX_BY_TEAM.has(player.team)) PLAYER_INDEX_BY_TEAM.set(player.team, []);
+    PLAYER_INDEX_BY_TEAM.get(player.team).push(player);
   });
 }
 
@@ -391,10 +469,61 @@ function updateDynamicSeasonLabels() {
 function setStatus(txt) {
   const el = document.getElementById("statusLabel");
   if (el) el.textContent = txt;
+  renderDataFreshness();
+}
+
+function markDataSource(source, error = null, timestamp = Date.now()) {
+  if (error) state.dataErrors[source] = error.message || String(error);
+  else {
+    state.dataFreshness[source] = timestamp;
+    delete state.dataErrors[source];
+  }
+  renderDataFreshness();
+}
+
+function renderDataFreshness() {
+  const label = document.getElementById("dataFreshnessLabel");
+  const retryButton = document.getElementById("retryDataBtn");
+  if (!label) return;
+  const names = { season: "Season", schedule: "Schedule", players: "Players", stats: "Stats", projections: "Projections", account: "Account" };
+  const sources = Object.entries(state.dataFreshness)
+    .filter(([, timestamp]) => timestamp)
+    .map(([source, timestamp]) => `${names[source]} ${new Date(timestamp).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`);
+  const failed = Object.keys(state.dataErrors).map(source => names[source] || source);
+  label.textContent = failed.length
+    ? `Unavailable: ${failed.join(", ")}${sources.length ? ` · Updated ${sources.join(" · ")}` : ""}`
+    : (sources.length ? `Updated ${sources.join(" · ")}` : "Data sources waiting");
+  label.classList.toggle("has-errors", failed.length > 0);
+  if (retryButton) retryButton.hidden = failed.length === 0;
+}
+
+async function retryDataSync() {
+  const button = document.getElementById("retryDataBtn");
+  const usernameInput = document.getElementById("usernameInput");
+  const username = usernameInput?.value.trim() || "";
+  if (button) button.disabled = true;
+  setStatus("Retrying data sources...");
+  try {
+    await initApp(true, true);
+    if (username) {
+      if (usernameInput) usernameInput.value = username;
+      await syncUserAccount();
+    }
+    if (!Object.keys(state.dataErrors).length) {
+      setStatus(state.activeLeague
+        ? `Synced ${state.activeLeague.name} (${state.activeLeague.playoffTeams}-Team Playoff) • Week ${state.week}`
+        : `Ready | ${state.season} NFL Season • ${Object.keys(state.players).length.toLocaleString()} profiles loaded`);
+    }
+  } finally {
+    if (button) button.disabled = false;
+    renderDataFreshness();
+  }
 }
 
 function avatarUrl(m) {
   if (!m || !m.id || m.id === "0" || m.isPick) return "";
+  if (m.photo) return m.photo;
+  if (m.espnId) return `https://a.espncdn.com/i/headshots/nfl/players/full/${encodeURIComponent(m.espnId)}.png`;
   if (m.position === "DEF" || m.position === "D/ST") {
     let c = (m.id || m.team || "").toLowerCase().trim();
     if (c === "jac") c = "jax"; if (c === "la") c = "lar";
@@ -435,7 +564,7 @@ function defaultRealisticProj(m) {
   if (m.position !== "DEF" && (!m.team || m.team === "FA" || !m.isCurrentNfl || ["Out","IR","Suspended","PUP"].includes(m.injuryStatus))) return 0;
   if (m.byeWeek > 0 && m.byeWeek === state.week) return 0;
   if (m.position === "DEF") {
-    const defRank = DVP_RANKS_2026.RB[m.team] || 16;
+    const defRank = getDvpRanksForSeason(state.activeLeague?.season || state.season || DEFAULT_SEASON).RB[m.team] || 16;
     return Number((9.4 - (defRank - 1) * 0.11).toFixed(2));
   }
   if (m.searchRank > 800) return 0.5;
@@ -450,7 +579,7 @@ function computeLeagueProj(m, st, rules) {
   if (m.position !== "DEF" && (!m.team || m.team === "FA" || !m.isCurrentNfl || ["Out","IR","Suspended","PUP"].includes(m.injuryStatus))) return 0;
   if (m.byeWeek > 0 && m.byeWeek === state.week) return 0;
   if (!st) return defaultRealisticProj(m);
-  if (rules && Object.keys(rules).length) {
+  if (rules && Object.keys(rules).length && state.activeLeague?.provider !== "espn") {
     let tot = 0, hit = false;
     for (const k in st) {
       if (!k.startsWith("pts_") && rules[k] !== undefined) { tot += st[k] * rules[k]; hit = true; }
@@ -517,9 +646,10 @@ function computeSosWindowMetrics(teamAbbr, weeks, pos) {
 
   let sumRank = 0, activeGames = 0, smashCount = 0, domeCount = 0, hasBye = false;
   weeks.forEach(w => {
-    if (BYE_2026[normTeam] === w) { hasBye = true; return; }
-    const m = NFL_2026_SCHEDULE[normTeam]?.[w];
-    const r = m ? (DVP_RANKS_2026[pos]?.[m.opp] || 16) : 16;
+    if (CURRENT_BYE_WEEKS[normTeam] === w) { hasBye = true; return; }
+    const m = CURRENT_NFL_SCHEDULE[normTeam]?.[w];
+    const seasonDvp = getDvpRanksForSeason(state.activeLeague?.season || state.season || DEFAULT_SEASON);
+    const r = m ? (seasonDvp[pos]?.[m.opp] || 16) : 16;
     const venueTeam = m ? (m.isHome ? normTeam : m.opp) : "";
     if (DOME_TEAMS.has(venueTeam)) domeCount++;
     sumRank += r; activeGames++;
@@ -548,7 +678,7 @@ function getPlayerPlayoffSosProfile(p) {
   if (normTeam === "JAC") normTeam = "JAX"; if (normTeam === "LA") normTeam = "LAR";
 
   const opps = poWeeks.map(w => {
-    const m = NFL_2026_SCHEDULE[normTeam]?.[w];
+    const m = CURRENT_NFL_SCHEDULE[normTeam]?.[w];
     return m ? ((m.isHome ? "vs " : "@") + m.opp) : "TBD";
   });
 
@@ -693,9 +823,11 @@ function recalcAllPlayers() {
   for (const pid of ids) {
     const m = state.players[pid];
     if (m.isPick) continue;
-    m.byeWeek = BYE_2026[m.team] || 0;
+    m.byeWeek = CURRENT_BYE_WEEKS[m.team] || 0;
     m.projectedPoints = computeLeagueProj(m, state.rawProj[pid], rules);
     const s = state.rawStats[pid];
+    const adpValue = Number(state.rawProj[pid]?.adp_dd_ppr);
+    m.adp = Number.isFinite(adpValue) && adpValue > 0 && adpValue < 500 ? adpValue : null;
     const seed = ((m.team || "NFL").charCodeAt(0) * 11 + (m.name || "P").charCodeAt(0) * 5) % 19;
 
     if (s && (s.gp > 0 || s.gms_active > 0 || s.pts_ppr > 0 || s.pts_std > 0 || s.sack > 0)) {
@@ -751,7 +883,7 @@ function recalcAllPlayers() {
       m.touchesPerGame = m.rushAttPerGame + m.receptionsPerGame;
       m.passYdsPerGame = m.position === "QB" ? m.seasonPpg * 13.8 : 0;
       m.passTdPerGame = m.position === "QB" ? m.seasonPpg * 0.105 : 0;
-      const defRank = DVP_RANKS_2026.RB[m.team] || 16;
+      const defRank = CURRENT_DVP_RANKS.RB[m.team] || 16;
       m.sacksPerGame = m.position === "DEF" ? Number((3.4 - (defRank - 1) * 0.055).toFixed(2)) : 0;
       m.takeawaysPerGame = m.position === "DEF" ? Number((1.8 - (defRank - 1) * 0.032).toFixed(2)) : 0;
       m.snapSharePct = Math.min(94, Math.max(20, 28 + m.seasonPpg * 3.8));
@@ -813,15 +945,15 @@ function calcPlayoffWeekProjection(rosterIds, weekNum) {
   if (!slots.length) slots = ["QB","RB","RB","WR","WR","TE","FLEX","K","DEF"];
 
   const avail = rosterIds.map(id => state.players[id]).filter(m => m && !m.isPick).map(m => {
-    if (BYE_2026[m.team] === weekNum) return { m, score: 0 };
+    if (CURRENT_BYE_WEEKS[m.team] === weekNum) return { m, score: 0 };
     const base = m.projectedPoints > 0.1 ? (m.projectedPoints * 0.62 + m.seasonPpg * 0.38) : m.seasonPpg;
     let normTeam = (m.team || "").toUpperCase().trim();
     if (normTeam === "JAC") normTeam = "JAX"; if (normTeam === "LA") normTeam = "LAR";
-    const matchInfo = NFL_2026_SCHEDULE[normTeam]?.[weekNum];
+    const matchInfo = CURRENT_NFL_SCHEDULE[normTeam]?.[weekNum];
     let mult = 1.0;
     if (matchInfo) {
       const posKey = ["QB","RB","WR","TE","DEF"].includes(m.position) ? m.position : "WR";
-      const dvp = DVP_RANKS_2026[posKey]?.[matchInfo.opp] || 16.5;
+      const dvp = CURRENT_DVP_RANKS[posKey]?.[matchInfo.opp] || 16.5;
       mult += ((dvp - 16.5) / 15.5) * 0.09;
       const venue = matchInfo.isHome ? normTeam : matchInfo.opp;
       if (DOME_TEAMS.has(venue)) mult += 0.02;
@@ -856,7 +988,7 @@ function calcPlayoffWindowAvgLineupPpg(rosterIds) {
 }
 
 // 5. App Initialization & Account / League Sync
-async function initApp() {
+async function initApp(skipUrlAccountSync = false, forceRefreshSources = false) {
   const weekSelect = document.getElementById("weekSelect");
   if (weekSelect && !weekSelect.options.length) {
     for (let w = 1; w <= 18; w++) {
@@ -868,25 +1000,46 @@ async function initApp() {
 
   ensureDynamicTradeControls();
   updateAnalyticsDropdownOptions();
+  const startupParams = new URLSearchParams(location.search);
+  if (["sleeper", "espn"].includes(startupParams.get("provider"))) {
+    const providerSelect = document.getElementById("providerSelect");
+    if (providerSelect) providerSelect.value = startupParams.get("provider");
+    updateProviderControls();
+  }
   state.season = String(new Date().getFullYear());
 
-  try {
-    const stRes = await fetch("https://api.sleeper.app/v1/state/nfl").then(r => r.json());
-    state.week = Math.min(18, Math.max(1, stRes.display_week || stRes.week || 1));
-    if (stRes.season) state.season = String(stRes.season);
-    if (weekSelect) weekSelect.value = state.week;
-  } catch {}
+  if (state.provider === "sleeper") {
+    try {
+      const stRes = await fetch("https://api.sleeper.app/v1/state/nfl").then(r => r.json());
+      state.week = Math.min(18, Math.max(1, stRes.display_week || stRes.week || 1));
+      if (stRes.season) state.season = String(stRes.season);
+      if (weekSelect) weekSelect.value = state.week;
+      markDataSource("season");
+    } catch (error) { markDataSource("season", error); }
+  } else markDataSource("season");
+
+  refreshSeasonDerivedState(state.season);
 
   updateDynamicSeasonLabels();
-  await syncFullSeasonNflSchedule(state.season);
+  await syncFullSeasonNflSchedule(state.season, forceRefreshSources || Boolean(state.dataErrors.schedule));
 
-  let rawPlayers = await getCachedPlayers();
+  let rawPlayers = await getCachedPlayers(forceRefreshSources || Boolean(state.dataErrors.players));
   if (!rawPlayers) {
     setStatus(`Downloading ${state.season} NFL player database (cached for 24h)...`);
-    rawPlayers = await fetch("https://api.sleeper.app/v1/players/nfl").then(r => r.json());
+    try {
+      const response = await fetch("https://api.sleeper.app/v1/players/nfl");
+      if (!response.ok) throw new Error(`Player feed returned ${response.status}.`);
+      rawPlayers = await response.json();
+    } catch (error) {
+      markDataSource("players", error);
+      setStatus("Player database unavailable. Use Retry sync to try again.");
+      if (!Object.keys(state.players).length) return;
+      rawPlayers = null;
+    }
     await setCachedPlayers(rawPlayers);
   }
-  for (const [pid, p] of Object.entries(rawPlayers)) {
+  ESPN_PLAYER_TO_INTERNAL_ID.clear();
+  for (const [pid, p] of Object.entries(rawPlayers || {})) {
     const name = `${p.first_name || ""} ${p.last_name || ""}`.trim();
     if (!name) continue;
     const pos = p.position || "";
@@ -894,19 +1047,25 @@ async function initApp() {
     const rawSr = p.search_rank || 9999999;
     const isDef = pos === "DEF";
     const isCurrentNfl = isDef ? (team !== "FA" && team !== "") : ((p.active === true) && (p.status !== "Retired" && p.status !== "Inactive") && (team !== "FA" && team !== "") && (rawSr > 0 && rawSr < 4500));
+    if (p.espn_id) ESPN_PLAYER_TO_INTERNAL_ID.set(String(p.espn_id), pid);
     state.players[pid] = {
-      id: pid, name, position: pos, team, status: p.status || "Active", isCurrentNfl,
+      id: pid, espnId: p.espn_id ? String(p.espn_id) : "", name, position: pos, team, status: p.status || "Active", isCurrentNfl,
       injuryStatus: p.injury_status || (p.status === "Injured Reserve" ? "IR" : "Healthy"),
-      age: p.age || 0, exp: p.years_exp || 0, byeWeek: BYE_2026[team] || 0,
+      age: p.age || 0, exp: p.years_exp || 0, byeWeek: CURRENT_BYE_WEEKS[team] || 0,
       searchRank: (rawSr > 0 && rawSr < 99999) ? rawSr : (isDef ? 160 : 99999),
       projectedPoints: 0, seasonPpg: 0, baseValue: 200, vorpScore: 1, posRank: 999, ovrRank: 999
     };
   }
 
+  rebuildPlayerTeamIndex();
+
   try {
-    const stData = await fetch(`https://api.sleeper.app/v1/stats/nfl/regular/${state.season}`).then(r => r.json());
+    const response = await fetch(`https://api.sleeper.app/v1/stats/nfl/regular/${state.season}`);
+    if (!response.ok) throw new Error(`Stats feed returned ${response.status}.`);
+    const stData = await response.json();
     for (const [k, v] of Object.entries(stData || {})) state.rawStats[k] = v.stats || v;
-  } catch {}
+    markDataSource("stats");
+  } catch (error) { markDataSource("stats", error); }
 
   recalcAllPlayers();
   recomputeDynamicDvpRanks();
@@ -917,13 +1076,19 @@ async function initApp() {
   setStatus(`Ready | ${state.season} NFL Season • ${Object.keys(state.players).length.toLocaleString()} profiles loaded`);
 
   const params = new URLSearchParams(location.search);
+  const providerFromLink = params.get("provider") || (params.has("user") ? "sleeper" : "");
+  if (["sleeper", "espn"].includes(providerFromLink)) {
+    const providerSelect = document.getElementById("providerSelect");
+    if (providerSelect) providerSelect.value = providerFromLink;
+    updateProviderControls();
+  }
   if (params.get("week")) {
     state.week = parseInt(params.get("week"), 10) || state.week;
     if (weekSelect) weekSelect.value = state.week;
   }
-  if (params.get("user")) {
+  if (!skipUrlAccountSync && (params.get("user") || params.get("league"))) {
     const uIn = document.getElementById("usernameInput");
-    if (uIn) uIn.value = params.get("user");
+    if (uIn) uIn.value = params.get("user") || params.get("league");
     syncUserAccount();
   }
 }
@@ -931,35 +1096,47 @@ async function initApp() {
 async function fetchWeeklyProjections() {
   const seas = state.activeLeague?.season || state.season;
   setStatus(`Syncing Week ${state.week} projections...`);
-  state.rawProj = {};
+  const previousProjections = state.rawProj;
   try {
-    const data = await fetch(`https://api.sleeper.app/v1/projections/nfl/regular/${seas}/${state.week}`).then(r => r.json());
+    const response = await fetch(`https://api.sleeper.app/v1/projections/nfl/regular/${seas}/${state.week}`);
+    if (!response.ok) throw new Error(`Projection feed returned ${response.status}.`);
+    const data = await response.json();
+    state.rawProj = {};
     if (Array.isArray(data)) {
       data.forEach(e => { if (e.player_id) state.rawProj[e.player_id] = { ...(e.stats || e), pts_ppr: e.pts_ppr ?? e.stats?.pts_ppr }; });
     } else if (data) {
       for (const [k, e] of Object.entries(data)) state.rawProj[k] = { ...(e.stats || e), pts_ppr: e.pts_ppr ?? e.stats?.pts_ppr };
     }
-  } catch {}
+    markDataSource("projections");
+  } catch (error) {
+    state.rawProj = previousProjections;
+    markDataSource("projections", error);
+  }
   recalcAllPlayers();
   recomputeDynamicDvpRanks();
 }
 
 async function syncUserAccount() {
+  const provider = document.getElementById("providerSelect")?.value || "";
+  state.provider = provider;
+  if (!provider) { setStatus("Choose a provider first."); return; }
+  if (provider === "espn") return syncEspnAccount();
   const u = document.getElementById("usernameInput")?.value.trim();
   if (!u) return;
-  setStatus(`Looking up '${u}'...`);
+  setStatus("Connecting account...");
   try {
     const uObj = await fetch(`https://api.sleeper.app/v1/user/${encodeURIComponent(u)}`).then(r => r.json());
-    if (!uObj || !uObj.user_id) { setStatus("User not found on Sleeper."); return; }
+    if (!uObj || !uObj.user_id) { markDataSource("account", new Error("Account not found.")); setStatus("Account not found."); return; }
     state.userId = uObj.user_id;
     const lgs = await fetch(`https://api.sleeper.app/v1/user/${state.userId}/leagues/nfl/${state.season}`).then(r => r.json());
+    markDataSource("account");
     state.leagues = (lgs || []).map(o => {
       const st = o.settings || {};
       const totTeams = o.total_rosters || 12;
       const pTeams = st.playoff_teams || (totTeams <= 8 ? 4 : 6);
       const pStart = st.playoff_week_start > 0 ? st.playoff_week_start : (pTeams <= 4 ? 16 : 15);
       return {
-        name: o.name, leagueId: o.league_id, season: o.season || state.season,
+        provider: "sleeper", name: o.name, leagueId: o.league_id, season: o.season || state.season,
         totalTeams: totTeams, leagueType: st.type || 0, draftRounds: st.draft_rounds || 4,
         playoffTeams: pTeams, playoffWeekStart: pStart, playoffSeedType: st.playoff_seed_type || 0,
         playoffRoundType: st.playoff_round_type || 0, rosterPositions: o.roster_positions || [], scoringSettings: o.scoring_settings || {}
@@ -973,12 +1150,228 @@ async function syncUserAccount() {
     });
     if (state.leagues.length) await loadLeague(0);
     else setStatus(`No ${state.season} leagues found for ${u}.`);
-  } catch { setStatus("Error connecting to Sleeper API."); }
+  } catch (error) { markDataSource("account", error); setStatus("Could not connect to this provider."); }
+}
+
+function updateProviderControls() {
+  const provider = document.getElementById("providerSelect")?.value || "";
+  state.provider = provider;
+  const espn = provider === "espn";
+  const sleeper = provider === "sleeper";
+  const label = document.getElementById("providerInputLabel");
+  const input = document.getElementById("usernameInput");
+  const button = document.getElementById("syncBtn");
+  const help = document.getElementById("providerHelp");
+  if (label) label.textContent = espn ? "LEAGUE ID(S)" : (sleeper ? "ACCOUNT" : "ACCOUNT / LEAGUE");
+  if (input) input.placeholder = espn ? "ESPN league ID(s), comma-separated" : (sleeper ? "Sleeper username..." : "Choose a provider first");
+  if (button) { button.textContent = espn ? "Import League(s)" : (sleeper ? "Sync Account" : "Connect"); button.disabled = !provider; }
+  if (help) help.textContent = espn ? "Public ESPN leagues need a league ID. Private leagues use an ESPN session already signed in to this browser." : (sleeper ? "Connect with your account username to load league settings and rosters." : "Choose ESPN Fantasy or Sleeper to connect league data.");
+}
+
+function normalizeEspnRosterPositions(slotCounts = {}) {
+  const positionBySlot = { 0:"QB", 2:"RB", 3:"FLEX", 4:"WR", 5:"WR/TE", 6:"TE", 7:"FLEX", 16:"DEF", 17:"K", 20:"BN", 21:"IR", 23:"SUPER_FLEX" };
+  return Object.entries(slotCounts).flatMap(([slot, count]) => Array.from({ length: Math.max(0, Number(count) || 0) }, () => positionBySlot[slot] || "BN"));
+}
+
+function normalizeEspnScoring(scoringSettings = {}) {
+  const reception = (scoringSettings.scoringItems || []).find(item => Number(item.statId) === 53);
+  return { rec: Number(reception?.points) || 0 };
+}
+
+async function fetchEspnLeague(leagueId, season) {
+  const endpoint = new URL(`https://lm-api-reads.fantasy.espn.com/apis/v3/games/ffl/seasons/${encodeURIComponent(season)}/segments/0/leagues/${encodeURIComponent(leagueId)}`);
+  ["mSettings", "mTeam", "mRoster", "mScoreboard", "mTransactions2", "mDraftDetail"].forEach(view => endpoint.searchParams.append("view", view));
+  const response = await fetch(endpoint, { credentials: "include" });
+  if (!response.ok) throw new Error(`ESPN returned ${response.status} for league ${leagueId}. Check the ID, season, and account access.`);
+  return response.json();
+}
+
+async function syncEspnAccount() {
+  const input = document.getElementById("usernameInput");
+  const leagueIds = (input?.value || "").split(/[\s,;]+/).map(value => value.trim()).filter(Boolean);
+  if (!leagueIds.length) { setStatus("Enter one or more ESPN league IDs."); return; }
+  if (leagueIds.length > 20) { setStatus("Import up to 20 leagues at a time."); return; }
+  setStatus(`Connecting to ${leagueIds.length} ESPN league${leagueIds.length === 1 ? "" : "s"}...`);
+  try {
+    const leagues = await Promise.all(leagueIds.map(async leagueId => {
+      const data = await fetchEspnLeague(leagueId, state.season);
+      if (data.status?.currentScoringPeriod) state.week = Number(data.status.currentScoringPeriod);
+      const settings = data.settings || {};
+      const teams = data.teams || [];
+      const teamCount = teams.length || settings.size || 12;
+      const keeper = Boolean(settings.isKeeper);
+      return {
+        provider: "espn", leagueId: String(leagueId), season: String(data.seasonId || state.season),
+        name: settings.name || `ESPN League ${leagueId}`, totalTeams: teamCount,
+        leagueType: settings.isDynasty ? 2 : (keeper ? 1 : 0),
+        draftRounds: settings.draftSettings?.numRounds || 15,
+        playoffTeams: settings.scheduleSettings?.playoffTeamCount || 6,
+        playoffWeekStart: settings.scheduleSettings?.playoffMatchupPeriodLength ? 15 : 15,
+        playoffSeedType: 0, playoffRoundType: 0,
+        rosterPositions: normalizeEspnRosterPositions(settings.rosterSettings?.lineupSlotCounts),
+        scoringSettings: normalizeEspnScoring(settings.scoringSettings), espnData: data
+      };
+    }));
+    state.leagues = leagues;
+    state.userId = "";
+    const select = document.getElementById("leagueSelect");
+    select.innerHTML = "";
+    leagues.forEach((league, index) => {
+      const option = document.createElement("option");
+      option.value = index; option.textContent = `${league.name} (${league.totalTeams} teams)`;
+      select.appendChild(option);
+    });
+    markDataSource("account");
+    if (leagues.length) await loadLeague(0);
+  } catch (error) {
+    markDataSource("account", error);
+    setStatus(error.message || "Could not connect to ESPN Fantasy.");
+  }
+}
+
+function getInternalPlayerIdFromEspn(playerData) {
+  const espnId = String(playerData.id);
+  let internalId = ESPN_PLAYER_TO_INTERNAL_ID.get(espnId);
+  if (internalId && state.players[internalId]) return internalId;
+  internalId = `espn_${espnId}`;
+  const position = ESPN_POSITION_CODES[playerData.defaultPositionId] || playerData.position || "FLEX";
+  const team = ESPN_TEAM_CODES[playerData.proTeamId] || "FA";
+  if (!state.players[internalId]) {
+    state.players[internalId] = {
+      id: internalId, espnId, name: playerData.fullName || playerData.name || `Player ${espnId}`,
+      position, team, status: playerData.injured ? "Injured" : "Active",
+      injuryStatus: playerData.injured ? "Questionable" : "Healthy", age: Number(playerData.age) || 0,
+      exp: 0, isCurrentNfl: team !== "FA", byeWeek: CURRENT_BYE_WEEKS[team] || 0,
+      searchRank: 99999, projectedPoints: 0, seasonPpg: 0, baseValue: 200,
+      vorpScore: 1, posRank: 999, ovrRank: 999
+    };
+    if (team !== "FA") {
+      const teamPlayers = PLAYER_INDEX_BY_TEAM.get(team) || [];
+      teamPlayers.push(state.players[internalId]);
+      PLAYER_INDEX_BY_TEAM.set(team, teamPlayers);
+    }
+  }
+  ESPN_PLAYER_TO_INTERNAL_ID.set(espnId, internalId);
+  return internalId;
+}
+
+function buildEspnManagerTendencies(data) {
+  const profiles = new Map();
+  const getProfile = rosterId => {
+    if (!profiles.has(String(rosterId))) profiles.set(String(rosterId), { rosterId: String(rosterId), acquisitions: 0, trades: 0, positions: {}, draftPicks: 0, draftPositions: {} });
+    return profiles.get(String(rosterId));
+  };
+  (data.transactions || []).forEach(transaction => {
+    const recipients = new Set();
+    (transaction.items || []).forEach(item => {
+      if (!["ADD", "TRADE_RECEIVED", "WAIVER", "FREEAGENT"].includes(String(item.type || "").toUpperCase())) return;
+      const rosterId = item.toTeamId ?? transaction.teamId;
+      const playerId = ESPN_PLAYER_TO_INTERNAL_ID.get(String(item.playerId));
+      const player = state.players[playerId];
+      if (!player || rosterId === undefined) return;
+      const profile = getProfile(rosterId);
+      profile.acquisitions++;
+      profile.positions[player.position] = (profile.positions[player.position] || 0) + 1;
+      if (String(transaction.type || "").toUpperCase().includes("TRADE")) recipients.add(String(rosterId));
+    });
+    recipients.forEach(rosterId => { getProfile(rosterId).trades++; });
+  });
+  const picks = data.draftDetail?.picks || data.draftDetail?.draftPicks || [];
+  picks.forEach(pick => {
+    const rosterId = pick.teamId ?? pick.rosterId;
+    const playerId = ESPN_PLAYER_TO_INTERNAL_ID.get(String(pick.playerId));
+    const position = state.players[playerId]?.position;
+    if (rosterId === undefined || !position) return;
+    const profile = getProfile(rosterId);
+    profile.draftPicks++;
+    profile.draftPositions[position] = (profile.draftPositions[position] || 0) + 1;
+  });
+  return [...profiles.values()];
+}
+
+async function loadEspnLeague(idx) {
+  const league = state.leagues[idx];
+  if (!league?.espnData) return;
+  state.activeLeague = league;
+  refreshSeasonDerivedState(league.season);
+  updateDynamicSeasonLabels();
+  document.getElementById("tradeFormatBadge").textContent = league.leagueType === 2 ? "DYNASTY MODE" : (league.leagueType === 1 ? "KEEPER MODE" : "REDRAFT MODE");
+  await fetchWeeklyProjections();
+
+  const data = league.espnData;
+  const members = Object.fromEntries((data.members || []).map(member => [String(member.id), member.displayName || member.firstName || "Manager"]));
+  state.managers = (data.teams || []).map(team => {
+    const entries = team.roster?.entries || [];
+    const mapped = entries.map(entry => {
+      const player = entry.playerPoolEntry?.player || entry.player || {};
+      return { id: getInternalPlayerIdFromEspn(player), slot: Number(entry.lineupSlotId) };
+    });
+    const owners = team.owners || [];
+    const record = team.record?.overall || {};
+    const wins = Number(record.wins) || 0, losses = Number(record.losses) || 0;
+    const pf = Number(record.pointsFor ?? team.points) || 0;
+    const pa = Number(record.pointsAgainst ?? team.pointsAgainst) || 0;
+    const players = mapped.map(item => item.id);
+    const starters = mapped.filter(item => ![20, 21, 22].includes(item.slot)).map(item => item.id);
+    const rosPpg = starters.reduce((sum, id) => sum + (state.players[id]?.projectedPoints || state.players[id]?.seasonPpg || 0), 0) || 112;
+    return {
+      rosterId: team.id, ownerId: String(owners[0] || ""),
+      teamName: team.name || `${team.location || ""} ${team.nickname || ""}`.trim() || `Team ${team.id}`,
+      wins, losses, pf, pa, maxPf: 0, eff: 0, rosPpg, starters, reserve: [], taxi: [], players,
+      ownedPicks: [], allPlayW: 0, allPlayL: 0, luck: 0, power: 0, week1Rank: 1, currentRank: 1, history: []
+    };
+  });
+  const totalTeams = Math.max(1, state.managers.length);
+  const maxPF = Math.max(1, ...state.managers.map(manager => manager.pf));
+  state.managers.forEach(manager => { manager.maxPf = maxPF; manager.eff = maxPF > 0 ? (manager.pf / maxPF) * 100 : 0; });
+  [...state.managers].sort((a, b) => b.rosPpg - a.rosPpg).forEach((manager, index) => { manager.week1Rank = index + 1; });
+  state.managers.forEach(manager => {
+    manager.allPlayW = state.managers.filter(other => other !== manager && manager.pf > other.pf).length;
+    manager.allPlayL = Math.max(0, totalTeams - 1 - manager.allPlayW);
+    const totalGames = manager.wins + manager.losses;
+    const expectedWinRate = totalTeams > 1 ? manager.allPlayW / (totalTeams - 1) : 0;
+    manager.luck = ((totalGames ? manager.wins / totalGames : 0) - expectedWinRate) * 100;
+    manager.power = (manager.pf / maxPF) * 60 + expectedWinRate * 40;
+    manager.projW = manager.wins + Math.round(Math.max(0, 13 - totalGames) * Math.min(0.88, Math.max(0.15, 0.25 + expectedWinRate * 0.55 + (manager.rosPpg - 105) / 100)));
+    manager.projL = Math.max(0, 13 - manager.projW);
+  });
+  state.managers.sort((a, b) => b.power - a.power);
+  state.managerTendencies = buildEspnManagerTendencies(data);
+  const weekCount = Math.max(2, state.week);
+  state.managers.forEach((manager, index) => {
+    manager.currentRank = index + 1;
+    manager.history = Array.from({ length: weekCount }, (_, week) => Math.round(manager.week1Rank + (manager.currentRank - manager.week1Rank) * (week / (weekCount - 1))));
+    manager.playoffPct = Math.min(99, Math.max(4, ((totalTeams - index) / totalTeams) * 68 + (manager.projW / 13) * 25 + (league.playoffTeams / totalTeams) * 22 - 8));
+  });
+
+  const selectors = ["teamSelect", "tradeTeamA", "tradeTeamB", "simTeamA", "simTeamB"];
+  selectors.forEach(id => {
+    const select = document.getElementById(id);
+    if (!select) return;
+    select.innerHTML = "";
+    state.managers.forEach((manager, index) => {
+      const option = document.createElement("option");
+      option.value = index; option.textContent = manager.teamName;
+      select.appendChild(option);
+    });
+  });
+  const partnerIndex = state.managers.length > 1 ? 1 : 0;
+  document.getElementById("teamSelect").value = "0";
+  document.getElementById("tradeTeamA").value = "0";
+  document.getElementById("tradeTeamB").value = String(partnerIndex);
+  document.getElementById("simTeamA").value = "0";
+  document.getElementById("simTeamB").value = String(partnerIndex);
+  renderSuperlatives([]);
+  renderAllViews(0);
+  await buildTradeDatabase();
+  setStatus(`Imported ${league.name} from ESPN • ${state.managers.length} teams • Week ${state.week}`);
 }
 
 async function loadLeague(idx) {
   state.activeLeague = state.leagues[idx];
   if (!state.activeLeague) return;
+  if (state.activeLeague.provider === "espn") return loadEspnLeague(idx);
+  refreshSeasonDerivedState(state.activeLeague.season || state.season);
   state.bracketOverrides = {};
   updateDynamicSeasonLabels();
   if (document.getElementById("bracketTeamsOverride")) document.getElementById("bracketTeamsOverride").value = "AUTO";
@@ -1640,21 +2033,39 @@ function classifyManagerArchetype(mgr) {
 
 async function buildTradeDatabase() {
   state.dbTrades = [];
+  if (state.activeLeague?.provider !== "espn") state.managerTendencies = [];
   const fmtTag = state.activeLeague
     ? `${state.activeLeague.leagueType === 2 ? "Dynasty" : (state.activeLeague.leagueType === 1 ? "Keeper" : "Redraft")} • ${state.activeLeague.totalTeams}T`
     : "12-Team PPR";
 
-  if (state.activeLeague?.leagueId) {
+  if (state.activeLeague?.leagueId && state.activeLeague.provider !== "espn") {
     try {
-      const weeksToScan = Math.min(state.week, 8);
+      const lastWeek = Math.min(state.week, 18);
+      const firstWeek = Math.max(1, lastWeek - 7);
       const reqs = [];
-      for (let w = 1; w <= weeksToScan; w++) {
+      for (let w = firstWeek; w <= lastWeek; w++) {
         reqs.push(fetch(`https://api.sleeper.app/v1/league/${state.activeLeague.leagueId}/transactions/${w}`).then(r => r.json()).catch(() => []));
       }
       const weeklyTx = await Promise.all(reqs);
+      const tendencies = new Map();
+      const getTendency = rosterId => {
+        if (!tendencies.has(rosterId)) tendencies.set(rosterId, { rosterId, acquisitions: 0, trades: 0, positions: {}, draftPicks: 0, draftPositions: {} });
+        return tendencies.get(rosterId);
+      };
       weeklyTx.forEach((txArr, wIdx) => {
         (txArr || []).forEach(tx => {
-          if (tx.type !== "trade" || tx.status !== "complete" || !tx.roster_ids || tx.roster_ids.length < 2) return;
+          if (tx.status !== "complete") return;
+          const tradeRecipients = new Set();
+          Object.entries(tx.adds || {}).forEach(([playerId, rosterId]) => {
+            const player = state.players[playerId];
+            if (!player) return;
+            const profile = getTendency(rosterId);
+            profile.acquisitions++;
+            profile.positions[player.position] = (profile.positions[player.position] || 0) + 1;
+            if (tx.type === "trade") tradeRecipients.add(rosterId);
+          });
+          tradeRecipients.forEach(rosterId => { getTendency(rosterId).trades++; });
+          if (tx.type !== "trade" || !tx.roster_ids || tx.roster_ids.length < 2) return;
           const rA = tx.roster_ids[0], rB = tx.roster_ids[1];
           const aIds = [], bIds = [];
           for (const [pid, destRoster] of Object.entries(tx.adds || {})) {
@@ -1665,10 +2076,25 @@ async function buildTradeDatabase() {
           if (aIds.length && bIds.length) {
             const aVal = aIds.reduce((s, id) => s + state.players[id].baseValue, 0);
             const bVal = bIds.reduce((s, id) => s + state.players[id].baseValue, 0);
-            state.dbTrades.push({ aIds, bIds, aVal, bVal, src: "LEAGUE", label: `Week ${wIdx + 1} League Trade`, format: fmtTag });
+            state.dbTrades.push({ aIds, bIds, aVal, bVal, src: "LEAGUE", label: `Week ${firstWeek + wIdx} League Trade`, format: fmtTag });
           }
         });
       });
+      try {
+        const drafts = await fetch(`https://api.sleeper.app/v1/league/${state.activeLeague.leagueId}/drafts`).then(response => response.json());
+        const selectedDraft = (drafts || []).find(draft => String(draft.season) === String(state.activeLeague.season)) || drafts?.[0];
+        if (selectedDraft?.draft_id) {
+          const picks = await fetch(`https://api.sleeper.app/v1/draft/${selectedDraft.draft_id}/picks`).then(response => response.json());
+          (picks || []).forEach(pick => {
+            const player = state.players[pick.player_id];
+            if (!player) return;
+            const profile = getTendency(pick.roster_id);
+            profile.draftPicks++;
+            profile.draftPositions[player.position] = (profile.draftPositions[player.position] || 0) + 1;
+          });
+        }
+      } catch {}
+      state.managerTendencies = [...tendencies.values()];
     } catch {}
   }
 
@@ -1864,7 +2290,7 @@ function renderTradeFinder() {
   const tbody = tbl.querySelector("tbody");
   if (!myTm || state.managers.length < 2) {
     if (document.getElementById("posGradesGrid")) document.getElementById("posGradesGrid").innerHTML = "";
-    tbody.innerHTML = `<tr><td colspan="6" style="padding:24px;color:var(--text-muted);">Sync your Sleeper account above to analyze positional grades, Contender vs. Rebuilder tags, and archetype-matched trades.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="6" style="padding:24px;color:var(--text-muted);">Connect a league above to analyze positional grades, Contender vs. Rebuilder tags, and archetype-matched trades.</td></tr>`;
     document.getElementById("finderCountLbl").textContent = "0 proposals";
     return;
   }
@@ -2197,7 +2623,88 @@ function renderOptimizerTab(idx) {
   document.getElementById("optSubAlert").textContent = subCnt > 0 ? `${subCnt} Suboptimal Slot(s) Detected` : `Lineup is 100% Optimal for Week ${state.week}`;
 }
 
+function getFaabStorageKey() {
+  return `fantasy-faab-v1:${state.activeLeague?.provider || state.provider}:${state.activeLeague?.season || state.season || DEFAULT_SEASON}:${state.activeLeague?.leagueId || "custom"}`;
+}
+
+function loadFaabState() {
+  const key = getFaabStorageKey();
+  if (faabState.loadedKey === key) return;
+  faabState.loadedKey = key;
+  try {
+    const saved = JSON.parse(localStorage.getItem(key) || "null");
+    if (saved && typeof saved === "object") {
+      faabState.budget = Math.max(0, Number(saved.budget) || 100);
+      faabState.weeksRemaining = Math.min(18, Math.max(1, Number(saved.weeksRemaining) || 12));
+      faabState.strategy = ["conservative", "balanced", "aggressive"].includes(saved.strategy) ? saved.strategy : "balanced";
+      faabState.claims = Array.isArray(saved.claims) ? saved.claims : [];
+    }
+  } catch {}
+}
+
+function saveFaabState() {
+  try {
+    localStorage.setItem(getFaabStorageKey(), JSON.stringify({
+      budget: faabState.budget, weeksRemaining: faabState.weeksRemaining,
+      strategy: faabState.strategy, claims: faabState.claims
+    }));
+  } catch {}
+}
+
+function getQueuedFaabTotal() {
+  return faabState.claims.reduce((sum, claim) => sum + Math.max(0, Number(claim.bid) || 0), 0);
+}
+
+function getSuggestedFaabBid(player) {
+  const availableBudget = Math.max(0, faabState.budget - getQueuedFaabTotal());
+  if (!availableBudget) return 0;
+  const styleMultiplier = { conservative: 0.72, balanced: 1, aggressive: 1.32 }[faabState.strategy] || 1;
+  const timingMultiplier = faabState.weeksRemaining <= 3 ? 1.3 : (faabState.weeksRemaining <= 6 ? 1.12 : 1);
+  const scarcityMultiplier = ["RB", "WR"].includes(player.position) && player.posRank <= 12 ? 1.1 : 1;
+  const share = Math.min(0.4, Math.max(0.02, (player.vorpScore / 26) * styleMultiplier * timingMultiplier * scarcityMultiplier));
+  return Math.min(availableBudget, Math.max(1, Math.round(availableBudget * share)));
+}
+
+function renderFaabPlanner() {
+  loadFaabState();
+  const budgetInput = document.getElementById("faabBudget");
+  const weeksInput = document.getElementById("faabWeeks");
+  const strategyInput = document.getElementById("faabStrategy");
+  if (budgetInput && document.activeElement !== budgetInput) budgetInput.value = String(faabState.budget);
+  if (weeksInput && document.activeElement !== weeksInput) weeksInput.value = String(faabState.weeksRemaining);
+  if (strategyInput) strategyInput.value = faabState.strategy;
+  const totalQueued = getQueuedFaabTotal();
+  const summary = document.getElementById("faabBudgetSummary");
+  if (summary) summary.textContent = `$${Math.max(0, faabState.budget - totalQueued)} available · $${totalQueued} queued`;
+  const claimCount = document.getElementById("faabClaimCount");
+  if (claimCount) claimCount.textContent = `${faabState.claims.length} claim${faabState.claims.length === 1 ? "" : "s"}`;
+  const list = document.getElementById("faabClaims");
+  if (list) list.innerHTML = faabState.claims.length ? faabState.claims.map((claim, index) => {
+    const player = state.players[claim.playerId];
+    return `<div class="faab-claim-row"><div><strong>${draftEscapeHtml(player?.name || claim.playerName || "Unknown player")}</strong><span>${draftEscapeHtml(player?.position || claim.position || "")}</span></div><label>Bid $<input type="number" min="0" max="${faabState.budget}" value="${Math.max(0, Number(claim.bid) || 0)}" data-faab-bid="${index}" /></label><button type="button" class="btn-builder-action" data-remove-faab="${index}" aria-label="Remove claim for ${draftEscapeHtml(player?.name || claim.playerName || "player")}">Remove</button></div>`;
+  }).join("") : `<div class="draft-empty">Queue a free agent below to plan bids.</div>`;
+}
+
+function updateFaabSettings() {
+  faabState.budget = Math.min(1000, Math.max(0, Number(document.getElementById("faabBudget")?.value) || 0));
+  faabState.weeksRemaining = Math.min(18, Math.max(1, Number(document.getElementById("faabWeeks")?.value) || 1));
+  faabState.strategy = document.getElementById("faabStrategy")?.value || "balanced";
+  saveFaabState();
+  renderWaiversTab();
+}
+
+function toggleFaabClaim(playerId) {
+  const player = state.players[playerId];
+  if (!player) return;
+  const existingIndex = faabState.claims.findIndex(claim => claim.playerId === playerId);
+  if (existingIndex >= 0) faabState.claims.splice(existingIndex, 1);
+  else faabState.claims.push({ playerId, playerName: player.name, position: player.position, bid: getSuggestedFaabBid(player) });
+  saveFaabState();
+  renderWaiversTab();
+}
+
 function renderWaiversTab() {
+  loadFaabState();
   const rostered = new Set();
   state.managers.forEach(m => m.players.forEach(p => rostered.add(p)));
   const pf = document.getElementById("waiverPos")?.value || "ALL";
@@ -2212,11 +2719,12 @@ function renderWaiversTab() {
 
   const tbl = document.getElementById("waiverTbl");
   if (!tbl) return;
-  tbl.innerHTML = `<thead><tr><th>Pos</th><th style="text-align:left;">Player</th><th>NFL Team</th><th>Health Status</th><th>${state.season} Bye</th><th>Season PPG</th><th>Week ${state.week} Proj</th><th>VORP / FAAB</th></tr></thead><tbody></tbody>`;
+  tbl.innerHTML = `<thead><tr><th>Pos</th><th style="text-align:left;">Player</th><th>NFL Team</th><th>Health Status</th><th>${state.season} Bye</th><th>Season PPG</th><th>Week ${state.week} Proj</th><th>VORP</th><th>Suggested Bid</th><th></th></tr></thead><tbody></tbody>`;
   const tbody = tbl.querySelector("tbody");
 
   state.waiverTargets.forEach(fa => {
-    const faab = Math.min(35, Math.max(1, Math.round(fa.vorpScore * 2.2)));
+    const queuedIndex = faabState.claims.findIndex(claim => claim.playerId === fa.id);
+    const bid = queuedIndex >= 0 ? faabState.claims[queuedIndex].bid : getSuggestedFaabBid(fa);
     const hCol = ["Questionable","Doubtful"].includes(fa.injuryStatus) ? "var(--warn)" : (["Out","IR","PUP","Suspended"].includes(fa.injuryStatus) ? "var(--bad)" : "var(--good)");
     const isBye = fa.byeWeek > 0 && fa.byeWeek === state.week;
     const tr = document.createElement("tr");
@@ -2228,9 +2736,12 @@ function renderWaiversTab() {
       <td style="color:${isBye ? 'var(--bad)' : 'var(--text-muted)'};font-weight:${isBye ? '700' : '400'};">${fa.byeWeek > 0 ? (isBye ? `Wk ${fa.byeWeek} (BYE)` : `Wk ${fa.byeWeek}`) : "--"}</td>
       <td>${fa.seasonPpg.toFixed(2)} pts</td>
       <td style="color:var(--good);font-weight:700;">${fa.projectedPoints.toFixed(2)} pts</td>
-      <td style="color:var(--accent);font-weight:700;">+${fa.vorpScore.toFixed(1)} VORP (${faab}% FAAB)</td>`;
+      <td style="color:var(--accent);font-weight:700;">+${fa.vorpScore.toFixed(1)}</td>
+      <td style="font-weight:700;">$${bid}</td>
+      <td><button class="btn-builder-action faab-queue-btn" type="button" data-faab-player="${draftEscapeHtml(fa.id)}">${queuedIndex >= 0 ? "Queued" : "Queue bid"}</button></td>`;
     tbody.appendChild(tr);
   });
+  renderFaabPlanner();
   drawWaiverChart();
 }
 
@@ -2406,14 +2917,14 @@ function renderSosCellHTML(teamAbbr, weekNum, pos, showDomeBadge = false) {
   let normTeam = (teamAbbr || "").toUpperCase().trim();
   if (normTeam === "JAC") normTeam = "JAX"; if (normTeam === "LA") normTeam = "LAR";
 
-  if (BYE_2026[normTeam] === weekNum) {
+  if (CURRENT_BYE_WEEKS[normTeam] === weekNum) {
     return `<div class="sos-cell sos-bye"><div style="font-weight:800;font-size:12px;">BYE WEEK</div><div style="font-size:10px;">Week ${weekNum} Off</div></div>`;
   }
-  const m = NFL_2026_SCHEDULE[normTeam]?.[weekNum];
+  const m = CURRENT_NFL_SCHEDULE[normTeam]?.[weekNum];
   if (!m) return `<div class="sos-cell sos-mid"><div style="font-weight:700;font-size:12px;">TBD</div></div>`;
 
   const opp = m.opp;
-  const dvpRank = DVP_RANKS_2026[pos]?.[opp] || 16;
+  const dvpRank = CURRENT_DVP_RANKS[pos]?.[opp] || 16;
   let cls = "sos-mid", tierTxt = "Neutral";
   if (dvpRank >= 25) { cls = "sos-smash"; tierTxt = "Smash"; }
   else if (dvpRank >= 18) { cls = "sos-good"; tierTxt = "Favorable"; }
@@ -2495,14 +3006,14 @@ function renderSosTab() {
   rows.sort((a, b) => sortOrder === "EASIEST" ? (b.sos.avgRank - a.sos.avgRank) : (a.sos.avgRank - b.sos.avgRank));
 
   if (!rows.length) {
-    tbody.innerHTML = `<tr><td colspan="${weeks.length + (showActionCol ? 5 : 4)}" style="padding:24px;color:var(--text-muted);">Sync your Sleeper league or switch Scope to "All 32 NFL Teams" or "Top 36 Positional Players" to view schedules.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="${weeks.length + (showActionCol ? 5 : 4)}" style="padding:24px;color:var(--text-muted);">Connect a league or switch Scope to "All 32 NFL Teams" or "Top 36 Positional Players" to view schedules.</td></tr>`;
     return;
   }
 
   rows.forEach((r, idx) => {
     const tr = document.createElement("tr");
     tr.className = "table-row-hover";
-    const envMeta = isPlayoffs ? `${r.sos.domeCount} Dome Game(s) • ${r.sos.smashCount} Smash Matchup(s)` : `${state.season} Bye: Week ${BYE_2026[r.team] || '--'} • ${r.sos.smashCount} Smash Matchup(s)`;
+    const envMeta = isPlayoffs ? `${r.sos.domeCount} Dome Game(s) • ${r.sos.smashCount} Smash Matchup(s)` : `${state.season} Bye: Week ${CURRENT_BYE_WEEKS[r.team] || '--'} • ${r.sos.smashCount} Smash Matchup(s)`;
     const subjectHTML = r.isTeamRow
       ? `<div class="player-cell"><img class="avatar" src="${teamLogoUrl(r.team)}" onerror="this.style.display='none'" /><div><div style="font-weight:800;font-size:14px;">${r.name} (${r.team})</div><div style="font-size:11px;color:var(--text-muted);">${envMeta}</div></div></div>`
       : `<div class="player-cell"><img class="avatar" src="${avatarUrl(r.player)}" onerror="this.style.display='none'" /><div><div style="font-weight:700;font-size:14px;"><img class="team-logo-sm" src="${teamLogoUrl(r.team)}" onerror="this.style.display='none'"/>${r.player.name}</div><div style="font-size:11px;color:var(--text-muted);">${r.player.position} #${r.player.posRank} (${r.team}) • ${r.player.seasonPpg.toFixed(1)} PPG • VAL ${r.player.baseValue}</div></div></div>`;
@@ -2534,6 +3045,133 @@ function computeHeadToHeadWinProb(scoreA, scoreB, numWeeks = 1) {
   return Math.min(98.5, Math.max(1.5, 0.5 * (1 + erf(z / Math.sqrt(2))) * 100));
 }
 
+async function getPortfolioLeagueRosters(league) {
+  const cacheKey = `${league.provider}:${league.leagueId}`;
+  if (portfolioState.rostersByLeague.has(cacheKey)) return portfolioState.rostersByLeague.get(cacheKey);
+  let rosters = [];
+  if (league.provider === "espn") {
+    rosters = (league.espnData?.teams || []).map(team => ({
+      teamId: String(team.id), ownerId: String(team.owners?.[0] || ""),
+      name: team.name || `${team.location || ""} ${team.nickname || ""}`.trim() || `Team ${team.id}`,
+      players: (team.roster?.entries || []).map(entry => {
+        const player = entry.playerPoolEntry?.player || entry.player || {};
+        return getInternalPlayerIdFromEspn(player);
+      }).filter(Boolean)
+    }));
+  } else {
+    const [rosterResponse, userResponse] = await Promise.all([
+      fetch(`https://api.sleeper.app/v1/league/${league.leagueId}/rosters`).then(response => response.json()),
+      fetch(`https://api.sleeper.app/v1/league/${league.leagueId}/users`).then(response => response.json())
+    ]);
+    const userNames = Object.fromEntries((userResponse || []).map(user => [user.user_id, user.metadata?.team_name || user.display_name || "Team"]));
+    rosters = (rosterResponse || []).map(roster => ({
+      teamId: String(roster.roster_id), ownerId: String(roster.owner_id || ""),
+      name: userNames[roster.owner_id] || `Team ${roster.roster_id}`,
+      players: roster.players || []
+    }));
+  }
+  portfolioState.rostersByLeague.set(cacheKey, rosters);
+  return rosters;
+}
+
+async function renderLeagueIntelTab(forceRefresh = false) {
+  const selectors = document.getElementById("portfolioRosterSelectors");
+  const exposureTable = document.getElementById("portfolioExposureTable");
+  const byeTable = document.getElementById("portfolioByeTable");
+  const tendencyTable = document.getElementById("managerTendencyTable");
+  if (!selectors || !exposureTable || !byeTable || !tendencyTable) return;
+  if (!Object.keys(state.portfolioRosterSelections).length) {
+    try { state.portfolioRosterSelections = JSON.parse(localStorage.getItem("fantasy-front-office:portfolio-rosters") || "{}"); } catch {}
+  }
+  if (forceRefresh) portfolioState.rostersByLeague.clear();
+  if (!state.leagues.length) {
+    selectors.innerHTML = `<div class="draft-empty">Connect an account or import a league to compare rosters.</div>`;
+    exposureTable.innerHTML = `<tbody><tr><td class="draft-empty">No league data loaded.</td></tr></tbody>`;
+    byeTable.innerHTML = `<tbody><tr><td class="draft-empty">No league data loaded.</td></tr></tbody>`;
+    tendencyTable.innerHTML = `<tbody><tr><td class="draft-empty">No active league selected.</td></tr></tbody>`;
+    return;
+  }
+
+  const meta = document.getElementById("portfolioMeta");
+  if (meta) meta.textContent = "Loading rosters across connected leagues...";
+  const results = await Promise.all(state.leagues.map(async league => {
+    try { return { league, rosters: await getPortfolioLeagueRosters(league) }; }
+    catch (error) { return { league, rosters: [], error }; }
+  }));
+  const available = results.filter(result => result.rosters.length);
+  if (meta) meta.textContent = `${available.length} of ${state.leagues.length} connected leagues have roster data. Select your roster in each league.`;
+
+  selectors.innerHTML = available.map(({ league, rosters }) => {
+    const key = `${league.provider}:${league.leagueId}`;
+    const preferred = rosters.find(roster => league.provider === "sleeper" && roster.ownerId === String(state.userId)) || rosters[0];
+    const selected = state.portfolioRosterSelections[key] || preferred.teamId;
+    state.portfolioRosterSelections[key] = selected;
+    return `<label>${draftEscapeHtml(league.name)}<select data-portfolio-league="${draftEscapeHtml(key)}">${rosters.map(roster => `<option value="${draftEscapeHtml(roster.teamId)}" ${roster.teamId === selected ? "selected" : ""}>${draftEscapeHtml(roster.name)}</option>`).join("")}</select></label>`;
+  }).join("");
+
+  const exposure = new Map();
+  const trackedRosters = [];
+  available.forEach(({ league, rosters }) => {
+    const key = `${league.provider}:${league.leagueId}`;
+    const roster = rosters.find(item => item.teamId === state.portfolioRosterSelections[key]);
+    if (!roster) return;
+    trackedRosters.push({ league, roster });
+    [...new Set(roster.players)].forEach(playerId => {
+      const player = state.players[playerId];
+      if (!player || player.isPick) return;
+      if (!exposure.has(playerId)) exposure.set(playerId, { player, leagues: [] });
+      exposure.get(playerId).leagues.push(league.name);
+    });
+  });
+  const exposureRows = [...exposure.values()].sort((a, b) => (b.leagues.length - a.leagues.length) || ((b.player.baseValue || 0) - (a.player.baseValue || 0)));
+  const summary = document.getElementById("portfolioSummary");
+  if (summary) summary.innerHTML = [
+    ["Tracked leagues", trackedRosters.length],
+    ["Unique players", exposure.size],
+    ["Highest exposure", exposureRows[0] ? `${exposureRows[0].player.name} · ${exposureRows[0].leagues.length}/${trackedRosters.length}` : "--"]
+  ].map(([label, value]) => `<div><span>${label}</span><strong>${draftEscapeHtml(value)}</strong></div>`).join("");
+
+  exposureTable.className = "portfolio-table";
+  exposureTable.innerHTML = `<thead><tr><th style="text-align:left;">Player</th><th>Pos</th><th>NFL team</th><th>Exposure</th><th>Leagues</th></tr></thead><tbody></tbody>`;
+  const exposureBody = exposureTable.querySelector("tbody");
+  if (exposureRows.length) exposureBody.innerHTML = exposureRows.slice(0, 60).map(({ player, leagues }) =>
+    `<tr><td>${draftEscapeHtml(player.name)}</td><td>${draftEscapeHtml(player.position)}</td><td>${draftEscapeHtml(player.team || "FA")}</td><td>${leagues.length}/${trackedRosters.length}</td><td>${draftEscapeHtml(leagues.join(", "))}</td></tr>`
+  ).join("");
+  else exposureBody.innerHTML = `<tr><td colspan="5" class="draft-empty">Choose a roster with player data to see exposure.</td></tr>`;
+
+  const byWeek = new Map();
+  exposureRows.forEach(({ player, leagues }) => {
+    if (!player.byeWeek) return;
+    if (!byWeek.has(player.byeWeek)) byWeek.set(player.byeWeek, { players: [], leagues: new Set() });
+    const item = byWeek.get(player.byeWeek);
+    item.players.push(player.name);
+    leagues.forEach(name => item.leagues.add(name));
+  });
+  byeTable.innerHTML = `<thead><tr><th>Bye week</th><th>Rostered players</th><th>Affected leagues</th><th>Players</th></tr></thead><tbody></tbody>`;
+  const byeBody = byeTable.querySelector("tbody");
+  const byeRows = [...byWeek.entries()].sort((a, b) => b[1].players.length - a[1].players.length);
+  byeBody.innerHTML = byeRows.length ? byeRows.map(([week, item]) =>
+    `<tr><td>Week ${week}</td><td>${item.players.length}</td><td>${item.leagues.size}</td><td>${draftEscapeHtml(item.players.join(", "))}</td></tr>`
+  ).join("") : `<tr><td colspan="4" class="draft-empty">No bye-week data for these rosters.</td></tr>`;
+
+  const tendencies = state.managerTendencies || [];
+  const tendencyMeta = document.getElementById("tendencyMeta");
+  if (tendencyMeta) tendencyMeta.textContent = state.activeLeague?.provider === "espn"
+    ? "Transaction and draft tendencies use history included by ESPN for the connected league."
+    : "Recent completed acquisitions, trades, and draft picks in the active league.";
+  tendencyTable.innerHTML = `<thead><tr><th style="text-align:left;">Manager</th><th>Acquisitions</th><th>Trades</th><th>Most acquired</th><th>Position mix</th><th>Draft picks</th><th>Draft position mix</th></tr></thead><tbody></tbody>`;
+  const tendencyBody = tendencyTable.querySelector("tbody");
+  const tendencyRows = tendencies.map(profile => {
+    const manager = state.managers.find(item => String(item.rosterId) === String(profile.rosterId));
+    const sortedPositions = Object.entries(profile.positions).sort((a, b) => b[1] - a[1]);
+    const draftMix = Object.entries(profile.draftPositions || {}).sort((a, b) => b[1] - a[1]);
+    return { profile, name: manager?.teamName || `Team ${profile.rosterId}`, top: sortedPositions[0]?.[0] || "--", mix: sortedPositions.map(([position, count]) => `${position} ${count}`).join(" · ") || "--", draftMix: draftMix.map(([position, count]) => `${position} ${count}`).join(" · ") || "--" };
+  }).sort((a, b) => (b.profile.acquisitions - a.profile.acquisitions));
+  tendencyBody.innerHTML = tendencyRows.length ? tendencyRows.map(({ profile, name, top, mix, draftMix }) =>
+    `<tr><td>${draftEscapeHtml(name)}</td><td>${profile.acquisitions}</td><td>${profile.trades}</td><td class="tendency-position">${draftEscapeHtml(top)}</td><td>${draftEscapeHtml(mix)}</td><td>${profile.draftPicks || 0}</td><td>${draftEscapeHtml(draftMix)}</td></tr>`
+  ).join("") : `<tr><td colspan="7" class="draft-empty">No transaction or draft history available for the active league yet.</td></tr>`;
+}
+
 function renderPlayoffBracketTab() {
   const grid = document.getElementById("bracketGridContainer");
   const oddsTbl = document.getElementById("bracketOddsTable");
@@ -2553,7 +3191,7 @@ function renderPlayoffBracketTab() {
 
   if (!state.managers || state.managers.length < 4) {
     grid.className = "bracket-grid";
-    grid.innerHTML = `<div class="card-banner" style="grid-column:1 / -1; text-align:center; padding:28px;"><div style="font-size:14px; font-weight:800;">Sync Your Sleeper Account to Simulate Your League's Playoff Bracket</div><div style="font-size:12px; color:var(--text-muted); margin-top:4px;">Enter your Sleeper username in the top bar and click Sync Account to load your league's exact playoff team count (4, 6, 7, or 8 teams), start week, and seeding rules.</div></div>`;
+    grid.innerHTML = `<div class="card-banner" style="grid-column:1 / -1; text-align:center; padding:28px;"><div style="font-size:14px; font-weight:800;">Connect a league to simulate its playoff bracket</div><div style="font-size:12px; color:var(--text-muted); margin-top:4px;">League settings determine playoff team count, start week, and seeding rules.</div></div>`;
     oddsTbl.innerHTML = "";
     return;
   }
@@ -2781,6 +3419,430 @@ function renderPlayoffBracketTab() {
   });
 }
 
+function draftEscapeHtml(value) {
+  return String(value ?? "").replace(/[&<>"']/g, character => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;"
+  })[character]);
+}
+
+function updateDraftSlotOptions() {
+  const teamsInput = document.getElementById("draftTeams");
+  const slotSelect = document.getElementById("draftSlot");
+  if (!teamsInput || !slotSelect) return;
+  const teams = Math.min(32, Math.max(4, parseInt(teamsInput.value, 10) || draftState.settings.teams));
+  const selectedSlot = parseInt(slotSelect.value, 10) || draftState.settings.slot;
+  slotSelect.innerHTML = Array.from({ length: teams }, (_, index) => {
+    const slot = index + 1;
+    return `<option value="${slot}">Pick ${slot}</option>`;
+  }).join("");
+  slotSelect.value = String(Math.min(teams, Math.max(1, selectedSlot)));
+}
+
+function updateDraftTypeSettings() {
+  const type = document.getElementById("draftType")?.value || "redraft";
+  const dynastySettings = document.getElementById("draftDynastySettings");
+  const keeperSettings = document.getElementById("draftKeeperSettings");
+  const keeperYearsSettings = document.getElementById("draftKeeperYearsSettings");
+  if (dynastySettings) dynastySettings.hidden = type !== "dynasty";
+  if (keeperSettings) keeperSettings.hidden = type !== "keeper";
+  if (keeperYearsSettings) keeperYearsSettings.hidden = type !== "keeper";
+}
+
+function getDraftSessionKey() {
+  const season = state.activeLeague?.season || state.season || DEFAULT_SEASON;
+  const leagueId = state.activeLeague?.leagueId || "custom";
+  return `fantasy-draft-v1:${state.activeLeague?.provider || state.provider}:${season}:${leagueId}`;
+}
+
+function saveDraftSession() {
+  const key = getDraftSessionKey();
+  try {
+    localStorage.setItem(key, JSON.stringify({
+      settings: draftState.settings,
+      userPicks: draftState.userPicks,
+      adpByName: draftState.adpByName,
+      keepers: draftState.keepers,
+      savedAt: Date.now()
+    }));
+    draftState.loadedSessionKey = key;
+    const notice = document.getElementById("draftNotice");
+    if (notice) notice.textContent = "Draft saved on this device.";
+  } catch {
+    const notice = document.getElementById("draftNotice");
+    if (notice) notice.textContent = "Draft could not be saved in this browser.";
+  }
+}
+
+function restoreDraftSession() {
+  const key = getDraftSessionKey();
+  if (draftState.loadedSessionKey === key) return;
+  draftState.loadedSessionKey = key;
+  try {
+    const saved = JSON.parse(localStorage.getItem(key) || "null");
+    if (!saved || typeof saved !== "object") return;
+    draftState.settings = { ...draftState.settings, ...(saved.settings || {}) };
+    draftState.userPicks = Array.isArray(saved.userPicks) ? saved.userPicks : [];
+    draftState.adpByName = saved.adpByName && typeof saved.adpByName === "object" ? saved.adpByName : {};
+    draftState.keepers = Array.isArray(saved.keepers) ? saved.keepers : [];
+    const controls = {
+      draftType: draftState.settings.type, draftTeams: draftState.settings.teams,
+      draftSlot: draftState.settings.slot, draftRounds: draftState.settings.rounds,
+      draftScoring: draftState.settings.scoring, draftRosterFormat: draftState.settings.rosterFormat,
+      draftDynastyYears: draftState.settings.dynastyYears, draftKeeperSlots: draftState.settings.keeperSlots,
+      draftKeeperYears: draftState.settings.keeperYears
+    };
+    Object.entries(controls).forEach(([id, value]) => {
+      const control = document.getElementById(id);
+      if (control && value !== undefined) control.value = String(value);
+    });
+  } catch {}
+}
+
+function normalizeDraftPlayerName(name) {
+  return String(name || "").toLowerCase().replace(/[^a-z0-9 ]/g, "").replace(/\s+/g, " ").trim();
+}
+
+function getDraftAdp(player) {
+  const imported = Number(draftState.adpByName[normalizeDraftPlayerName(player.name)]);
+  if (Number.isFinite(imported) && imported > 0 && imported < 500) return { rank: imported, source: "CSV" };
+  const sleeperAdp = Number(player.adp);
+  if (Number.isFinite(sleeperAdp) && sleeperAdp > 0 && sleeperAdp < 500) return { rank: sleeperAdp, source: "Sleeper" };
+  return { rank: null, source: "" };
+}
+
+function parseDraftCsvRow(line) {
+  const cells = [];
+  let cell = "", quoted = false;
+  for (let index = 0; index < line.length; index++) {
+    const character = line[index];
+    if (character === '"' && line[index + 1] === '"' && quoted) { cell += '"'; index++; }
+    else if (character === '"') quoted = !quoted;
+    else if (character === "," && !quoted) { cells.push(cell.trim()); cell = ""; }
+    else cell += character;
+  }
+  cells.push(cell.trim());
+  return cells;
+}
+
+async function importDraftAdpFile(file) {
+  if (!file) return;
+  try {
+    const rows = (await file.text()).split(/\r?\n/).filter(line => line.trim()).map(parseDraftCsvRow);
+    if (rows.length < 2) throw new Error("The CSV needs a header and at least one player row.");
+    const headers = rows[0].map(header => header.toLowerCase().replace(/[^a-z0-9]/g, ""));
+    const nameIndex = headers.findIndex(header => ["player", "playername", "name"].includes(header));
+    const adpIndex = headers.findIndex(header => ["adp", "overalladp", "averagedraftposition", "rank"].includes(header));
+    if (nameIndex < 0 || adpIndex < 0) throw new Error("CSV headers must include Player (or Name) and ADP.");
+
+    const imported = {};
+    rows.slice(1).forEach(row => {
+      const name = normalizeDraftPlayerName(row[nameIndex]);
+      const rank = Number(String(row[adpIndex] || "").replace(/[^0-9.]/g, ""));
+      if (name && Number.isFinite(rank) && rank > 0 && rank < 500) imported[name] = rank;
+    });
+    if (!Object.keys(imported).length) throw new Error("No valid ADP values were found in that CSV.");
+    draftState.adpByName = imported;
+    saveDraftSession();
+    const notice = document.getElementById("draftNotice");
+    if (notice) notice.textContent = `Imported ADP for ${Object.keys(imported).length.toLocaleString()} players from CSV.`;
+    renderDraftRoom();
+  } catch (error) {
+    const notice = document.getElementById("draftNotice");
+    if (notice) notice.textContent = error.message || "Could not read the ADP CSV.";
+  }
+}
+
+function getNextUserDraftPick(settings, picksMade = draftState.userPicks.length) {
+  let userPickCount = 0;
+  for (let overallPick = 1; overallPick <= settings.teams * settings.rounds; overallPick++) {
+    if (getDraftTeamAtPick(overallPick, settings.teams) !== settings.slot) continue;
+    if (userPickCount === picksMade) return overallPick;
+    userPickCount++;
+  }
+  return settings.teams * settings.rounds + 1;
+}
+
+function scoreDraftPlayer(player, settings, rosterCounts, currentPick) {
+  const position = player.position;
+  const scoringPoints = Number(player.seasonPpg || player.projectedPoints || 0);
+  const receptions = Number(player.receptionsPerGame || 0);
+  const activeReceptionPoints = Number(state.activeLeague?.scoringSettings?.rec ?? 1);
+  const targetReceptionPoints = settings.scoring === "standard" ? 0 : (settings.scoring === "half" ? 0.5 : 1);
+  let points = scoringPoints + (targetReceptionPoints - activeReceptionPoints) * receptions;
+  if (settings.scoring === "tep" && position === "TE") points += receptions * 0.5;
+
+  const replacement = {
+    QB: settings.rosterFormat === "superflex" ? 16 : 13.5,
+    RB: 8, WR: 8.2, TE: 5.3, K: 6.3, DEF: 6
+  }[position] || 0;
+  let score = (points - replacement) * 100;
+  const searchRank = Number(player.searchRank || 99999);
+  score += Math.max(0, 2500 - searchRank) * 0.03;
+
+  const starterCounts = settings.rosterFormat === "superflex"
+    ? { QB: 2, RB: 2, WR: 3, TE: 1, K: 1, DEF: 1 }
+    : { QB: 1, RB: 2, WR: 2, TE: 1, K: 1, DEF: 1 };
+  if ((rosterCounts[position] || 0) < starterCounts[position]) score += 150;
+  const skillCount = (rosterCounts.RB || 0) + (rosterCounts.WR || 0) + (rosterCounts.TE || 0);
+  const flexTarget = settings.rosterFormat === "superflex" ? 8 : 6;
+  if (["RB", "WR", "TE"].includes(position) && skillCount < flexTarget) score += 45;
+
+  if (player.age > 0 && ["QB", "RB", "WR", "TE"].includes(position)) {
+    const ageSlope = { QB: 16, RB: 40, WR: 30, TE: 22 }[position];
+    const agePivot = { QB: 30, RB: 25, WR: 27, TE: 27 }[position];
+    const ageBonus = Math.max(-240, Math.min(180, (agePivot - player.age) * ageSlope));
+    if (settings.type === "dynasty") score += ageBonus * (settings.dynastyYears / 3);
+    if (settings.type === "keeper" && settings.keeperSlots > 0) {
+      score += ageBonus * (settings.keeperYears / 3) * Math.min(1, settings.keeperSlots / 2);
+    }
+  } else if (settings.type === "dynasty" && player.exp <= 1) {
+    score += 90 * (settings.dynastyYears / 3);
+  }
+
+  const adp = getDraftAdp(player).rank;
+  if (adp !== null) score += Math.max(-160, Math.min(160, (currentPick - adp) * 0.6));
+
+  return score;
+}
+
+function getDraftPlayerPool(settings, rosterCounts = {}, currentPick = getNextUserDraftPick(settings)) {
+  const eligiblePositions = new Set(["QB", "RB", "WR", "TE", "K", "DEF"]);
+  return Object.values(state.players)
+    .filter(player => {
+      if (player.isPick || !eligiblePositions.has(player.position)) return false;
+      if (["Retired", "Inactive"].includes(player.status)) return false;
+      if (player.isCurrentNfl) return true;
+      return settings.type === "dynasty" && player.team === "FA" && player.exp <= 1 && player.searchRank < 3000;
+    })
+    .map(player => ({ player, score: scoreDraftPlayer(player, settings, rosterCounts, currentPick) }))
+    .sort((a, b) => (b.score - a.score) || (a.player.searchRank - b.player.searchRank));
+}
+
+function getDraftTeamAtPick(overallPick, teams) {
+  const round = Math.floor((overallPick - 1) / teams) + 1;
+  const positionInRound = ((overallPick - 1) % teams) + 1;
+  return round % 2 === 1 ? positionInRound : teams - positionInRound + 1;
+}
+
+function simulateDraft(rankedPlayers) {
+  const settings = draftState.settings;
+  const maxPicks = settings.teams * settings.rounds;
+  const playerById = new Map(rankedPlayers.map(entry => [entry.player.id, entry]));
+  const draftedIds = new Set();
+  const picks = [];
+  let manualPickIndex = 0;
+  let overallPick = 1;
+
+  while (overallPick <= maxPicks) {
+    const round = Math.floor((overallPick - 1) / settings.teams) + 1;
+    const teamSlot = getDraftTeamAtPick(overallPick, settings.teams);
+    const isUserPick = teamSlot === settings.slot;
+    let entry;
+
+    if (isUserPick) {
+      if (manualPickIndex >= draftState.userPicks.length) break;
+      entry = playerById.get(draftState.userPicks[manualPickIndex++]);
+      if (!entry || draftedIds.has(entry.player.id)) continue;
+    } else {
+      entry = rankedPlayers.find(candidate => !draftedIds.has(candidate.player.id));
+      if (!entry) break;
+    }
+
+    draftedIds.add(entry.player.id);
+    picks.push({ player: entry.player, score: entry.score, overallPick, round, teamSlot, isUserPick });
+    overallPick++;
+  }
+
+  return { picks, draftedIds, nextPick: overallPick, complete: overallPick > maxPicks };
+}
+
+function applyDraftSettings() {
+  restoreDraftSession();
+  updateDraftSlotOptions();
+  const settings = {
+    type: document.getElementById("draftType")?.value || "redraft",
+    teams: Math.min(32, Math.max(4, parseInt(document.getElementById("draftTeams")?.value, 10) || 12)),
+    slot: Math.min(32, Math.max(1, parseInt(document.getElementById("draftSlot")?.value, 10) || 1)),
+    rounds: Math.min(30, Math.max(1, parseInt(document.getElementById("draftRounds")?.value, 10) || 15)),
+    scoring: document.getElementById("draftScoring")?.value || "ppr",
+    rosterFormat: document.getElementById("draftRosterFormat")?.value || "standard",
+    dynastyYears: parseInt(document.getElementById("draftDynastyYears")?.value, 10) || 3,
+    keeperSlots: parseInt(document.getElementById("draftKeeperSlots")?.value, 10) || 0,
+    keeperYears: parseInt(document.getElementById("draftKeeperYears")?.value, 10) || 2
+  };
+  settings.slot = Math.min(settings.teams, settings.slot);
+  draftState.settings = settings;
+  draftState.userPicks = [];
+  saveDraftSession();
+  renderDraftRoom();
+}
+
+function importDraftLeagueSettings() {
+  const league = state.activeLeague;
+  if (!league) {
+    const notice = document.getElementById("draftNotice");
+    if (notice) notice.textContent = "Sync an account and select a league to import its settings.";
+    return;
+  }
+
+  document.getElementById("draftType").value = league.leagueType === 2 ? "dynasty" : (league.leagueType === 1 ? "keeper" : "redraft");
+  document.getElementById("draftTeams").value = league.totalTeams || 12;
+  document.getElementById("draftRounds").value = league.draftRounds || 15;
+  const scoring = league.scoringSettings || {};
+  const receptionPoints = Number(scoring.rec ?? 1);
+  document.getElementById("draftScoring").value = Number(scoring.bonus_rec_te || 0) >= 0.5 || receptionPoints > 1.25
+    ? "tep"
+    : (receptionPoints >= 0.9 ? "ppr" : (receptionPoints >= 0.4 ? "half" : "standard"));
+  const rosterPositions = league.rosterPositions || [];
+  document.getElementById("draftRosterFormat").value = rosterPositions.filter(slot => slot === "QB").length >= 2 || rosterPositions.some(slot => ["SUPER_FLEX", "Q/W/R/T"].includes(slot))
+    ? "superflex"
+    : "standard";
+  updateDraftSlotOptions();
+  updateDraftTypeSettings();
+  const notice = document.getElementById("draftNotice");
+  if (notice) notice.textContent = `Imported settings from ${league.name}. Confirm your draft slot, then start the draft.`;
+}
+
+function renderDraftKeeperLedger() {
+  const select = document.getElementById("draftKeeperPlayer");
+  const list = document.getElementById("draftKeeperLedger");
+  const managerIndex = parseInt(document.getElementById("teamSelect")?.value || "0", 10);
+  const manager = state.managers[managerIndex];
+  if (select) {
+    const selectedId = select.value;
+    const rosterPlayers = (manager?.players || []).map(id => state.players[id]).filter(player => player && !player.isPick);
+    select.innerHTML = rosterPlayers.length
+      ? `<option value="">Select roster player</option>${rosterPlayers.map(player => `<option value="${draftEscapeHtml(player.id)}">${draftEscapeHtml(player.name)} · ${draftEscapeHtml(player.position)}</option>`).join("")}`
+      : `<option value="">Sync a league to select a roster player</option>`;
+    if (rosterPlayers.some(player => player.id === selectedId)) select.value = selectedId;
+  }
+  if (!list) return;
+  list.innerHTML = draftState.keepers.length ? draftState.keepers.map((keeper, index) => {
+    const player = state.players[keeper.playerId];
+    const name = player?.name || keeper.playerName || "Unknown player";
+    const owner = state.managers.find(item => item.rosterId === keeper.managerId)?.teamName?.split(" (")[0] || "Roster";
+    const cost = keeper.costType === "salary" ? `$${keeper.cost}` : `Round ${keeper.cost}`;
+    return `<div class="draft-picked-player"><span class="draft-picked-round">${draftEscapeHtml(owner)} · ${draftEscapeHtml(cost)} · ${keeper.years} yr${keeper.years === 1 ? "" : "s"}</span><strong>${draftEscapeHtml(name)}</strong><button class="draft-remove-keeper" type="button" data-remove-keeper="${index}" aria-label="Remove ${draftEscapeHtml(name)}">Remove</button></div>`;
+  }).join("") : `<div class="draft-empty">No keeper commitments saved.</div>`;
+}
+
+function addDraftKeeper() {
+  const manager = state.managers[parseInt(document.getElementById("teamSelect")?.value || "0", 10)];
+  const playerId = document.getElementById("draftKeeperPlayer")?.value;
+  const player = state.players[playerId];
+  const costType = document.getElementById("draftKeeperCostType")?.value || "round";
+  const cost = Number(document.getElementById("draftKeeperCost")?.value);
+  const years = Math.min(5, Math.max(1, Number(document.getElementById("draftKeeperContractYears")?.value) || 1));
+  const notice = document.getElementById("draftNotice");
+  if (!manager || !player) { if (notice) notice.textContent = "Select a player from the chosen roster."; return; }
+  if (!Number.isFinite(cost) || cost < 0) { if (notice) notice.textContent = "Enter a valid keeper cost."; return; }
+  if (draftState.keepers.some(keeper => keeper.playerId === playerId && keeper.managerId === manager.rosterId)) {
+    if (notice) notice.textContent = `${player.name} is already in this keeper ledger.`;
+    return;
+  }
+  const teamKeepers = draftState.keepers.filter(keeper => keeper.managerId === manager.rosterId);
+  if (draftState.settings.type === "keeper" && teamKeepers.length >= draftState.settings.keeperSlots) {
+    if (notice) notice.textContent = `This keeper format allows ${draftState.settings.keeperSlots} keeper${draftState.settings.keeperSlots === 1 ? "" : "s"} for this roster.`;
+    return;
+  }
+  draftState.keepers.push({ playerId, playerName: player.name, managerId: manager.rosterId, costType, cost, years });
+  saveDraftSession();
+  renderDraftKeeperLedger();
+}
+
+function draftPlayer(playerId) {
+  restoreDraftSession();
+  const ranking = getDraftPlayerPool(draftState.settings, draftState.userPicks.reduce((counts, id) => {
+    const player = state.players[id];
+    if (player) counts[player.position] = (counts[player.position] || 0) + 1;
+    return counts;
+  }, {}));
+  const simulation = simulateDraft(ranking);
+  if (simulation.complete || simulation.draftedIds.has(playerId)) return;
+  if (!ranking.some(entry => entry.player.id === playerId)) return;
+  draftState.userPicks.push(playerId);
+  saveDraftSession();
+  renderDraftRoom();
+}
+
+function renderDraftRoom() {
+  restoreDraftSession();
+  const settings = draftState.settings;
+  updateDraftSlotOptions();
+  updateDraftTypeSettings();
+  const seasonBadge = document.getElementById("draftSeasonBadge");
+  if (seasonBadge) seasonBadge.textContent = `${state.activeLeague?.season || state.season} Season`;
+
+  const rosterCounts = draftState.userPicks.reduce((counts, id) => {
+    const player = state.players[id];
+    if (player) counts[player.position] = (counts[player.position] || 0) + 1;
+    return counts;
+  }, {});
+  const rankedPlayers = getDraftPlayerPool(settings, rosterCounts, getNextUserDraftPick(settings));
+  const simulation = simulateDraft(rankedPlayers);
+  const availablePlayers = rankedPlayers.filter(entry => !simulation.draftedIds.has(entry.player.id));
+  const maxPicks = settings.teams * settings.rounds;
+  const pickNumber = simulation.nextPick;
+  const roundNumber = Math.floor((pickNumber - 1) / settings.teams) + 1;
+  const slotPosition = getDraftTeamAtPick(pickNumber, settings.teams);
+
+  const clock = document.getElementById("draftClock");
+  if (clock) clock.textContent = simulation.complete ? "Draft complete" : `Round ${roundNumber} • Overall ${pickNumber}`;
+  const slotSummary = document.getElementById("draftSlotSummary");
+  if (slotSummary) slotSummary.textContent = `${settings.slot} of ${settings.teams}`;
+  const pickCount = document.getElementById("draftPickCount");
+  if (pickCount) pickCount.textContent = String(draftState.userPicks.length);
+  const availableCount = document.getElementById("draftAvailableCount");
+  if (availableCount) availableCount.textContent = String(availablePlayers.length);
+
+  const positionFilter = document.getElementById("draftPosition")?.value || "ALL";
+  const query = (document.getElementById("draftSearch")?.value || "").trim().toLowerCase();
+  const filteredPlayers = availablePlayers.filter(({ player }) => {
+    if (positionFilter !== "ALL" && player.position !== positionFilter) return false;
+    return !query || player.name.toLowerCase().includes(query) || String(player.team || "").toLowerCase().includes(query);
+  });
+  const boardMeta = document.getElementById("draftBoardMeta");
+  const hasAdp = rankedPlayers.some(entry => getDraftAdp(entry.player).rank !== null);
+  if (boardMeta) boardMeta.textContent = `${filteredPlayers.length.toLocaleString()} available • ${hasAdp ? "ADP-informed" : "ADP unavailable"} • ${settings.type}`;
+
+  const table = document.getElementById("draftBoardTable");
+  if (table) {
+    const entries = filteredPlayers.slice(0, 80);
+    table.innerHTML = `<thead><tr><th>Rank</th><th style="text-align:left;">Player</th><th>Pos</th><th>Team</th><th>ADP</th><th>Age</th><th>PPG</th><th></th></tr></thead><tbody></tbody>`;
+    const body = table.querySelector("tbody");
+    if (!entries.length) {
+      body.innerHTML = `<tr><td colspan="8" class="draft-empty">${Object.keys(state.players).length ? "No players match these filters." : "Player database is loading."}</td></tr>`;
+    } else {
+      entries.forEach(({ player, score }, index) => {
+        const row = document.createElement("tr");
+        const adp = getDraftAdp(player);
+        row.innerHTML = `<td class="draft-rank">${index + 1}</td><td class="draft-name">${draftEscapeHtml(player.name)}</td><td><span class="pos-pill">${draftEscapeHtml(player.position)}</span></td><td>${draftEscapeHtml(player.team || "FA")}</td><td>${adp.rank === null ? "--" : `${adp.rank.toFixed(1)} <span class="draft-adp-source">${adp.source}</span>`}</td><td>${player.age || "--"}</td><td>${Number(player.seasonPpg || player.projectedPoints || 0).toFixed(1)}</td><td><button class="draft-pick-btn" type="button" data-draft-pick="${draftEscapeHtml(player.id)}" title="Draft ${draftEscapeHtml(player.name)}">Draft</button></td>`;
+        row.dataset.draftScore = String(Math.round(score));
+        body.appendChild(row);
+      });
+    }
+  }
+
+  const countsEl = document.getElementById("draftRosterCounts");
+  if (countsEl) {
+    countsEl.innerHTML = ["QB", "RB", "WR", "TE", "K", "DEF"].map(position =>
+      `<div><span>${position}</span><strong>${rosterCounts[position] || 0}</strong></div>`
+    ).join("");
+  }
+
+  const userPicksEl = document.getElementById("draftUserPicks");
+  if (userPicksEl) {
+    const picks = simulation.picks.filter(pick => pick.isUserPick);
+    userPicksEl.innerHTML = picks.length ? picks.map(pick =>
+      `<div class="draft-picked-player"><span class="draft-picked-round">R${pick.round} · #${pick.overallPick}</span><strong>${draftEscapeHtml(pick.player.name)}</strong><span>${draftEscapeHtml(pick.player.position)} · ${draftEscapeHtml(pick.player.team || "FA")}</span></div>`
+    ).join("") : `<div class="draft-empty">No players drafted yet.</div>`;
+  }
+
+  const undoButton = document.getElementById("draftUndoBtn");
+  if (undoButton) undoButton.disabled = draftState.userPicks.length === 0;
+  renderDraftKeeperLedger();
+}
+
 function renderMatchupSim() {
   const selA = document.getElementById("simTeamA")?.value;
   const selB = document.getElementById("simTeamB")?.value;
@@ -2833,7 +3895,7 @@ function renderAllViews(teamIdx) {
   updateTradeEvaluation(); renderTradeFinder();
   renderOptimizerTab(teamIdx); renderWaiversTab();
   renderMatchupSim(); drawSingleAnalyticsChart();
-  renderSosTab(); renderPlayoffBracketTab();
+  renderSosTab(); renderPlayoffBracketTab(); renderDraftRoom();
 }
 
 // 10. Form Control Bindings & Boot
@@ -2841,13 +3903,83 @@ function bindControlEvents() {
   ensureDynamicTradeControls();
   const weekSelect = document.getElementById("weekSelect");
 
+  updateProviderControls();
+  document.getElementById("providerSelect")?.addEventListener("change", () => {
+    state.leagues = [];
+    state.activeLeague = null;
+    state.managers = [];
+    document.getElementById("leagueSelect").innerHTML = `<option value="">Connect a provider first</option>`;
+    document.getElementById("teamSelect").innerHTML = `<option value="">Select a league</option>`;
+    updateProviderControls();
+    setStatus("Provider changed. Connect a league to load its data.");
+  });
+  updateDraftSlotOptions();
+  updateDraftTypeSettings();
+  document.getElementById("draftType")?.addEventListener("change", updateDraftTypeSettings);
+  document.getElementById("draftTeams")?.addEventListener("change", updateDraftSlotOptions);
+  document.getElementById("draftStartBtn")?.addEventListener("click", applyDraftSettings);
+  document.getElementById("draftImportLeagueBtn")?.addEventListener("click", importDraftLeagueSettings);
+  document.getElementById("draftPosition")?.addEventListener("change", renderDraftRoom);
+  document.getElementById("draftSearch")?.addEventListener("input", renderDraftRoom);
+  document.getElementById("draftBoardTable")?.addEventListener("click", e => {
+    const button = e.target.closest("[data-draft-pick]");
+    if (button) draftPlayer(button.dataset.draftPick);
+  });
+  document.getElementById("draftUndoBtn")?.addEventListener("click", () => {
+    draftState.userPicks.pop();
+    saveDraftSession();
+    renderDraftRoom();
+  });
+  document.getElementById("draftSaveBtn")?.addEventListener("click", saveDraftSession);
+  document.getElementById("draftAdpCsv")?.addEventListener("change", e => importDraftAdpFile(e.target.files?.[0]));
+  document.getElementById("draftAddKeeperBtn")?.addEventListener("click", addDraftKeeper);
+  document.getElementById("draftKeeperLedger")?.addEventListener("click", e => {
+    const button = e.target.closest("[data-remove-keeper]");
+    if (!button) return;
+    draftState.keepers.splice(parseInt(button.dataset.removeKeeper, 10), 1);
+    saveDraftSession();
+    renderDraftKeeperLedger();
+  });
+  document.getElementById("faabBudget")?.addEventListener("change", updateFaabSettings);
+  document.getElementById("faabWeeks")?.addEventListener("change", updateFaabSettings);
+  document.getElementById("faabStrategy")?.addEventListener("change", updateFaabSettings);
+  document.getElementById("waiverTbl")?.addEventListener("click", e => {
+    const button = e.target.closest("[data-faab-player]");
+    if (button) toggleFaabClaim(button.dataset.faabPlayer);
+  });
+  document.getElementById("faabClaims")?.addEventListener("change", e => {
+    const input = e.target.closest("[data-faab-bid]");
+    if (!input) return;
+    const claim = faabState.claims[parseInt(input.dataset.faabBid, 10)];
+    if (!claim) return;
+    claim.bid = Math.min(faabState.budget, Math.max(0, Number(input.value) || 0));
+    saveFaabState();
+    renderWaiversTab();
+  });
+  document.getElementById("faabClaims")?.addEventListener("click", e => {
+    const button = e.target.closest("[data-remove-faab]");
+    if (!button) return;
+    faabState.claims.splice(parseInt(button.dataset.removeFaab, 10), 1);
+    saveFaabState();
+    renderWaiversTab();
+  });
+
   document.getElementById("syncBtn")?.addEventListener("click", syncUserAccount);
+  document.getElementById("retryDataBtn")?.addEventListener("click", retryDataSync);
+  document.getElementById("refreshIntelBtn")?.addEventListener("click", () => { portfolioState.rostersByLeague.clear(); renderLeagueIntelTab(true); });
+  document.getElementById("portfolioRosterSelectors")?.addEventListener("change", e => {
+    const select = e.target.closest("[data-portfolio-league]");
+    if (!select) return;
+    state.portfolioRosterSelections[select.dataset.portfolioLeague] = select.value;
+    try { localStorage.setItem("fantasy-front-office:portfolio-rosters", JSON.stringify(state.portfolioRosterSelections)); } catch {}
+    renderLeagueIntelTab();
+  });
   document.getElementById("usernameInput")?.addEventListener("keydown", e => { if (e.key === "Enter") syncUserAccount(); });
   document.getElementById("leagueSelect")?.addEventListener("change", e => loadLeague(parseInt(e.target.value, 10)));
   document.getElementById("teamSelect")?.addEventListener("change", e => {
     const idx = parseInt(e.target.value, 10);
     if (document.getElementById("tradeTeamA")) document.getElementById("tradeTeamA").value = idx;
-    renderRosterTab(idx); renderOptimizerTab(idx); renderSosTab(); renderTradeFinder(); buildTradeDatabase();
+    renderRosterTab(idx); renderOptimizerTab(idx); renderSosTab(); renderTradeFinder(); renderDraftKeeperLedger(); buildTradeDatabase();
   });
   weekSelect?.addEventListener("change", async e => {
     state.week = parseInt(e.target.value, 10);
@@ -2895,11 +4027,39 @@ function bindControlEvents() {
   document.getElementById("resetBracketBtn")?.addEventListener("click", () => { state.bracketOverrides = {}; renderPlayoffBracketTab(); });
   document.getElementById("simTeamA")?.addEventListener("change", renderMatchupSim);
   document.getElementById("simTeamB")?.addEventListener("change", renderMatchupSim);
-  document.getElementById("shareBtn")?.addEventListener("click", () => {
+  document.getElementById("shareBtn")?.addEventListener("click", async () => {
     const u = document.getElementById("usernameInput")?.value.trim() || "";
-    const url = `${location.origin}${location.pathname}?user=${encodeURIComponent(u)}&week=${state.week}`;
-    navigator.clipboard.writeText(url);
-    setStatus("Shareable link copied to clipboard!");
+    const provider = document.getElementById("providerSelect")?.value || "";
+    const base = (location.origin && location.origin !== "null")
+      ? `${location.origin}${location.pathname}`
+      : location.href.split("?")[0].replace(/\/$/, "");
+    const identifier = provider === "espn" ? "league" : "user";
+    const sourceQuery = provider ? `provider=${provider}&${u ? `${identifier}=${encodeURIComponent(u)}&` : ""}` : "";
+    const url = `${base}?${sourceQuery}week=${state.week}`;
+
+    try {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(url);
+      } else {
+        const helper = document.createElement("textarea");
+        helper.value = url;
+        helper.setAttribute("readonly", "");
+        helper.style.position = "fixed";
+        helper.style.top = "-9999px";
+        document.body.appendChild(helper);
+        helper.select();
+        try { document.execCommand("copy"); } catch {}
+        helper.remove();
+      }
+      setStatus("Shareable link copied to clipboard!");
+    } catch {
+      const src = window.open("", "_blank", "noopener,noreferrer");
+      if (src) {
+        src.document.write(`<pre>${url}</pre>`);
+        src.document.close();
+      }
+      setStatus("Share link ready — copy it from the popup window.");
+    }
   });
   window.addEventListener("resize", () => { drawPowerChart(); drawWaiverChart(); drawSingleAnalyticsChart(); });
 }
