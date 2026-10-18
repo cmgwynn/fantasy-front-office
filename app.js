@@ -29,6 +29,7 @@ document.addEventListener("click", e => {
       case "tab-sos": renderSosTab(); break;
       case "tab-bracket": renderPlayoffBracketTab(); break;
       case "tab-draft": renderDraftRoom(); break;
+      case "tab-opt": renderOptimizerTab(parseInt(document.getElementById("teamSelect")?.value || "0", 10)); break;
       case "tab-intel": renderLeagueIntelTab(); break;
       case "tab-inbox": renderGMInbox(); break;
       case "tab-newsletter": renderLeagueNewsletter(); break;
@@ -148,7 +149,7 @@ const state = {
   season: String(new Date().getFullYear()),
   week: 6, userId: "", leagues: [], activeLeague: null,
   provider: "", portfolioRosterSelections: {}, managerTendencies: [],
-  currentMatchups: [], historicalRows: [], historicalSeasons: [], weeklyReportText: "",
+  currentMatchups: [], livePlayerPoints: {}, currentNflWeek: 0, historicalRows: [], historicalSeasons: [], weeklyReportText: "",
   players: {}, rawProj: {}, rawStats: {}, managers: [],
   tradeSideA: [], tradeSideB: [], dbTrades: [], waiverTargets: [],
   weakestPosByTeam: {}, sosWindowMode: "NEXT4", bracketOverrides: {},
@@ -633,12 +634,15 @@ function posBadgeStyle(pos) {
 }
 
 function isPosEligible(pos, slot) {
-  if (["BN","IR","TAXI"].includes(slot) || pos === slot) return true;
-  if (["FLEX","W/R/T","WRRB_FLEX"].includes(slot)) return ["RB","WR","TE"].includes(pos);
-  if (["SUPER_FLEX","Q/W/R/T"].includes(slot)) return ["QB","RB","WR","TE"].includes(pos);
-  if (["WR/RB","W/R"].includes(slot)) return ["WR","RB"].includes(pos);
-  if (["REC_FLEX","W/T"].includes(slot)) return ["WR","TE"].includes(pos);
-  if (slot === "DEF" || slot === "D/ST") return pos === "DEF" || pos === "D/ST";
+  const position = String(pos || "").trim().toUpperCase();
+  const lineupSlot = String(slot || "").trim().toUpperCase();
+  if (["BN", "IR", "TAXI"].includes(lineupSlot) || position === lineupSlot) return true;
+  if (["FLEX", "W/R/T", "WRRB_FLEX"].includes(lineupSlot)) return ["RB", "WR", "TE"].includes(position);
+  if (["SUPER_FLEX", "SUPERFLEX", "Q/W/R/T"].includes(lineupSlot)) return ["QB", "RB", "WR", "TE"].includes(position);
+  if (["WR/RB", "W/R"].includes(lineupSlot)) return ["WR", "RB"].includes(position);
+  if (["REC_FLEX", "W/T", "WR/TE"].includes(lineupSlot)) return ["WR", "TE"].includes(position);
+  if (lineupSlot === "IDP_FLEX") return ["DL", "DE", "DT", "NT", "EDGE", "LB", "CB", "S", "DB", "IDP"].includes(position);
+  if (["DEF", "D/ST"].includes(lineupSlot)) return ["DEF", "D/ST"].includes(position);
   return false;
 }
 
@@ -998,29 +1002,84 @@ function recalcAllPlayers() {
   });
 }
 
+function assignLineupPlayersToSlots(slots, candidates) {
+  const rowCount = slots.length;
+  if (!rowCount) return [];
+  const players = candidates;
+  const columnCount = players.length + rowCount;
+  const weights = players.map(candidate => Number.isFinite(Number(candidate.score)) ? Number(candidate.score) : 0);
+  const maxWeight = Math.max(0, ...weights);
+  const ineligibleCost = maxWeight + 1000000;
+  const emptySlotCost = maxWeight + 0.000001;
+  const cost = (row, column) => {
+    if (column >= players.length) return emptySlotCost;
+    if (!isPosEligible(players[column].m.position, slots[row])) return ineligibleCost;
+    return maxWeight - weights[column];
+  };
+
+  const rowPotential = new Array(rowCount + 1).fill(0);
+  const columnPotential = new Array(columnCount + 1).fill(0);
+  const matchedRow = new Array(columnCount + 1).fill(0);
+  const previousColumn = new Array(columnCount + 1).fill(0);
+
+  for (let row = 1; row <= rowCount; row++) {
+    matchedRow[0] = row;
+    let currentColumn = 0;
+    const minReducedCost = new Array(columnCount + 1).fill(Infinity);
+    const visited = new Array(columnCount + 1).fill(false);
+    do {
+      visited[currentColumn] = true;
+      const currentRow = matchedRow[currentColumn];
+      let delta = Infinity;
+      let nextColumn = 0;
+      for (let column = 1; column <= columnCount; column++) {
+        if (visited[column]) continue;
+        const reducedCost = cost(currentRow - 1, column - 1) - rowPotential[currentRow] - columnPotential[column];
+        if (reducedCost < minReducedCost[column]) {
+          minReducedCost[column] = reducedCost;
+          previousColumn[column] = currentColumn;
+        }
+        if (minReducedCost[column] < delta) {
+          delta = minReducedCost[column];
+          nextColumn = column;
+        }
+      }
+      for (let column = 0; column <= columnCount; column++) {
+        if (visited[column]) {
+          rowPotential[matchedRow[column]] += delta;
+          columnPotential[column] -= delta;
+        } else minReducedCost[column] -= delta;
+      }
+      currentColumn = nextColumn;
+    } while (matchedRow[currentColumn] !== 0);
+
+    do {
+      const nextColumn = previousColumn[currentColumn];
+      matchedRow[currentColumn] = matchedRow[nextColumn];
+      currentColumn = nextColumn;
+    } while (currentColumn !== 0);
+  }
+
+  const assignments = new Array(rowCount).fill(null);
+  for (let column = 1; column <= columnCount; column++) {
+    const row = matchedRow[column] - 1;
+    const playerIndex = column - 1;
+    if (row >= 0 && playerIndex < players.length && isPosEligible(players[playerIndex].m.position, slots[row])) {
+      assignments[row] = players[playerIndex];
+    }
+  }
+  return assignments;
+}
+
 function calcOptimalLineup(rosterIds, useRos = true) {
   let slots = (state.activeLeague?.rosterPositions || []).filter(s => !["BN","IR","TAXI"].includes(s));
   if (!slots.length) slots = ["QB","RB","RB","WR","WR","TE","FLEX","K","DEF"];
   const avail = rosterIds.map(id => state.players[id]).filter(m => m && !m.isPick).map(m => ({
     m, score: useRos ? (m.projectedPoints > 0.1 ? m.projectedPoints * 0.65 + m.seasonPpg * 0.35 : m.seasonPpg) : m.projectedPoints
-  })).sort((a, b) => b.score - a.score);
-
-  const filled = new Array(slots.length).fill(null);
-  const used = new Set();
-  const flexNames = ["FLEX","SUPER_FLEX","WR/RB","REC_FLEX","W/R/T","WRRB_FLEX","Q/W/R/T","IDP_FLEX"];
-  slots.forEach((sl, i) => {
-    if (flexNames.includes(sl)) return;
-    for (const c of avail) {
-      if (!used.has(c.m.id) && isPosEligible(c.m.position, sl)) { filled[i] = c.m; used.add(c.m.id); break; }
-    }
-  });
-  slots.forEach((sl, i) => {
-    if (filled[i]) return;
-    for (const c of avail) {
-      if (!used.has(c.m.id) && isPosEligible(c.m.position, sl)) { filled[i] = c.m; used.add(c.m.id); break; }
-    }
-  });
-  const total = filled.reduce((acc, m) => acc + (m ? (useRos ? (m.projectedPoints > 0.1 ? m.projectedPoints * 0.65 + m.seasonPpg * 0.35 : m.seasonPpg) : m.projectedPoints) : 0), 0);
+  }));
+  const assignment = assignLineupPlayersToSlots(slots, avail);
+  const filled = assignment.map(candidate => candidate?.m || null);
+  const total = assignment.reduce((sum, candidate) => sum + (candidate ? candidate.score : 0), 0);
   return { slots, filled, total };
 }
 
@@ -1043,25 +1102,10 @@ function calcPlayoffWeekProjection(rosterIds, weekNum) {
       if (DOME_TEAMS.has(venue)) mult += 0.02;
     }
     return { m, score: Math.max(0, base * mult) };
-  }).sort((a, b) => b.score - a.score);
-
-  const filled = new Array(slots.length).fill(null);
-  const used = new Set();
-  const flexNames = ["FLEX","SUPER_FLEX","WR/RB","REC_FLEX","W/R/T","WRRB_FLEX","Q/W/R/T","IDP_FLEX"];
-  slots.forEach((sl, i) => {
-    if (flexNames.includes(sl)) return;
-    for (const c of avail) {
-      if (!used.has(c.m.id) && isPosEligible(c.m.position, sl)) { filled[i] = c; used.add(c.m.id); break; }
-    }
   });
-  slots.forEach((sl, i) => {
-    if (filled[i]) return;
-    for (const c of avail) {
-      if (!used.has(c.m.id) && isPosEligible(c.m.position, sl)) { filled[i] = c; used.add(c.m.id); break; }
-    }
-  });
-  const total = filled.reduce((acc, c) => acc + (c ? c.score : 0), 0);
-  const topNames = filled.filter(Boolean).sort((a, b) => b.score - a.score).slice(0, 3).map(c => c.m.name.split(" ").pop());
+  const filled = assignLineupPlayersToSlots(slots, avail);
+  const total = filled.reduce((acc, candidate) => acc + (candidate ? candidate.score : 0), 0);
+  const topNames = filled.filter(Boolean).sort((a, b) => b.score - a.score).slice(0, 3).map(candidate => candidate.m.name.split(" ").pop());
   return { total, topNames };
 }
 
@@ -1096,6 +1140,7 @@ async function initApp(skipUrlAccountSync = false, forceRefreshSources = false) 
     try {
       const stRes = await fetch("https://api.sleeper.app/v1/state/nfl").then(r => r.json());
       state.week = Math.min(18, Math.max(1, stRes.display_week || stRes.week || 1));
+      state.currentNflWeek = Number(stRes.display_week || stRes.week || state.week);
       if (stRes.season) state.season = String(stRes.season);
       if (weekSelect) weekSelect.value = state.week;
       markDataSource("season");
@@ -1259,6 +1304,8 @@ function createYahooPlayer(source, league) {
   };
   state.rawProj[id] = { pts_ppr: projectedPoints };
   state.rawStats[id] = { gp: 1, pts_ppr: seasonPpg };
+  const actualPoints = source.actualPoints ?? source.currentWeekPoints ?? source.weekPoints;
+  if (actualPoints !== undefined && actualPoints !== null && String(actualPoints).trim() !== "" && Number.isFinite(Number(actualPoints))) state.livePlayerPoints[id] = Number(actualPoints);
   return { id, starter: source.starter === true || source.starter === "true" || source.starter === "1" || source.starter === "yes" };
 }
 
@@ -1293,6 +1340,7 @@ async function importYahooRosterFile(file) {
           playerId: get(row, ["playerid", "yahooid"]), name, position: row[positionIndex],
           nflTeam: nflTeamIndex < 0 ? "FA" : row[nflTeamIndex], starter: get(row, ["starter", "isstarter"]).toLowerCase(),
           projectedPoints: get(row, ["projectedpoints", "projection"]), seasonPpg: get(row, ["seasonppg", "pointspergame"]),
+          actualPoints: get(row, ["actualpoints", "currentweekpoints", "weekpoints"]),
           injuryStatus: get(row, ["injurystatus", "injury"]), age: get(row, ["age"]), experience: get(row, ["experience", "yearsexp"])
         });
       });
@@ -1312,6 +1360,12 @@ async function importYahooRosterFile(file) {
     };
     state.provider = "yahoo";
     state.userId = "";
+    state.livePlayerPoints = {};
+    state.currentNflWeek = Number(payload.currentWeek) || state.week || state.currentNflWeek;
+    if (payload.currentWeek && Number.isFinite(Number(payload.currentWeek))) {
+      state.week = Number(payload.currentWeek);
+      document.getElementById("weekSelect").value = String(state.week);
+    }
     state.activeLeague = league;
     state.leagues = [league];
     state.currentMatchups = Array.isArray(payload.matchups) ? payload.matchups : [];
@@ -1377,7 +1431,7 @@ function updateProviderControls() {
   if (input) { input.placeholder = espn ? "ESPN league ID(s), comma-separated" : (sleeper ? "Sleeper username..." : (yahoo ? "Use roster import" : "Choose a provider first")); input.hidden = yahoo; }
   if (yahooImportLabel) yahooImportLabel.hidden = !yahoo;
   if (button) { button.textContent = espn ? "Import League(s)" : (sleeper ? "Sync Account" : "Connect"); button.disabled = !provider || yahoo; button.hidden = yahoo; }
-  if (help) help.textContent = espn ? "Public ESPN leagues need a league ID. Private leagues use an ESPN session already signed in to this browser." : (sleeper ? "Connect with your account username to load league settings and rosters." : (yahoo ? "Import CSV headers: manager, player, position, nfl_team. JSON imports use leagueName, season, and teams[]. Yahoo OAuth is not configured on this static site." : "Choose ESPN Fantasy or Sleeper to connect league data."));
+  if (help) help.textContent = espn ? "Public ESPN leagues need a league ID. Private leagues use an ESPN session already signed in to this browser." : (sleeper ? "Connect with your account username to load league settings and rosters." : (yahoo ? "Import CSV headers: manager, player, position, nfl_team. Optional current-week scores use actual_points. JSON accepts currentWeek and player actualPoints. Yahoo OAuth is not configured on this static site." : "Choose ESPN Fantasy or Sleeper to connect league data."));
 }
 
 function normalizeEspnRosterPositions(slotCounts = {}) {
@@ -1501,6 +1555,19 @@ function buildEspnManagerTendencies(data) {
   return [...profiles.values()];
 }
 
+function extractEspnCurrentPoints(data, week) {
+  const scores = {};
+  (data.teams || []).forEach(team => (team.roster?.entries || []).forEach(entry => {
+    const player = entry.playerPoolEntry?.player || entry.player || {};
+    if (player.id === undefined) return;
+    const playerId = getInternalPlayerIdFromEspn(player);
+    const weeklyStats = Array.isArray(player.stats) ? player.stats.find(stat => Number(stat.scoringPeriodId) === Number(week)) : null;
+    const points = entry.playerPoolEntry?.appliedStatTotal ?? entry.appliedStatTotal ?? weeklyStats?.appliedTotal;
+    if (points !== undefined && Number.isFinite(Number(points))) scores[playerId] = Number(points);
+  }));
+  return scores;
+}
+
 async function loadEspnLeague(idx) {
   const league = state.leagues[idx];
   if (!league?.espnData) return;
@@ -1511,6 +1578,8 @@ async function loadEspnLeague(idx) {
   await fetchWeeklyProjections();
 
   const data = league.espnData;
+  state.currentNflWeek = Number(data.status?.currentScoringPeriod) || state.currentNflWeek;
+  state.livePlayerPoints = extractEspnCurrentPoints(data, state.week);
   state.currentMatchups = (data.schedule || []).filter(matchup => Number(matchup.matchupPeriodId) === Number(state.week));
   const members = Object.fromEntries((data.members || []).map(member => [String(member.id), member.displayName || member.firstName || "Manager"]));
   state.managers = (data.teams || []).map(team => {
@@ -1585,6 +1654,7 @@ async function loadLeague(idx) {
   state.activeLeague = state.leagues[idx];
   if (!state.activeLeague) return;
   if (state.activeLeague.provider === "espn") return loadEspnLeague(idx);
+  state.livePlayerPoints = {};
   refreshSeasonDerivedState(state.activeLeague.season || state.season);
   state.bracketOverrides = {};
   updateDynamicSeasonLabels();
@@ -2807,6 +2877,28 @@ function renderTradeFinder() {
 }
 
 // 8. Tab 4, Tab 5 & Tab 6: Lineup Optimizer, Waivers & Player Analytics
+function getOptimizerActualPoints() {
+  const scores = new Map(Object.entries(state.livePlayerPoints || {}).filter(([, points]) => points !== null && points !== undefined && String(points).trim() !== "" && Number.isFinite(Number(points))).map(([id, points]) => [String(id), Number(points)]));
+  (state.currentMatchups || []).forEach(matchup => {
+    const playerPoints = matchup.players_points || matchup.playersPoints || matchup.playerPoints || {};
+    if (state.activeLeague?.provider === "sleeper") (matchup.players || []).forEach(playerId => { if (!scores.has(String(playerId))) scores.set(String(playerId), 0); });
+    Object.entries(playerPoints).forEach(([playerId, points]) => {
+      if (points !== null && points !== undefined && String(points).trim() !== "" && Number.isFinite(Number(points))) scores.set(String(playerId), Number(points));
+    });
+  });
+  return scores;
+}
+
+function renderOptimizerPlayerCard(player, side, scores, scorePhase) {
+  const actualPoints = scores.get(String(player.id));
+  const actual = scorePhase === "UPCOMING"
+    ? `<span class="opt-actual-score unavailable">Actual -- <small>UPCOMING</small></span>`
+    : actualPoints === undefined
+      ? `<span class="opt-actual-score unavailable">Actual -- <small>No score data</small></span>`
+    : `<span class="opt-actual-score">Actual ${actualPoints.toFixed(1)} <small>${scorePhase === "THIS WEEK" ? "SO FAR" : "FINAL"}</small></span>`;
+  return `<div class="opt-player-card ${side}"><img class="avatar" src="${avatarUrl(player)}" onerror="this.style.display='none'" /><div class="opt-player-details"><b><img class="team-logo-sm" src="${teamLogoUrl(player.team)}" onerror="this.style.display='none'"/>${draftEscapeHtml(player.name)}</b><span>${draftEscapeHtml(player.position)} · ${draftEscapeHtml(player.team)}</span></div><div class="opt-score-stack"><strong>Proj ${Number(player.projectedPoints || 0).toFixed(1)}</strong>${actual}</div></div>`;
+}
+
 function renderOptimizerTab(idx) {
   const tm = state.managers[idx];
   if (!tm) return;
@@ -2814,29 +2906,54 @@ function renderOptimizerTab(idx) {
   const rowsEl = document.getElementById("optRows");
   if (!rowsEl) return;
   rowsEl.innerHTML = "";
-  let curTot = 0, optTot = 0, subCnt = 0;
+  const emptyPlayer = (name, position) => ({ id: "0", name, position, team: "FA", projectedPoints: 0 });
+  const currentPlayers = [...new Set((tm.starters || []).filter(id => id && id !== "0").map(String))].map(id => state.players[id]).filter(Boolean);
+  const currentIds = new Set(currentPlayers.map(player => String(player.id)));
+  const optimalIds = new Set(opt.filled.filter(Boolean).map(player => String(player.id)));
+  const usedCurrent = new Set();
+  const replacementCandidates = currentPlayers.filter(player => !optimalIds.has(String(player.id)));
+  const scores = getOptimizerActualPoints();
+  const scorePhase = state.week < state.currentNflWeek ? "FINAL" : (state.week === state.currentNflWeek ? "THIS WEEK" : "UPCOMING");
+  let subCnt = 0, openSlotCount = 0;
 
-  opt.slots.forEach((sl, i) => {
-    const cPl = state.players[tm.starters[i]] || { id:"0", name:"Empty Slot", position:sl, team:"FA", projectedPoints:0 };
-    const oPl = opt.filled[i] || { id:"0", name:"No Eligible Player", position:sl, team:"FA", projectedPoints:0 };
-    curTot += cPl.projectedPoints; optTot += oPl.projectedPoints;
-    const lost = oPl.projectedPoints - cPl.projectedPoints;
+  opt.slots.forEach((slot, index) => {
+    const oPl = opt.filled[index] || emptyPlayer("No Eligible Player", slot);
+    let cPl = null;
+    if (currentIds.has(String(oPl.id)) && !usedCurrent.has(String(oPl.id))) cPl = oPl;
+    if (!cPl) {
+      const candidates = replacementCandidates.filter(player => !usedCurrent.has(String(player.id)) && isPosEligible(player.position, slot));
+      candidates.sort((a, b) => Number(a.projectedPoints || 0) - Number(b.projectedPoints || 0));
+      cPl = candidates[0] || null;
+    }
+    if (cPl) usedCurrent.add(String(cPl.id));
+    cPl ||= emptyPlayer("Empty Slot", slot);
+    const lost = Number(oPl.projectedPoints || 0) - Number(cPl.projectedPoints || 0);
     const isSub = oPl.id !== cPl.id && lost > 0.04;
     const isSev = isSub && (lost >= 3.0 || cPl.projectedPoints <= 0.1);
     if (isSub) subCnt++;
+    if (oPl.id === "0") openSlotCount++;
 
     const row = document.createElement("div");
     row.className = "opt-row" + (isSev ? " sev" : (isSub ? " warn" : ""));
-    row.innerHTML = `
-      <div class="p-card" style="height:62px;"><img class="avatar" src="${avatarUrl(cPl)}" onerror="this.style.display='none'" /><div style="flex:1;"><b style="color:#F2F4F8;"><img class="team-logo-sm" src="${teamLogoUrl(cPl.team)}" onerror="this.style.display='none'"/>${cPl.name}</b><div style="font-size:11px;color:var(--text-muted);">${cPl.position} - ${cPl.team}</div></div><b>${cPl.projectedPoints.toFixed(2)} pts</b></div>
-      <div style="text-align:center;font-weight:800;font-size:11px;background:${isSev?'#4E161B':(isSub?'#462F0F':'#141416')};border:1px solid ${isSev?'var(--bad)':(isSub?'var(--warn)':'var(--border)')};border-radius:10px;padding:6px;color:${isSev?'#FFF':(isSub?'var(--warn)':'var(--text-muted)')};">${isSub ? `${sl}<br>-${lost.toFixed(2)} pts` : `✔ ${sl}`}</div>
-      <div class="p-card" style="height:62px;"><img class="avatar" src="${avatarUrl(oPl)}" onerror="this.style.display='none'" /><div style="flex:1;"><b style="color:#F2F4F8;"><img class="team-logo-sm" src="${teamLogoUrl(oPl.team)}" onerror="this.style.display='none'"/>${oPl.name}</b><div style="font-size:11px;color:var(--text-muted);">${oPl.position} - ${oPl.team}</div></div><b style="color:var(--good);">${oPl.projectedPoints.toFixed(2)} pts</b></div>`;
+    const slotMessage = oPl.id === "0" ? `Open ${draftEscapeHtml(slot)}` : (isSub ? `${draftEscapeHtml(slot)}<br>+${lost.toFixed(1)} projected` : `✓ ${draftEscapeHtml(slot)}${currentIds.has(String(oPl.id)) ? "<br>Already starting" : ""}`);
+    row.innerHTML = `${renderOptimizerPlayerCard(cPl, "current", scores, scorePhase)}<div class="opt-slot-result ${oPl.id === "0" ? "suboptimal" : isSev ? "severe" : isSub ? "suboptimal" : "optimal"}">${slotMessage}</div>${renderOptimizerPlayerCard(oPl, "optimal", scores, scorePhase)}`;
     rowsEl.appendChild(row);
   });
 
-  document.getElementById("optCurTot").textContent = `CURRENT LINEUP: ${curTot.toFixed(2)} pts`;
-  document.getElementById("optBestTot").textContent = `OPTIMUM LINEUP: ${optTot.toFixed(2)} pts (+${Math.max(0, optTot - curTot).toFixed(2)})`;
-  document.getElementById("optSubAlert").textContent = subCnt > 0 ? `${subCnt} Suboptimal Slot(s) Detected` : `Lineup is 100% Optimal for Week ${state.week}`;
+  const currentProjected = currentPlayers.reduce((sum, player) => sum + Number(player.projectedPoints || 0), 0);
+  const optimalProjected = opt.filled.reduce((sum, player) => sum + Number(player?.projectedPoints || 0), 0);
+  const currentScored = currentPlayers.filter(player => scores.has(String(player.id))).reduce((sum, player) => sum + scores.get(String(player.id)), 0);
+  const optimalScoredPlayers = opt.filled.filter(player => player && scores.has(String(player.id)));
+  const optimalScored = optimalScoredPlayers.reduce((sum, player) => sum + scores.get(String(player.id)), 0);
+  const actualSuffix = scorePhase === "THIS WEEK" ? "actual so far" : "actual";
+  const actualCurrentLabel = scorePhase === "UPCOMING" ? "not started" : (currentPlayers.some(player => scores.has(String(player.id))) ? `${currentScored.toFixed(1)} ${actualSuffix}` : "actual --");
+  const actualOptimalLabel = scorePhase === "UPCOMING" ? "not started" : (optimalScoredPlayers.length ? `${optimalScored.toFixed(1)} ${actualSuffix}` : "actual --");
+  document.getElementById("optCurTot").textContent = `CURRENT LINEUP: ${currentProjected.toFixed(1)} projected · ${actualCurrentLabel}`;
+  document.getElementById("optBestTot").textContent = `OPTIMUM: ${optimalProjected.toFixed(1)} projected · ${actualOptimalLabel} (+${Math.max(0, optimalProjected - currentProjected).toFixed(1)} projected)`;
+  document.getElementById("optSubAlert").textContent = [
+    subCnt ? `${subCnt} projected upgrade${subCnt === 1 ? "" : "s"}` : "Lineup optimized",
+    openSlotCount ? `${openSlotCount} open slot${openSlotCount === 1 ? "" : "s"}` : ""
+  ].filter(Boolean).join(" · ");
 }
 
 function getFaabStorageKey() {
@@ -5512,12 +5629,15 @@ function renderDraftRoom() {
 
 async function refreshLiveMatchups() {
   const button = document.getElementById("refreshMatchupsBtn");
-  const status = document.getElementById("matchupLiveStatus");
+  const optimizerButton = document.getElementById("refreshOptimizerScoresBtn");
+  const statuses = [document.getElementById("matchupLiveStatus"), document.getElementById("optLiveStatus")].filter(Boolean);
+  const updateStatus = message => statuses.forEach(element => { element.textContent = message; });
   const league = state.activeLeague;
-  if (!league) { if (status) status.textContent = "Connect a league before refreshing scores."; return; }
-  if (league.provider === "yahoo") { if (status) status.textContent = "Yahoo import is a snapshot. Re-import an updated roster/matchup file to refresh."; return; }
+  if (!league) { updateStatus("Connect a league before refreshing scores."); return; }
+  if (league.provider === "yahoo") { updateStatus("Yahoo import is a snapshot. Re-import an updated roster/matchup file to refresh."); return; }
   if (button) button.disabled = true;
-  if (status) status.textContent = "Refreshing matchup scores...";
+  if (optimizerButton) optimizerButton.disabled = true;
+  updateStatus("Refreshing matchup scores...");
   try {
     if (league.provider === "sleeper") {
       const response = await fetch(`https://api.sleeper.app/v1/league/${league.leagueId}/matchups/${state.week}`);
@@ -5527,19 +5647,23 @@ async function refreshLiveMatchups() {
     } else if (league.provider === "espn") {
       const data = await fetchEspnLeague(league.leagueId, league.season);
       league.espnData = data;
+      state.livePlayerPoints = extractEspnCurrentPoints(data, state.week);
+      state.currentNflWeek = Number(data.status?.currentScoringPeriod) || state.currentNflWeek;
       state.currentMatchups = (data.schedule || []).filter(matchup => Number(matchup.matchupPeriodId) === Number(state.week));
     }
     markDataSource("matchups");
     renderMatchupSim();
+    renderOptimizerTab(parseInt(document.getElementById("teamSelect")?.value || "0", 10));
     renderWeeklyLeagueReport();
     renderPickemChallenge();
     if (document.getElementById("tab-intel")?.classList.contains("active")) renderLeagueIntelTab();
-    if (status) status.textContent = `Scores refreshed at ${new Date().toLocaleTimeString()}.`;
+    updateStatus(`Scores refreshed at ${new Date().toLocaleTimeString()}.`);
   } catch (error) {
     markDataSource("matchups", error);
-    if (status) status.textContent = `Could not refresh live scores: ${error.message}`;
+    updateStatus(`Could not refresh live scores: ${error.message}`);
   } finally {
     if (button) button.disabled = false;
+    if (optimizerButton) optimizerButton.disabled = false;
   }
 }
 
@@ -5716,6 +5840,7 @@ function bindControlEvents() {
   document.getElementById("pickemMatchup")?.addEventListener("change", renderPickemChallenge);
   document.getElementById("savePickemBtn")?.addEventListener("click", savePickemPrediction);
   document.getElementById("refreshMatchupsBtn")?.addEventListener("click", refreshLiveMatchups);
+  document.getElementById("refreshOptimizerScoresBtn")?.addEventListener("click", refreshLiveMatchups);
   document.getElementById("portfolioRosterSelectors")?.addEventListener("change", e => {
     const select = e.target.closest("[data-portfolio-league]");
     if (!select) return;

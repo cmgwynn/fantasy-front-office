@@ -281,11 +281,15 @@
 
     <!-- TAB 4: OPTIMIZER -->
     <div id="tab-opt" class="tab-page">
-      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap;">
-        <div id="optHeader" style="font-size:15px; font-weight:800;">WEEK LINEUP COMPARISON: CURRENT VS. OPTIMAL</div>
-        <div id="optSubAlert" style="font-size:12px; font-weight:700; color:var(--warn);"></div>
+      <div class="optimizer-heading">
+        <div id="optHeader">WEEK LINEUP COMPARISON: CURRENT VS. OPTIMAL</div>
+        <div class="optimizer-heading-actions">
+          <span id="optLiveStatus" aria-live="polite">Actual points reflect the last league sync.</span>
+          <button id="refreshOptimizerScoresBtn" class="btn-builder-action" type="button">Refresh points</button>
+          <div id="optSubAlert"></div>
+        </div>
       </div>
-      <div style="display:flex; justify-content:space-between; font-weight:800; font-size:13px; padding:0 8px;">
+      <div class="optimizer-totals">
         <span id="optCurTot" style="color:var(--warn);">CURRENT LINEUP: 0.00 pts</span>
         <span id="optBestTot" style="color:var(--good);">OPTIMUM LINEUP: 0.00 pts</span>
       </div>
