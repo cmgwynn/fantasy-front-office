@@ -617,6 +617,13 @@
                 <option value="WR">WR</option><option value="TE">TE</option>
                 <option value="K">K</option><option value="DEF">DEF</option>
               </select>
+              <select id="draftSort" aria-label="Sort available players">
+                <option value="recommendation">Recommended</option>
+                <option value="adp">ADP</option>
+                <option value="projected">Projected points</option>
+                <option value="value">Draft value</option>
+                <option value="name">Player name</option>
+              </select>
             </div>
           </div>
           <div class="table-wrap draft-table-wrap">
@@ -631,8 +638,13 @@
           </div>
           <div id="draftRosterCounts" class="draft-roster-counts"></div>
           <div class="draft-pick-history">
-            <div class="draft-panel-heading"><div><h3>Draft so far</h3><span id="draftTakenCount" class="draft-subtitle">No picks made</span></div></div>
-            <div class="table-wrap draft-history-wrap"><table id="draftTakenTable" class="draft-taken-table"></table></div>
+            <div class="draft-panel-heading">
+              <div><h3>Draft board</h3><span id="draftTakenCount" class="draft-subtitle">No picks made</span></div>
+              <button id="draftBoardExpandBtn" class="btn-builder-action" type="button" aria-expanded="false">Expand board</button>
+            </div>
+            <div id="draftHistoryWrap" class="draft-history-wrap">
+              <div id="draftBoardGrid" class="draft-grid"></div>
+            </div>
           </div>
           <div id="draftUserPicks" class="draft-user-picks"></div>
           <div id="draftKeeperPanel" class="draft-keeper-section" hidden>

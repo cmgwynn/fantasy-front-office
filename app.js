@@ -3927,6 +3927,58 @@ function getDraftTeamAtPick(overallPick, teams) {
   return round % 2 === 1 ? positionInRound : teams - positionInRound + 1;
 }
 
+function getDraftPickNumberForSlot(round, teamSlot, teams) {
+  const positionInRound = round % 2 === 1 ? teamSlot : teams - teamSlot + 1;
+  return (round - 1) * teams + positionInRound;
+}
+
+function renderDraftBoard(simulation) {
+  const grid = document.getElementById("draftBoardGrid");
+  const wrap = document.getElementById("draftHistoryWrap");
+  if (!grid || !wrap) return;
+  if (!wrap.dataset.scrollBound) {
+    wrap.dataset.scrollBound = "true";
+    wrap.addEventListener("wheel", () => { wrap.dataset.userScrolled = "true"; }, { passive: true });
+    wrap.addEventListener("touchstart", () => { wrap.dataset.userScrolled = "true"; }, { passive: true });
+  }
+  const { teams, rounds, slot } = draftState.settings;
+  const picksByOverall = new Map(simulation.picks.map(pick => [pick.overallPick, pick]));
+  grid.style.gridTemplateColumns = `58px repeat(${teams}, minmax(138px, 1fr))`;
+  grid.innerHTML = `<div class="draft-grid-cell draft-grid-header draft-grid-round">Round</div>${Array.from({ length: teams }, (_, index) => {
+    const teamSlot = index + 1;
+    return `<div class="draft-grid-cell draft-grid-header">${teamSlot === slot ? `You · ${teamSlot}` : `Team ${teamSlot}`}</div>`;
+  }).join("")}`;
+
+  for (let round = 1; round <= rounds; round++) {
+    grid.insertAdjacentHTML("beforeend", `<div class="draft-grid-cell draft-grid-round">R${round}</div>`);
+    for (let teamSlot = 1; teamSlot <= teams; teamSlot++) {
+      const overallPick = getDraftPickNumberForSlot(round, teamSlot, teams);
+      const pick = picksByOverall.get(overallPick);
+      const isCurrentPick = !simulation.complete && overallPick === simulation.nextPick;
+      const cellClasses = ["draft-grid-cell", "draft-grid-pick"];
+      if (pick?.isUserPick) cellClasses.push("is-user");
+      else if (pick) cellClasses.push("is-taken");
+      if (isCurrentPick) cellClasses.push("is-current");
+
+      let contents = `<span class="draft-grid-open">Awaiting</span>`;
+      if (pick) {
+        const adp = getDraftAdp(pick.player).rank;
+        contents = `<span class="draft-grid-player"><img src="${draftEscapeHtml(avatarUrl(pick.player))}" alt="" loading="lazy" onerror="this.style.visibility='hidden'" /><strong>${draftEscapeHtml(pick.player.name)}</strong></span><span class="draft-grid-meta">${draftEscapeHtml(pick.player.position)} · ${draftEscapeHtml(pick.player.team || "FA")}${adp === null ? "" : ` · ADP ${adp.toFixed(1)}`}</span>`;
+      } else if (isCurrentPick) contents = `<strong class="draft-grid-open">On the clock</strong>`;
+
+      grid.insertAdjacentHTML("beforeend", `<div class="${cellClasses.join(" ")}" data-overall-pick="${overallPick}">${contents}</div>`);
+    }
+  }
+
+  const currentCell = grid.querySelector(".is-current");
+  if (currentCell && !wrap.dataset.userScrolled) {
+    requestAnimationFrame(() => {
+      wrap.scrollLeft = Math.max(0, currentCell.offsetLeft - wrap.clientWidth / 2 + currentCell.clientWidth / 2);
+      wrap.scrollTop = Math.max(0, currentCell.offsetTop - 80);
+    });
+  }
+}
+
 function chooseSimulatedOpponentPick(rankedPlayers, draftedIds, settings, currentPick) {
   const available = rankedPlayers.filter(entry => !draftedIds.has(entry.player.id));
   if (!available.length || settings.opponentStrategy === "value") return available[0] || null;
@@ -4121,18 +4173,24 @@ function renderDraftRoom() {
   if (availableCount) availableCount.textContent = String(availablePlayers.length);
 
   const positionFilter = document.getElementById("draftPosition")?.value || "ALL";
+  const sortMode = document.getElementById("draftSort")?.value || "recommendation";
   const query = (document.getElementById("draftSearch")?.value || "").trim().toLowerCase();
   const filteredPlayers = availablePlayers.filter(({ player }) => {
     if (positionFilter !== "ALL" && player.position !== positionFilter) return false;
     return !query || player.name.toLowerCase().includes(query) || String(player.team || "").toLowerCase().includes(query);
   });
+  const displayPlayers = [...filteredPlayers];
+  if (sortMode === "adp") displayPlayers.sort((a, b) => (getDraftAdp(a.player).rank ?? Infinity) - (getDraftAdp(b.player).rank ?? Infinity) || b.score - a.score);
+  else if (sortMode === "projected") displayPlayers.sort((a, b) => (Number(b.player.projectedPoints || b.player.seasonPpg || 0) - Number(a.player.projectedPoints || a.player.seasonPpg || 0)) || b.score - a.score);
+  else if (sortMode === "value") displayPlayers.sort((a, b) => b.score - a.score);
+  else if (sortMode === "name") displayPlayers.sort((a, b) => a.player.name.localeCompare(b.player.name));
   const boardMeta = document.getElementById("draftBoardMeta");
   const hasAdp = rankedPlayers.some(entry => getDraftAdp(entry.player).rank !== null);
   if (boardMeta) boardMeta.textContent = `${filteredPlayers.length.toLocaleString()} available • ${hasAdp ? "ADP-informed" : "ADP unavailable"} • ${settings.type}`;
 
   const table = document.getElementById("draftBoardTable");
   if (table) {
-    const entries = filteredPlayers.slice(0, 80);
+    const entries = displayPlayers.slice(0, 80);
     table.innerHTML = `<thead><tr><th>Rank</th><th style="text-align:left;">Player</th><th>Pos</th><th>Team</th><th>ADP</th><th>Age</th><th>PPG</th><th></th></tr></thead><tbody></tbody>`;
     const body = table.querySelector("tbody");
     if (!entries.length) {
@@ -4165,17 +4223,9 @@ function renderDraftRoom() {
 
   const takenCount = document.getElementById("draftTakenCount");
   if (takenCount) takenCount.textContent = simulation.picks.length
-    ? `${simulation.picks.length} picks made • ${simulation.draftedIds.size} players off the board`
-    : "No picks made yet";
-  const takenTable = document.getElementById("draftTakenTable");
-  if (takenTable) {
-    takenTable.innerHTML = `<thead><tr><th>Round</th><th>Overall</th><th>Slot</th><th style="text-align:left;">Player</th><th>Pos</th><th>ADP</th></tr></thead><tbody></tbody>`;
-    const takenBody = takenTable.querySelector("tbody");
-    takenBody.innerHTML = simulation.picks.length ? simulation.picks.map(pick => {
-      const adp = getDraftAdp(pick.player).rank;
-      return `<tr class="${pick.isUserPick ? "draft-user-pick-row" : ""}"><td>R${pick.round}</td><td>#${pick.overallPick}</td><td>${pick.isUserPick ? "You" : `Team ${pick.teamSlot}`}</td><td class="draft-name"><span class="draft-player-cell"><img src="${draftEscapeHtml(avatarUrl(pick.player))}" alt="" loading="lazy" onerror="this.style.visibility='hidden'" /><span>${draftEscapeHtml(pick.player.name)}</span></span></td><td>${draftEscapeHtml(pick.player.position)}</td><td>${adp === null ? "--" : adp.toFixed(1)}</td></tr>`;
-    }).join("") : `<tr><td colspan="6" class="draft-empty">The draft board is clear.</td></tr>`;
-  }
+    ? `${simulation.picks.length} picks made · ${simulation.draftedIds.size} off board${simulation.complete ? " · Draft complete" : ` · Overall #${simulation.nextPick} on the clock`}`
+    : `No picks made · Overall #${simulation.nextPick} on the clock`;
+  renderDraftBoard(simulation);
 
   const undoButton = document.getElementById("draftUndoBtn");
   if (undoButton) undoButton.disabled = draftState.userPicks.length === 0;
@@ -4259,6 +4309,7 @@ function bindControlEvents() {
   document.getElementById("draftStartBtn")?.addEventListener("click", applyDraftSettings);
   document.getElementById("draftImportLeagueBtn")?.addEventListener("click", importDraftLeagueSettings);
   document.getElementById("draftPosition")?.addEventListener("change", renderDraftRoom);
+  document.getElementById("draftSort")?.addEventListener("change", renderDraftRoom);
   document.getElementById("draftSearch")?.addEventListener("input", renderDraftRoom);
   document.getElementById("draftBoardTable")?.addEventListener("click", e => {
     const button = e.target.closest("[data-draft-pick]");
@@ -4268,6 +4319,13 @@ function bindControlEvents() {
     draftState.userPicks.pop();
     saveDraftSession();
     renderDraftRoom();
+  });
+  document.getElementById("draftBoardExpandBtn")?.addEventListener("click", e => {
+    const wrap = document.getElementById("draftHistoryWrap");
+    if (!wrap) return;
+    const expanded = wrap.classList.toggle("is-expanded");
+    e.currentTarget.textContent = expanded ? "Compact board" : "Expand board";
+    e.currentTarget.setAttribute("aria-expanded", String(expanded));
   });
   document.getElementById("draftSaveBtn")?.addEventListener("click", saveDraftSession);
   document.getElementById("draftAdpCsv")?.addEventListener("change", e => importDraftAdpFile(e.target.files?.[0]));
