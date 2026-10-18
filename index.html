@@ -602,6 +602,16 @@
         <div><span>Available</span><strong id="draftAvailableCount">0</strong></div>
       </div>
 
+      <section class="draft-board-panel draft-board-panel-full">
+        <div class="draft-panel-heading">
+          <div><h3>Draft Board</h3><span id="draftTakenCount" class="draft-subtitle">No picks made</span></div>
+          <button id="draftBoardExpandBtn" class="btn-builder-action" type="button" aria-expanded="false">Expand board</button>
+        </div>
+        <div id="draftHistoryWrap" class="draft-history-wrap">
+          <div id="draftBoardGrid" class="draft-grid"></div>
+        </div>
+      </section>
+
       <div class="draft-workspace">
         <section class="draft-board-panel">
           <div class="draft-panel-heading">
@@ -637,15 +647,6 @@
             <button id="draftUndoBtn" class="btn-builder-action" type="button" title="Undo your last pick">Undo</button>
           </div>
           <div id="draftRosterCounts" class="draft-roster-counts"></div>
-          <div class="draft-pick-history">
-            <div class="draft-panel-heading">
-              <div><h3>Draft board</h3><span id="draftTakenCount" class="draft-subtitle">No picks made</span></div>
-              <button id="draftBoardExpandBtn" class="btn-builder-action" type="button" aria-expanded="false">Expand board</button>
-            </div>
-            <div id="draftHistoryWrap" class="draft-history-wrap">
-              <div id="draftBoardGrid" class="draft-grid"></div>
-            </div>
-          </div>
           <div id="draftUserPicks" class="draft-user-picks"></div>
           <div id="draftKeeperPanel" class="draft-keeper-section" hidden>
             <div class="draft-panel-heading"><div><h3>Keeper Ledger</h3><span class="draft-subtitle">Cost and years remaining</span></div></div>

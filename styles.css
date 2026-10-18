@@ -168,6 +168,7 @@ canvas.chart-canvas { width:100%; height:300px; background:var(--bg-card); borde
 .draft-summary strong { font-size:14px; }
 .draft-workspace { display:grid; grid-template-columns:minmax(0,1fr) 290px; gap:12px; align-items:start; min-width:0; }
 .draft-board-panel, .draft-roster-panel { min-width:0; padding:14px; background:var(--bg-card); border:1px solid var(--border); border-radius:8px; }
+.draft-board-panel-full { width:100%; padding:12px 14px; }
 .draft-panel-heading { display:flex; justify-content:space-between; align-items:center; gap:10px; margin-bottom:12px; }
 .draft-panel-heading h3 { font-size:14px; }
 .draft-panel-heading > div { display:flex; flex-direction:column; gap:3px; }
