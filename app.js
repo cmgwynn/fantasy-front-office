@@ -11,6 +11,15 @@ document.addEventListener("click", e => {
     navBtn.classList.add("active");
     const targetPage = document.getElementById(navBtn.dataset.tab);
     if (targetPage) targetPage.classList.add("active");
+    if (navBtn.dataset.tab === "tab-draft") {
+      document.querySelector(".content-stack")?.scrollTo({ top: 0, behavior: "instant" });
+      targetPage?.scrollTo({ top: 0, behavior: "instant" });
+      const draftHistory = document.getElementById("draftHistoryWrap");
+      if (draftHistory) {
+        draftHistory.dataset.userScrolled = "";
+        draftHistory.scrollTop = 0;
+      }
+    }
     const mobileTabSelect = document.getElementById("mobileTabSelect");
     if (mobileTabSelect) mobileTabSelect.value = navBtn.dataset.tab;
     switch (navBtn.dataset.tab) {
@@ -3781,7 +3790,11 @@ function restoreDraftSession() {
   draftState.loadedSessionKey = key;
   try {
     const saved = JSON.parse(localStorage.getItem(key) || "null");
-    if (!saved || typeof saved !== "object") return;
+    if (!saved || typeof saved !== "object") {
+      const notice = document.getElementById("draftNotice");
+      if (notice) notice.textContent = "Opponent picks before your slot are simulated; your draft is still waiting for your first pick.";
+      return;
+    }
     draftState.settings = { ...draftState.settings, ...(saved.settings || {}) };
     draftState.userPicks = Array.isArray(saved.userPicks) ? saved.userPicks : [];
     draftState.adpByName = saved.adpByName && typeof saved.adpByName === "object" ? saved.adpByName : {};
@@ -3798,6 +3811,10 @@ function restoreDraftSession() {
       const control = document.getElementById(id);
       if (control && value !== undefined) control.value = String(value);
     });
+    const notice = document.getElementById("draftNotice");
+    if (notice) notice.textContent = draftState.userPicks.length
+      ? `Resumed your saved draft with ${draftState.userPicks.length} pick${draftState.userPicks.length === 1 ? "" : "s"}. Opponent picks are simulated.`
+      : "Draft settings restored. Opponent picks before your slot are simulated; you have not made a pick yet.";
   } catch {}
 }
 
@@ -4222,9 +4239,13 @@ function renderDraftRoom() {
   }
 
   const takenCount = document.getElementById("draftTakenCount");
-  if (takenCount) takenCount.textContent = simulation.picks.length
-    ? `${simulation.picks.length} picks made · ${simulation.draftedIds.size} off board${simulation.complete ? " · Draft complete" : ` · Overall #${simulation.nextPick} on the clock`}`
-    : `No picks made · Overall #${simulation.nextPick} on the clock`;
+  if (takenCount) {
+    const simulatedCount = simulation.picks.filter(pick => !pick.isUserPick).length;
+    const savedUserPickCount = simulation.picks.filter(pick => pick.isUserPick).length;
+    takenCount.textContent = simulation.complete
+      ? `Draft complete · ${savedUserPickCount} of your picks recorded`
+      : `${simulatedCount} opponent picks simulated · ${savedUserPickCount} of your picks saved · Your turn at #${simulation.nextPick}`;
+  }
   renderDraftBoard(simulation);
 
   const undoButton = document.getElementById("draftUndoBtn");
