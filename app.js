@@ -755,9 +755,12 @@ function defaultRealisticProj(m) {
 }
 
 function computeLeagueProj(m, st, rules) {
+  const sleeperProjectionFeedIsAuthoritative = state.activeLeague?.provider === "sleeper"
+    && Boolean(state.dataFreshness.projections)
+    && !state.dataErrors.projections;
   if (m.position !== "DEF" && (!m.team || m.team === "FA" || !m.isCurrentNfl || ["Out","IR","Suspended","PUP"].includes(m.injuryStatus))) return 0;
   if (m.byeWeek > 0 && m.byeWeek === state.week) return 0;
-  if (!st) return defaultRealisticProj(m);
+  if (!st) return sleeperProjectionFeedIsAuthoritative ? 0 : defaultRealisticProj(m);
   if (rules && Object.keys(rules).length && state.activeLeague?.provider !== "espn") {
     let tot = 0, hit = false;
     for (const k in st) {
@@ -769,6 +772,7 @@ function computeLeagueProj(m, st, rules) {
   if (recM >= 0.9 && st.pts_ppr !== undefined) return Math.max(0, st.pts_ppr);
   if (recM >= 0.4 && st.pts_half_ppr !== undefined) return Math.max(0, st.pts_half_ppr);
   if (st.pts_std !== undefined) return Math.max(0, st.pts_std);
+  if (sleeperProjectionFeedIsAuthoritative) return 0;
   return defaultRealisticProj(m);
 }
 
