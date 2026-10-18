@@ -24,15 +24,17 @@
       <option value="" selected>Choose provider</option>
       <option value="espn">ESPN Fantasy</option>
       <option value="sleeper">Sleeper</option>
+      <option value="yahoo">Yahoo Fantasy (import file)</option>
     </select>
     <label id="providerInputLabel" for="usernameInput">ACCOUNT</label>
     <input id="usernameInput" placeholder="Sleeper username..." style="width:175px;" />
+    <label id="yahooImportLabel" class="yahoo-import-label" hidden>Import Yahoo roster<input id="yahooImportFile" type="file" accept=".csv,.json,text/csv,application/json" /></label>
     <button id="syncBtn">Connect</button>
-    <label style="margin-left:6px;">LEAGUE</label>
+    <label id="leagueInputLabel" style="margin-left:6px;">LEAGUE</label>
     <select id="leagueSelect" class="grow"><option>-- Sync account first --</option></select>
-    <label style="margin-left:6px;">ROSTER</label>
+    <label id="rosterInputLabel" style="margin-left:6px;">ROSTER</label>
     <select id="teamSelect" class="grow"><option>-- Select League --</option></select>
-    <label style="margin-left:6px;">WEEK</label>
+    <label id="weekInputLabel" style="margin-left:6px;">WEEK</label>
     <select id="weekSelect" style="width:115px;"></select>
   </div>
   <div id="providerHelp" class="provider-help" aria-live="polite"></div>
@@ -42,29 +44,42 @@
   <div class="sidebar">
     <label class="mobile-nav-label" for="mobileTabSelect">VIEW</label>
     <select id="mobileTabSelect" class="mobile-nav-select" aria-label="Navigate to section">
+      <option value="tab-inbox">GM Inbox</option>
       <option value="tab-roster">Roster Overview</option>
       <option value="tab-power">Power Rankings</option>
-      <option value="tab-trade">Trade Center</option>
-      <option value="tab-opt">Lineup Optimizer</option>
-      <option value="tab-draft">Draft Room</option>
       <option value="tab-intel">League Intel</option>
+      <option value="tab-newsletter">League Newsletter</option>
+      <option value="tab-opt">Lineup Optimizer</option>
       <option value="tab-waiver">Waiver Wire</option>
+      <option value="tab-trade">Trade Center</option>
+      <option value="tab-draft">Draft Room</option>
       <option value="tab-analytics">Player Analytics</option>
       <option value="tab-sos">SOS Heat-Map</option>
       <option value="tab-bracket">Playoff Bracket</option>
       <option value="tab-matchup">Matchup Simulator</option>
     </select>
-    <button class="nav-btn active" data-tab="tab-roster">Roster Overview</button>
-    <button class="nav-btn" data-tab="tab-power">Power Rankings</button>
-    <button class="nav-btn" data-tab="tab-trade">Trade Center</button>
-    <button class="nav-btn" data-tab="tab-opt">Lineup Optimizer</button>
-    <button class="nav-btn" data-tab="tab-draft">Draft Room</button>
-    <button class="nav-btn" data-tab="tab-intel">League Intel</button>
-    <button class="nav-btn" data-tab="tab-waiver">Waiver Wire</button>
-    <button class="nav-btn" data-tab="tab-analytics">Player Analytics</button>
-    <button class="nav-btn" data-tab="tab-sos">SOS Heat-Map</button>
-    <button class="nav-btn" data-tab="tab-bracket">Playoff Bracket</button>
-    <button class="nav-btn" data-tab="tab-matchup">Matchup Simulator</button>
+    <div class="nav-group">
+      <div class="nav-group-title">Overview</div>
+      <button class="nav-btn" data-tab="tab-inbox">GM Inbox</button>
+      <button class="nav-btn active" data-tab="tab-roster">Roster Overview</button>
+      <button class="nav-btn" data-tab="tab-power">Power Rankings</button>
+      <button class="nav-btn" data-tab="tab-intel">League Intel</button>
+      <button class="nav-btn" data-tab="tab-newsletter">League Newsletter</button>
+    </div>
+    <div class="nav-group">
+      <div class="nav-group-title">Manage</div>
+      <button class="nav-btn" data-tab="tab-opt">Lineup Optimizer</button>
+      <button class="nav-btn" data-tab="tab-waiver">Waiver Wire</button>
+      <button class="nav-btn" data-tab="tab-trade">Trade Center</button>
+      <button class="nav-btn" data-tab="tab-draft">Draft Room</button>
+    </div>
+    <div class="nav-group">
+      <div class="nav-group-title">Research</div>
+      <button class="nav-btn" data-tab="tab-analytics">Player Analytics</button>
+      <button class="nav-btn" data-tab="tab-sos">SOS Heat-Map</button>
+      <button class="nav-btn" data-tab="tab-bracket">Playoff Bracket</button>
+      <button class="nav-btn" data-tab="tab-matchup">Matchup Simulator</button>
+    </div>
   </div>
 
   <div class="content-stack">
@@ -293,6 +308,14 @@
           </select>
         </div>
       </div>
+      <section class="waiver-needs-panel">
+        <div class="waiver-needs-heading">
+          <div><h3>Roster Needs</h3><span id="waiverNeedsMeta" class="draft-subtitle">Position fit, injury risk, and this week's byes</span></div>
+          <span id="waiverNeedsTeam" class="badge badge-blue">Selected roster</span>
+        </div>
+        <div id="waiverNeedList" class="waiver-need-list"></div>
+        <div id="waiverNeedTargets" class="waiver-need-targets"></div>
+      </section>
       <section class="faab-planner">
         <div class="faab-settings">
           <label>Budget remaining <span><input id="faabBudget" type="number" min="0" max="1000" value="100" /> <b>$</b></span></label>
@@ -328,12 +351,12 @@
           <select id="analyticsGraphSelect" style="width:auto; min-width:360px;"></select>
           <label style="font-size:12px; color:var(--good); font-weight:800;">Sort Top 32 By:</label>
           <select id="analyticsSortKey" style="width:auto; min-width:190px; border-color:rgba(48,209,88,0.5);">
+            <option value="baseValue" selected>Model Player Value</option>
             <option value="seasonPpg">Season Fantasy PPG</option>
             <option value="yKey">Active Y-Axis Metric</option>
             <option value="xKey">Active X-Axis Metric</option>
             <option value="projectedPoints">Weekly Projected Points</option>
             <option value="vorpScore">VORP Score</option>
-            <option value="baseValue">Market Trade Value</option>
           </select>
           <button id="toggleAnalyticsFormulaBtn" class="btn-builder-action" style="padding:7px 12px;">Metric Formulas</button>
         </div>
@@ -350,13 +373,16 @@
         <div>• <b>Trade Value (0–9999):</b> Exponential player-rank curve (<code>7800 × e^(-0.0105×Rank)</code>) blended with PPG production ratio (<code>PPG ÷ Baseline × 3400</code>), Superflex/TEP multipliers, and Dynasty Age Curve.</div>
       </div>
 
+      <div id="analyticsValueSummary" class="analytics-value-summary"></div>
+      <div class="analytics-insight"><span class="analytics-insight-label">CHART READ</span><p id="analyticsInsight">Select a position to compare value and production.</p></div>
+
       <div class="card-banner" style="padding:16px;">
         <div id="singleGraphTitle" style="font-size:14px; font-weight:800; color:var(--accent); margin-bottom:8px;">Metric Graph</div>
         <canvas id="analyticsCanvasSingle" style="width:100%; height:440px; background:var(--bg-card); border-radius:10px; display:block;"></canvas>
       </div>
       <div style="display:flex; justify-content:space-between; align-items:center;">
         <div class="sec-hdr" style="color:var(--accent);">PLOTTED PLAYER DATA TABLE (CLICK ANY COLUMN HEADER TO SORT)</div>
-        <div style="font-size:11px; color:var(--text-muted);">Showing Top 32 Active Players</div>
+        <div id="analyticsPoolSummary" style="font-size:11px; color:var(--text-muted);">Showing Top 32 Active Players</div>
       </div>
       <div class="table-wrap"><table id="analyticsTable"></table></div>
     </div>
@@ -453,11 +479,13 @@
       <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
         <div style="font-size:15px; font-weight:800;">HEAD-TO-HEAD MATCHUP & WIN-PROBABILITY SIMULATOR</div>
         <div style="display:flex; align-items:center; gap:8px;">
+          <button id="refreshMatchupsBtn" class="btn-builder-action" type="button">Refresh live scores</button>
           <select id="simTeamA" style="min-width:210px;"></select>
           <span style="font-size:13px; font-weight:800; color:var(--accent); padding:0 6px;">VS</span>
           <select id="simTeamB" style="min-width:210px;"></select>
         </div>
       </div>
+      <div id="matchupLiveStatus" class="draft-subtitle" aria-live="polite">Scores reflect the last league sync.</div>
       <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px;">
         <div class="card-banner" style="text-align:center;">
           <div id="simBannerA" style="font-size:14px; font-weight:800; color:var(--good);">Team A Win Prob: 50.0%</div>
@@ -482,6 +510,24 @@
         <div id="portfolioRosterSelectors" class="portfolio-roster-selectors"></div>
         <div id="portfolioSummary" class="portfolio-summary"></div>
         <div class="table-wrap"><table id="portfolioExposureTable"></table></div>
+      </section>
+      <section class="portfolio-panel">
+        <div class="draft-panel-heading"><div><h3>Season History</h3><span id="historyMeta" class="draft-subtitle">Browse previous standings for the connected account.</span></div></div>
+        <div class="history-controls">
+          <label>Season<select id="historySeason"></select></label>
+          <button id="loadHistoryBtn" class="btn-builder-action" type="button">Load season</button>
+        </div>
+        <div class="table-wrap"><table id="historyTable"></table></div>
+      </section>
+      <section class="portfolio-panel">
+        <div class="draft-panel-heading"><div><h3>Weekly Pick'em</h3><span class="draft-subtitle">Save a matchup prediction for this league and week.</span></div></div>
+        <div class="pickem-controls">
+          <label>Matchup<select id="pickemMatchup"></select></label>
+          <label>Pick winner<select id="pickemWinner"></select></label>
+          <button id="savePickemBtn" class="btn-builder-action" type="button">Save pick</button>
+        </div>
+        <div id="pickemStatus" class="pickem-status" aria-live="polite"></div>
+        <div id="pickemHistory" class="pickem-history"></div>
       </section>
       <section class="portfolio-panel">
         <div class="draft-panel-heading"><div><h3>Bye-Week Concentration</h3><span class="draft-subtitle">Shared absences across your tracked rosters</span></div></div>
@@ -510,6 +556,51 @@
         <div class="draft-panel-heading"><div><h3>Manager Tendencies</h3><span id="tendencyMeta" class="draft-subtitle">Recent transaction activity from the active league</span></div></div>
         <div class="table-wrap"><table id="managerTendencyTable"></table></div>
       </section>
+    </div>
+
+    <div id="tab-inbox" class="tab-page">
+      <div class="draft-heading">
+        <div><div class="draft-eyebrow">THIS WEEK'S DECISIONS</div><h2>GM Inbox</h2></div>
+        <button id="refreshGmInboxBtn" class="btn-builder-action" type="button">Refresh analysis</button>
+      </div>
+      <div id="gmInboxSummary" class="gm-inbox-summary"></div>
+      <section class="portfolio-panel">
+        <div class="draft-panel-heading"><div><h3>Portfolio Pressure</h3><span class="draft-subtitle">Concentration, shared byes, and roster gaps across your tracked teams</span></div></div>
+        <div id="portfolioPressureList" class="portfolio-pressure-list"></div>
+      </section>
+      <section class="portfolio-panel">
+        <div class="draft-panel-heading"><div><h3>Prioritized Actions</h3><span id="gmInboxMeta" class="draft-subtitle">League-specific advice, with confidence and your outcome feedback</span></div></div>
+        <div id="gmInboxList" class="gm-inbox-list"></div>
+      </section>
+      <section class="portfolio-panel">
+        <div class="draft-panel-heading"><div><h3>Advice Scorecard</h3><span id="gmOutcomeMeta" class="draft-subtitle">Actual player points are reconciled after the NFL week closes.</span></div></div>
+        <div id="gmOutcomeSummary" class="gm-outcome-summary"></div>
+        <div class="table-wrap"><table id="gmOutcomeTable"></table></div>
+      </section>
+      <section class="portfolio-panel">
+        <div class="draft-panel-heading"><div><h3>Closed This Week</h3><span class="draft-subtitle">Completed advice can still be rated; dismissed items can be reopened.</span></div></div>
+        <div id="gmInboxCompleted" class="gm-inbox-list"></div>
+      </section>
+    </div>
+
+    <div id="tab-newsletter" class="tab-page">
+      <div class="draft-heading">
+        <div><div class="draft-eyebrow">WEEKLY LEAGUE EDITION</div><h2>League Newsletter</h2></div>
+        <span id="newsletterLeagueBadge" class="newsletter-league-badge">No league selected</span>
+      </div>
+      <section class="portfolio-panel newsletter-controls-panel">
+        <label>League<select id="newsletterLeagueSelect" aria-label="Newsletter league"></select></label>
+        <label>Saved issues<select id="newsletterArchiveSelect" aria-label="Saved newsletter issues"></select></label>
+        <div id="newsletterArchiveMeta" class="draft-subtitle">Issues are saved separately for each league.</div>
+        <div class="weekly-report-actions">
+          <button id="generateNewsletterBtn" type="button">Generate this week</button>
+          <button id="saveNewsletterBtn" class="btn-builder-action" type="button">Save issue</button>
+          <button id="copyNewsletterBtn" class="btn-builder-action" type="button">Copy newsletter</button>
+          <button id="downloadNewsletterBtn" class="btn-builder-action" type="button">Download HTML</button>
+        </div>
+        <div id="newsletterStatus" class="draft-subtitle" aria-live="polite">Connect a league to generate its weekly edition.</div>
+      </section>
+      <article id="leagueNewsletterContent" class="league-newsletter-content"><p>Connect a league to generate its weekly edition.</p></article>
     </div>
 
     <!-- SEASONAL DRAFT ROOM -->

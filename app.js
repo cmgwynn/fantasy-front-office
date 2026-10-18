@@ -30,6 +30,8 @@ document.addEventListener("click", e => {
       case "tab-bracket": renderPlayoffBracketTab(); break;
       case "tab-draft": renderDraftRoom(); break;
       case "tab-intel": renderLeagueIntelTab(); break;
+      case "tab-inbox": renderGMInbox(); break;
+      case "tab-newsletter": renderLeagueNewsletter(); break;
     }
     return;
   }
@@ -146,12 +148,15 @@ const state = {
   season: String(new Date().getFullYear()),
   week: 6, userId: "", leagues: [], activeLeague: null,
   provider: "", portfolioRosterSelections: {}, managerTendencies: [],
+  currentMatchups: [], historicalRows: [], historicalSeasons: [], weeklyReportText: "",
   players: {}, rawProj: {}, rawStats: {}, managers: [],
   tradeSideA: [], tradeSideB: [], dbTrades: [], waiverTargets: [],
   weakestPosByTeam: {}, sosWindowMode: "NEXT4", bracketOverrides: {},
-  dataFreshness: { season: 0, schedule: 0, players: 0, stats: 0, projections: 0, account: 0 }, dataErrors: {}
+  dataFreshness: { season: 0, schedule: 0, players: 0, stats: 0, projections: 0, account: 0, matchups: 0 }, dataErrors: {}
 };
 const portfolioState = { rostersByLeague: new Map(), loading: false };
+const gmOutcomeCache = new Map();
+let sleeperNflStateCache = { data: null, checkedAt: 0 };
 const playerAlertState = { loaded: false, watchlist: [], events: [], snapshots: {} };
 const draftState = {
   settings: { type: "redraft", teams: 12, slot: 6, rounds: 15, scoring: "ppr", rosterFormat: "standard", opponentStrategy: "adp", dynastyYears: 3, keeperSlots: 2, keeperYears: 2 },
@@ -219,29 +224,29 @@ function getDvpRanksForSeason(seasonYear) {
 
 const ANALYTICS_CONFIGS = {
   QB: [
-    { title: "QB View 1: Passing Yards per Game vs. Passing Touchdowns per Game", xKey: "passYdsPerGame", yKey: "passTdPerGame", xLbl: "Passing Yards per Game", yLbl: "Passing TDs per Game" },
-    { title: "QB View 2: Completion Pct Over Expected (CPOE) vs. EPA per Play", xKey: "cpoeVal", yKey: "epaPerPlay", xLbl: "Completion % Over Expected (CPOE)", yLbl: "Expected Points Added (EPA/Play)" },
-    { title: "QB View 3: Rushing Attempts per Game vs. Season Fantasy PPG", xKey: "rushAttPerGame", yKey: "seasonPpg", xLbl: "Rushing Attempts per Game", yLbl: "Season Fantasy PPG" }
+    { title: "Model Value vs. Weekly Projection", xKey: "projectedPoints", yKey: "baseValue", xLbl: "Weekly projected points", yLbl: "Model player value" },
+    { title: "Passing Production vs. Fantasy Output", xKey: "passYdsPerGame", yKey: "seasonPpg", xLbl: "Passing yards per game", yLbl: "Season fantasy points per game" },
+    { title: "Passing Efficiency: CPOE vs. EPA", xKey: "cpoeVal", yKey: "epaPerPlay", xLbl: "Completion % over expected", yLbl: "Expected points added per play" }
   ],
   RB: [
-    { title: "RB View 1: Projected Gold Touches (RZ + GL) vs. Projected Receiving Targets", xKey: "goldTouchesPerGame", yKey: "targetsPerGame", xLbl: "Gold Touches / Gm (RZ + GL)", yLbl: "Receiving Targets / Gm" },
-    { title: "RB View 2: Offensive Snap Share (%) vs. Rush Yards Over Expected (RYOE/Gm)", xKey: "snapSharePct", yKey: "ryoePerGame", xLbl: "Offensive Snap Share (%)", yLbl: "Rush Yds Over Expected / Gm" },
-    { title: "RB View 3: Total Touches per Game vs. Season Fantasy PPG", xKey: "touchesPerGame", yKey: "seasonPpg", xLbl: "Total Touches per Game", yLbl: "Season Fantasy PPG" }
+    { title: "Model Value vs. Weekly Projection", xKey: "projectedPoints", yKey: "baseValue", xLbl: "Weekly projected points", yLbl: "Model player value" },
+    { title: "Touch Opportunity vs. Fantasy Output", xKey: "touchesPerGame", yKey: "seasonPpg", xLbl: "Touches per game", yLbl: "Season fantasy points per game" },
+    { title: "Scoring-Opportunity Upside", xKey: "goldTouchesPerGame", yKey: "vorpScore", xLbl: "Red-zone touches per game", yLbl: "Value over replacement" }
   ],
   WR: [
-    { title: "WR View 1: Targets per Route Run (TPRR) vs. Yards per Route Run (YPRR)", xKey: "tprrPct", yKey: "yprrVal", xLbl: "Targets per Route Run (%)", yLbl: "Yards per Route Run (YPRR)" },
-    { title: "WR View 2: Target Volume (Tgts/Gm) vs. Yards per Target Over Expected (YPTOE)", xKey: "targetsPerGame", yKey: "yptoeVal", xLbl: "Targets per Game", yLbl: "Yards / Target Over Expected" },
-    { title: "WR View 3: Receptions per Game vs. Season Fantasy PPG", xKey: "receptionsPerGame", yKey: "seasonPpg", xLbl: "Receptions per Game", yLbl: "Season Fantasy PPG" }
+    { title: "Model Value vs. Weekly Projection", xKey: "projectedPoints", yKey: "baseValue", xLbl: "Weekly projected points", yLbl: "Model player value" },
+    { title: "Target Volume vs. Fantasy Output", xKey: "targetsPerGame", yKey: "seasonPpg", xLbl: "Targets per game", yLbl: "Season fantasy points per game" },
+    { title: "Route Efficiency: TPRR vs. YPRR", xKey: "tprrPct", yKey: "yprrVal", xLbl: "Targets per route run (%)", yLbl: "Yards per route run" }
   ],
   TE: [
-    { title: "TE View 1: Route Participation (%) vs. Targets per Route Run (TPRR %)", xKey: "snapSharePct", yKey: "tprrPct", xLbl: "Route Participation (%)", yLbl: "Targets per Route Run (%)" },
-    { title: "TE View 2: Red Zone Target Share vs. Season Fantasy PPG", xKey: "targetsPerGame", yKey: "seasonPpg", xLbl: "Targets per Game", yLbl: "Season Fantasy PPG" },
-    { title: "TE View 3: Yards per Route Run (YPRR) vs. Dynasty Trade Value", xKey: "yprrVal", yKey: "baseValue", xLbl: "Yards per Route Run (YPRR)", yLbl: "Market Trade Value" }
+    { title: "Model Value vs. Weekly Projection", xKey: "projectedPoints", yKey: "baseValue", xLbl: "Weekly projected points", yLbl: "Model player value" },
+    { title: "Target Volume vs. Fantasy Output", xKey: "targetsPerGame", yKey: "seasonPpg", xLbl: "Targets per game", yLbl: "Season fantasy points per game" },
+    { title: "Route Participation vs. Target Rate", xKey: "snapSharePct", yKey: "tprrPct", xLbl: "Snap share (%)", yLbl: "Targets per route run (%)" }
   ],
   DEF: [
-    { title: "DEF View 1: Sacks per Game vs. Takeaways per Game (INT + Fumble Rec)", xKey: "sacksPerGame", yKey: "takeawaysPerGame", xLbl: "Sacks per Game", yLbl: "Takeaways per Game" },
-    { title: "DEF View 2: Havoc Plays per Game (Sacks + Takeaways) vs. Season Fantasy PPG", xKey: "defPlaysPerGame", yKey: "seasonPpg", xLbl: "Havoc Plays / Gm (Sacks + TO)", yLbl: "Season Fantasy PPG" },
-    { title: "DEF View 3: Season Fantasy PPG vs. Weekly Projected Points", xKey: "seasonPpg", yKey: "projectedPoints", xLbl: "Season Fantasy PPG", yLbl: "Weekly Projected Points" }
+    { title: "Model Value vs. Weekly Projection", xKey: "projectedPoints", yKey: "baseValue", xLbl: "Weekly projected points", yLbl: "Model player value" },
+    { title: "Disruption vs. Fantasy Output", xKey: "defPlaysPerGame", yKey: "seasonPpg", xLbl: "Sacks + takeaways per game", yLbl: "Season fantasy points per game" },
+    { title: "Sacks vs. Takeaways", xKey: "sacksPerGame", yKey: "takeawaysPerGame", xLbl: "Sacks per game", yLbl: "Takeaways per game" }
   ]
 };
 
@@ -564,7 +569,7 @@ function renderDataFreshness() {
   const label = document.getElementById("dataFreshnessLabel");
   const retryButton = document.getElementById("retryDataBtn");
   if (!label) return;
-  const names = { season: "Season", schedule: "Schedule", players: "Players", stats: "Stats", projections: "Projections", account: "Account" };
+  const names = { season: "Season", schedule: "Schedule", players: "Players", stats: "Stats", projections: "Projections", account: "Account", matchups: "Matchups" };
   const sources = Object.entries(state.dataFreshness)
     .filter(([, timestamp]) => timestamp)
     .map(([source, timestamp]) => `${names[source]} ${new Date(timestamp).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`);
@@ -1080,7 +1085,7 @@ async function initApp(skipUrlAccountSync = false, forceRefreshSources = false) 
   ensureDynamicTradeControls();
   updateAnalyticsDropdownOptions();
   const startupParams = new URLSearchParams(location.search);
-  if (["sleeper", "espn"].includes(startupParams.get("provider"))) {
+  if (["sleeper", "espn", "yahoo"].includes(startupParams.get("provider"))) {
     const providerSelect = document.getElementById("providerSelect");
     if (providerSelect) providerSelect.value = startupParams.get("provider");
     updateProviderControls();
@@ -1156,7 +1161,7 @@ async function initApp(skipUrlAccountSync = false, forceRefreshSources = false) 
 
   const params = new URLSearchParams(location.search);
   const providerFromLink = params.get("provider") || (params.has("user") ? "sleeper" : "");
-  if (["sleeper", "espn"].includes(providerFromLink)) {
+  if (["sleeper", "espn", "yahoo"].includes(providerFromLink)) {
     const providerSelect = document.getElementById("providerSelect");
     if (providerSelect) providerSelect.value = providerFromLink;
     updateProviderControls();
@@ -1200,6 +1205,7 @@ async function syncUserAccount() {
   state.provider = provider;
   if (!provider) { setStatus("Choose a provider first."); return; }
   if (provider === "espn") return syncEspnAccount();
+  if (provider === "yahoo") { setStatus("Choose a Yahoo roster CSV or JSON file to import. Direct sign-in needs a secure OAuth backend."); return; }
   const u = document.getElementById("usernameInput")?.value.trim();
   if (!u) return;
   setStatus("Connecting account...");
@@ -1232,19 +1238,146 @@ async function syncUserAccount() {
   } catch (error) { markDataSource("account", error); setStatus("Could not connect to this provider."); }
 }
 
+function normalizeYahooPosition(position) {
+  const value = String(position || "").trim().toUpperCase();
+  if (["D/ST", "DST", "DEF", "DEFENSE"].includes(value)) return "DEF";
+  return ["QB", "RB", "WR", "TE", "K"].includes(value) ? value : "FLEX";
+}
+
+function createYahooPlayer(source, league) {
+  const id = `yahoo_${source.playerId || normalizeDraftPlayerName(source.name).replace(/ /g, "_")}`;
+  const position = normalizeYahooPosition(source.position);
+  const team = normalizeTeamCode(source.nflTeam || source.team || "FA");
+  const seasonPpg = Math.max(0, Number(source.seasonPpg || source.pointsPerGame || 0));
+  const projectedPoints = Math.max(0, Number(source.projectedPoints || source.projection || seasonPpg));
+  state.players[id] = {
+    id, name: source.name || "Unknown player", position, team, status: source.status || "Active",
+    injuryStatus: source.injuryStatus || "Healthy", age: Math.max(0, Number(source.age) || 0), exp: Math.max(0, Number(source.experience) || 0),
+    isCurrentNfl: team !== "FA", byeWeek: CURRENT_BYE_WEEKS[team] || 0, searchRank: Number(source.playerRank) || 99999,
+    projectedPoints, seasonPpg, baseValue: 200, vorpScore: Math.max(0.5, seasonPpg - replacementPpg(position) + 4),
+    posRank: 999, ovrRank: 999, yahooId: String(source.playerId || "")
+  };
+  state.rawProj[id] = { pts_ppr: projectedPoints };
+  state.rawStats[id] = { gp: 1, pts_ppr: seasonPpg };
+  return { id, starter: source.starter === true || source.starter === "true" || source.starter === "1" || source.starter === "yes" };
+}
+
+async function importYahooRosterFile(file) {
+  if (!file) return;
+  try {
+    const text = await file.text();
+    let payload;
+    if (file.name.toLowerCase().endsWith(".json")) payload = JSON.parse(text);
+    else {
+      const rows = text.split(/\r?\n/).filter(line => line.trim()).map(parseDraftCsvRow);
+      if (rows.length < 2) throw new Error("The CSV needs a header and at least one player.");
+      const headers = rows[0].map(header => header.toLowerCase().replace(/[^a-z0-9]/g, ""));
+      const index = names => headers.findIndex(header => names.includes(header));
+      const teamIndex = index(["fantasyteam", "manager", "teamname"]);
+      const nameIndex = index(["player", "playername", "name"]);
+      const positionIndex = index(["position", "pos"]);
+      const nflTeamIndex = index(["nflteam", "nflteamabbr", "proteam"]);
+      if ([teamIndex, nameIndex, positionIndex].some(value => value < 0)) throw new Error("CSV headers must include Manager (or Fantasy Team), Player, and Position.");
+      const get = (row, names) => { const column = index(names); return column < 0 ? "" : row[column] || ""; };
+      const teams = new Map();
+      rows.slice(1).forEach(row => {
+        const teamName = row[teamIndex]?.trim();
+        const name = row[nameIndex]?.trim();
+        if (!teamName || !name) return;
+        if (!teams.has(teamName)) teams.set(teamName, {
+          teamName, manager: get(row, ["manager", "owner"]), wins: Number(get(row, ["wins"])) || 0,
+          losses: Number(get(row, ["losses"])) || 0, pointsFor: Number(get(row, ["pointsfor", "pf"])) || 0,
+          pointsAgainst: Number(get(row, ["pointsagainst", "pa"])) || 0, players: []
+        });
+        teams.get(teamName).players.push({
+          playerId: get(row, ["playerid", "yahooid"]), name, position: row[positionIndex],
+          nflTeam: nflTeamIndex < 0 ? "FA" : row[nflTeamIndex], starter: get(row, ["starter", "isstarter"]).toLowerCase(),
+          projectedPoints: get(row, ["projectedpoints", "projection"]), seasonPpg: get(row, ["seasonppg", "pointspergame"]),
+          injuryStatus: get(row, ["injurystatus", "injury"]), age: get(row, ["age"]), experience: get(row, ["experience", "yearsexp"])
+        });
+      });
+      payload = { leagueName: get(rows[1], ["leaguename"]) || file.name.replace(/\.csv$/i, ""), season: get(rows[1], ["season", "year"]) || state.season, teams: [...teams.values()] };
+    }
+    if (!Array.isArray(payload.teams) || !payload.teams.length) throw new Error("No teams found. JSON imports need a teams array; CSV imports need team and player rows.");
+    const leagueName = payload.leagueName || payload.name || "Yahoo roster import";
+    const leagueSeason = String(payload.season || state.season);
+    const league = {
+      provider: "yahoo", leagueId: `import-${normalizeDraftPlayerName(leagueName).replace(/ /g, "-")}-${leagueSeason}`, name: leagueName,
+      season: leagueSeason, totalTeams: payload.teams.length,
+      leagueType: payload.leagueType === "dynasty" ? 2 : (payload.leagueType === "keeper" ? 1 : 0),
+      draftRounds: Number(payload.draftRounds) || 15, playoffTeams: Number(payload.playoffTeams) || 6,
+      playoffWeekStart: Number(payload.playoffWeekStart) || 15, playoffSeedType: 0, playoffRoundType: 0,
+      rosterPositions: Array.isArray(payload.rosterPositions) ? payload.rosterPositions : ["QB", "RB", "RB", "WR", "WR", "TE", "FLEX", "K", "DEF"],
+      scoringSettings: payload.scoringSettings || { rec: 1 }
+    };
+    state.provider = "yahoo";
+    state.userId = "";
+    state.activeLeague = league;
+    state.leagues = [league];
+    state.currentMatchups = Array.isArray(payload.matchups) ? payload.matchups : [];
+    state.managers = payload.teams.map((team, index) => {
+      const playerEntries = (team.players || []).map(player => createYahooPlayer(player, league));
+      const ids = playerEntries.map(player => player.id);
+      const starters = playerEntries.filter(player => player.starter).map(player => player.id);
+      return {
+        rosterId: index + 1, ownerId: String(team.manager || team.owner || ""),
+        teamName: team.teamName || team.name || `Team ${index + 1}`,
+        wins: Number(team.wins) || 0, losses: Number(team.losses) || 0,
+        pf: Number(team.pointsFor) || 0, pa: Number(team.pointsAgainst) || 0, maxPf: Number(team.pointsFor) || 0,
+        eff: 0, rosPpg: 112, starters: starters.length ? starters : ids, reserve: [], taxi: [],
+        players: ids, ownedPicks: [], allPlayW: 0, allPlayL: 0, luck: 0, power: 0,
+        week1Rank: index + 1, currentRank: index + 1, history: [], projW: Number(team.wins) || 0,
+        projL: Number(team.losses) || 0, playoffPct: 50
+      };
+    });
+    const selectorIds = ["teamSelect", "tradeTeamA", "tradeTeamB", "simTeamA", "simTeamB"];
+    selectorIds.forEach(id => {
+      const select = document.getElementById(id);
+      if (!select) return;
+      select.innerHTML = "";
+      state.managers.forEach((manager, index) => {
+        const option = document.createElement("option"); option.value = String(index); option.textContent = manager.teamName; select.appendChild(option);
+      });
+    });
+    ["teamSelect", "tradeTeamA", "simTeamA"].forEach(id => { const select = document.getElementById(id); if (select) select.value = "0"; });
+    ["tradeTeamB", "simTeamB"].forEach(id => { const select = document.getElementById(id); if (select) select.value = state.managers.length > 1 ? "1" : "0"; });
+    const leagueSelect = document.getElementById("leagueSelect");
+    leagueSelect.innerHTML = `<option value="0">${draftEscapeHtml(league.name)}</option>`;
+    refreshSeasonDerivedState(league.season);
+    recalcAllPlayers();
+    state.managers.forEach(manager => {
+      manager.rosPpg = manager.starters.reduce((sum, playerId) => sum + (state.players[playerId]?.projectedPoints || 0), 0);
+    });
+    recomputeDynamicDvpRanks();
+    renderAllViews(0);
+    await buildTradeDatabase();
+    scanPlayerAlertChanges();
+    markDataSource("account");
+    populateHistorySeasonOptions();
+    await loadHistoricalSeason();
+    setStatus(`Imported ${league.name} from Yahoo file • ${state.managers.length} teams`);
+  } catch (error) {
+    markDataSource("account", error);
+    setStatus(error.message || "Could not import the Yahoo roster file.");
+  }
+}
+
 function updateProviderControls() {
   const provider = document.getElementById("providerSelect")?.value || "";
   state.provider = provider;
   const espn = provider === "espn";
   const sleeper = provider === "sleeper";
+  const yahoo = provider === "yahoo";
   const label = document.getElementById("providerInputLabel");
   const input = document.getElementById("usernameInput");
   const button = document.getElementById("syncBtn");
+  const yahooImportLabel = document.getElementById("yahooImportLabel");
   const help = document.getElementById("providerHelp");
-  if (label) label.textContent = espn ? "LEAGUE ID(S)" : (sleeper ? "ACCOUNT" : "ACCOUNT / LEAGUE");
-  if (input) input.placeholder = espn ? "ESPN league ID(s), comma-separated" : (sleeper ? "Sleeper username..." : "Choose a provider first");
-  if (button) { button.textContent = espn ? "Import League(s)" : (sleeper ? "Sync Account" : "Connect"); button.disabled = !provider; }
-  if (help) help.textContent = espn ? "Public ESPN leagues need a league ID. Private leagues use an ESPN session already signed in to this browser." : (sleeper ? "Connect with your account username to load league settings and rosters." : "Choose ESPN Fantasy or Sleeper to connect league data.");
+  if (label) label.textContent = espn ? "LEAGUE ID(S)" : (sleeper ? "ACCOUNT" : (yahoo ? "YAHOO" : "ACCOUNT / LEAGUE"));
+  if (input) { input.placeholder = espn ? "ESPN league ID(s), comma-separated" : (sleeper ? "Sleeper username..." : (yahoo ? "Use roster import" : "Choose a provider first")); input.hidden = yahoo; }
+  if (yahooImportLabel) yahooImportLabel.hidden = !yahoo;
+  if (button) { button.textContent = espn ? "Import League(s)" : (sleeper ? "Sync Account" : "Connect"); button.disabled = !provider || yahoo; button.hidden = yahoo; }
+  if (help) help.textContent = espn ? "Public ESPN leagues need a league ID. Private leagues use an ESPN session already signed in to this browser." : (sleeper ? "Connect with your account username to load league settings and rosters." : (yahoo ? "Import CSV headers: manager, player, position, nfl_team. JSON imports use leagueName, season, and teams[]. Yahoo OAuth is not configured on this static site." : "Choose ESPN Fantasy or Sleeper to connect league data."));
 }
 
 function normalizeEspnRosterPositions(slotCounts = {}) {
@@ -1378,6 +1511,7 @@ async function loadEspnLeague(idx) {
   await fetchWeeklyProjections();
 
   const data = league.espnData;
+  state.currentMatchups = (data.schedule || []).filter(matchup => Number(matchup.matchupPeriodId) === Number(state.week));
   const members = Object.fromEntries((data.members || []).map(member => [String(member.id), member.displayName || member.firstName || "Manager"]));
   state.managers = (data.teams || []).map(team => {
     const entries = team.roster?.entries || [];
@@ -1480,6 +1614,7 @@ async function loadLeague(idx) {
     fetch(`https://api.sleeper.app/v1/league/${lid}/matchups/${state.week}`).then(r => r.json()),
     fetch(`https://api.sleeper.app/v1/league/${lid}/traded_picks`).then(r => r.json()).catch(() => [])
   ]);
+  state.currentMatchups = matchups || [];
 
   const uMap = {};
   (users || []).forEach(u => { uMap[u.user_id] = u.metadata?.team_name ? `${u.metadata.team_name} (${u.display_name})` : u.display_name; });
@@ -2119,7 +2254,7 @@ async function buildTradeDatabase() {
     ? `${state.activeLeague.leagueType === 2 ? "Dynasty" : (state.activeLeague.leagueType === 1 ? "Keeper" : "Redraft")} • ${state.activeLeague.totalTeams}T`
     : "12-Team PPR";
 
-  if (state.activeLeague?.leagueId && state.activeLeague.provider !== "espn") {
+  if (state.activeLeague?.leagueId && state.activeLeague.provider === "sleeper") {
     try {
       const lastWeek = Math.min(state.week, 18);
       const firstWeek = Math.max(1, lastWeek - 7);
@@ -2784,10 +2919,104 @@ function toggleFaabClaim(playerId) {
   renderWaiversTab();
 }
 
+function getWaiverRosterNeeds(manager) {
+  if (!manager) return { needs: [], fitByPosition: {} };
+  const positions = ["QB", "RB", "WR", "TE", "K", "DEF"];
+  const required = Object.fromEntries(positions.map(position => [position, 0]));
+  let flexSlots = 0, superFlexSlots = 0;
+  const slots = (state.activeLeague?.rosterPositions || []).filter(slot => !["BN", "IR", "TAXI"].includes(slot));
+  const lineupSlots = slots.length ? slots : ["QB", "RB", "RB", "WR", "WR", "TE", "FLEX", "K", "DEF"];
+  lineupSlots.forEach(slot => {
+    if (positions.includes(slot)) required[slot]++;
+    else if (["SUPER_FLEX", "Q/W/R/T"].includes(slot)) superFlexSlots++;
+    else if (["FLEX", "WR/RB", "REC_FLEX", "W/R/T", "WRRB_FLEX", "IDP_FLEX"].includes(slot)) flexSlots++;
+  });
+
+  const rostered = manager.players.map(id => state.players[id]).filter(player => player && !player.isPick);
+  const rosteredCounts = Object.fromEntries(positions.map(position => [position, rostered.filter(player => player.position === position).length]));
+  const healthyCounts = Object.fromEntries(positions.map(position => [position, rostered.filter(player => player.position === position && !["Out", "IR", "PUP", "Suspended"].includes(player.injuryStatus) && player.byeWeek !== state.week).length]));
+  const needs = [];
+
+  positions.forEach(position => {
+    const starterRequirement = required[position] + (position === "QB" ? superFlexSlots : 0);
+    const flexShare = position === "RB" || position === "WR" ? flexSlots * 0.4 : (position === "TE" ? flexSlots * 0.2 : 0);
+    const totalRequirement = starterRequirement + flexShare;
+    if (totalRequirement <= 0 && rosteredCounts[position] === 0) return;
+    const unavailable = rostered.filter(player => player.position === position && (["Out", "IR", "PUP", "Suspended"].includes(player.injuryStatus) || player.byeWeek === state.week));
+    const doubtful = rostered.filter(player => player.position === position && ["Questionable", "Doubtful"].includes(player.injuryStatus));
+    const depthBuffer = ["RB", "WR"].includes(position) ? 0.75 : (position === "TE" ? 0.35 : (position === "QB" && superFlexSlots ? 0.75 : 0));
+    const depthTarget = totalRequirement + depthBuffer;
+    const starterGap = Math.max(0, starterRequirement - healthyCounts[position]);
+    const depthGap = Math.max(0, depthTarget - healthyCounts[position] - starterGap);
+    const uncoveredRisk = unavailable.length && healthyCounts[position] < depthTarget;
+    const questionableRisk = doubtful.length && healthyCounts[position] < depthTarget;
+    const score = starterGap * 100 + (uncoveredRisk ? unavailable.length * 34 : 0) + (questionableRisk ? doubtful.length * 20 : 0) + depthGap * 24;
+    if (score <= 0) return;
+    const causes = [];
+    if (starterGap >= 1) causes.push(`${Math.ceil(starterGap)} starting slot${starterGap >= 1.5 ? "s" : ""} uncovered`);
+    else if (starterGap > 0) causes.push("starting coverage at risk");
+    const byes = unavailable.filter(player => player.byeWeek === state.week).length;
+    const out = unavailable.length - byes;
+    if (out) causes.push(`${out} injured/out`);
+    if (byes) causes.push(`${byes} on bye`);
+    if (doubtful.length) causes.push(`${doubtful.length} questionable`);
+    if (depthGap > 0) causes.push("thin depth");
+    needs.push({ position, score, starterGap, urgent: starterGap >= 1 || Boolean(uncoveredRisk), causes, rostered: rosteredCounts[position], healthy: healthyCounts[position] });
+  });
+
+  if (flexSlots > 0) {
+    const skillPlayers = rostered.filter(player => ["RB", "WR", "TE"].includes(player.position));
+    const healthySkill = skillPlayers.filter(player => !["Out", "IR", "PUP", "Suspended"].includes(player.injuryStatus) && player.byeWeek !== state.week).length;
+    const flexibleGap = Math.max(0, flexSlots - Math.max(0, healthySkill - required.RB - required.WR - required.TE));
+    if (flexibleGap > 0) needs.push({ position: "FLEX", score: flexibleGap * 55, starterGap: flexibleGap, urgent: flexibleGap >= 1, causes: [`${Math.ceil(flexibleGap)} flex slot${flexibleGap >= 1.5 ? "s" : ""} at risk`], rostered: skillPlayers.length, healthy: healthySkill });
+  }
+
+  const fitByPosition = Object.fromEntries(needs.map(need => [need.position, need.score]));
+  return { needs: needs.sort((a, b) => b.score - a.score), fitByPosition };
+}
+
+function renderWaiverNeeds(manager, needs) {
+  const panel = document.getElementById("waiverNeedList");
+  const targetsPanel = document.getElementById("waiverNeedTargets");
+  const teamName = document.getElementById("waiverNeedsTeam");
+  const meta = document.getElementById("waiverNeedsMeta");
+  if (teamName) teamName.textContent = manager?.teamName?.split(" (")[0] || "No roster selected";
+  if (!manager) {
+    if (meta) meta.textContent = "Sync a league and select a roster to calculate positional weakness and lineup availability.";
+    if (panel) panel.innerHTML = `<div class="draft-empty">No roster selected.</div>`;
+    if (targetsPanel) targetsPanel.innerHTML = "";
+    return;
+  }
+  const starterSlots = (state.activeLeague?.rosterPositions || []).filter(slot => !["BN", "IR", "TAXI"].includes(slot)).length || 9;
+  if (meta) meta.textContent = `Week ${state.week} roster health · ${starterSlots} starting slots · calculated from roster, injuries, and byes`;
+  if (panel) panel.innerHTML = needs.length ? needs.slice(0, 5).map(need => {
+    const urgent = need.urgent;
+    return `<div class="waiver-need-item ${urgent ? "urgent" : ""}"><div><strong>${draftEscapeHtml(need.position)}${urgent ? " · Priority" : " · Depth"}</strong><span>${draftEscapeHtml(need.causes.join(" · "))}</span></div><b>${need.rostered} rostered</b></div>`;
+  }).join("") : `<div class="waiver-needs-clear"><strong>No urgent positional gaps</strong><span>Your selected roster has healthy coverage for the current week. Use VORP and projections below to find depth or upside.</span></div>`;
+
+  if (!targetsPanel) return;
+  const targets = [];
+  const seen = new Set();
+  needs.slice(0, 4).forEach(need => {
+    const candidates = state.waiverTargets.filter(player => {
+      const eligible = need.position === "FLEX" ? ["RB", "WR", "TE"].includes(player.position) : player.position === need.position;
+      return eligible && !seen.has(player.id);
+    }).sort((a, b) => ((b.vorpScore || 0) - (a.vorpScore || 0)) || ((b.projectedPoints || 0) - (a.projectedPoints || 0))).slice(0, 2);
+    candidates.forEach(player => { seen.add(player.id); targets.push({ player, need }); });
+  });
+  targetsPanel.innerHTML = targets.length ? targets.map(({ player, need }) => {
+    const fit = need.urgent ? "Priority fit" : "Depth fit";
+    return `<div class="waiver-fit-item"><div><span class="waiver-fit-label">${draftEscapeHtml(fit)} · ${draftEscapeHtml(need.position)} need</span><strong>${draftEscapeHtml(player.name)}</strong><span>${draftEscapeHtml(player.position)} · ${draftEscapeHtml(player.team || "FA")} · ${Number(player.projectedPoints || 0).toFixed(1)} projected · ${Number(player.vorpScore || 0).toFixed(1)} VORP</span></div><button class="btn-builder-action" type="button" data-waiver-fit-player="${draftEscapeHtml(player.id)}">${faabState.claims.some(claim => claim.playerId === player.id) ? "Queued" : `Queue $${getSuggestedFaabBid(player)}`}</button></div>`;
+  }).join("") : `<div class="draft-empty">No matching available players found for these needs.</div>`;
+}
+
 function renderWaiversTab() {
   loadFaabState();
   const rostered = new Set();
   state.managers.forEach(m => m.players.forEach(p => rostered.add(p)));
+  const selectedTeamIndex = parseInt(document.getElementById("teamSelect")?.value || "0", 10);
+  const selectedManager = state.managers[selectedTeamIndex];
+  const rosterNeeds = getWaiverRosterNeeds(selectedManager);
   const pf = document.getElementById("waiverPos")?.value || "ALL";
   state.waiverTargets = Object.values(state.players).filter(p => {
     if (p.isPick || rostered.has(p.id)) return false;
@@ -2796,11 +3025,13 @@ function renderWaiversTab() {
     if (pf === "FLEX" && !["RB","WR","TE"].includes(p.position)) return false;
     if (pf !== "ALL" && pf !== "FLEX" && p.position !== pf) return false;
     return p.projectedPoints > 1 || p.seasonPpg > 2;
-  }).sort((a, b) => pf === "ALL" ? (b.vorpScore - a.vorpScore) : (b.projectedPoints - a.projectedPoints)).slice(0, 15);
+  }).map(player => ({ ...player, waiverFitScore: rosterNeeds.fitByPosition[player.position] || (pf === "FLEX" ? rosterNeeds.fitByPosition.FLEX || 0 : 0) }))
+    .sort((a, b) => (b.waiverFitScore - a.waiverFitScore) || (pf === "ALL" ? (b.vorpScore - a.vorpScore) : (b.projectedPoints - a.projectedPoints))).slice(0, 15);
+  renderWaiverNeeds(selectedManager, rosterNeeds.needs);
 
   const tbl = document.getElementById("waiverTbl");
   if (!tbl) return;
-  tbl.innerHTML = `<thead><tr><th>Pos</th><th style="text-align:left;">Player</th><th>NFL Team</th><th>Health Status</th><th>${state.season} Bye</th><th>Season PPG</th><th>Week ${state.week} Proj</th><th>VORP</th><th>Suggested Bid</th><th></th></tr></thead><tbody></tbody>`;
+  tbl.innerHTML = `<thead><tr><th>Pos</th><th style="text-align:left;">Player</th><th>NFL Team</th><th>Health Status</th><th>${state.season} Bye</th><th>Season PPG</th><th>Week ${state.week} Proj</th><th>VORP</th><th>Roster fit</th><th>Suggested Bid</th><th></th></tr></thead><tbody></tbody>`;
   const tbody = tbl.querySelector("tbody");
 
   state.waiverTargets.forEach(fa => {
@@ -2818,6 +3049,7 @@ function renderWaiversTab() {
       <td>${fa.seasonPpg.toFixed(2)} pts</td>
       <td style="color:var(--good);font-weight:700;">${fa.projectedPoints.toFixed(2)} pts</td>
       <td style="color:var(--accent);font-weight:700;">+${fa.vorpScore.toFixed(1)}</td>
+      <td class="waiver-fit-cell">${fa.waiverFitScore >= 80 ? "Priority" : (fa.waiverFitScore > 0 ? "Depth" : "General")}</td>
       <td style="font-weight:700;">$${bid}</td>
       <td><button class="btn-builder-action faab-queue-btn" type="button" data-faab-player="${draftEscapeHtml(fa.id)}">${queuedIndex >= 0 ? "Queued" : "Queue bid"}</button></td>`;
     tbody.appendChild(tr);
@@ -2860,6 +3092,48 @@ function drawWaiverChart() {
   });
 }
 
+function getAnalyticsMedian(values) {
+  const sorted = values.filter(Number.isFinite).sort((a, b) => a - b);
+  if (!sorted.length) return 0;
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
+}
+
+function renderAnalyticsReadout(pool, config) {
+  const summary = document.getElementById("analyticsValueSummary");
+  const insight = document.getElementById("analyticsInsight");
+  const poolSummary = document.getElementById("analyticsPoolSummary");
+  if (!pool.length) {
+    if (summary) summary.innerHTML = "";
+    if (insight) insight.textContent = "No active players match this position.";
+    if (poolSummary) poolSummary.textContent = "No active players";
+    return;
+  }
+  const topProjection = [...pool].sort((a, b) => b.projectedPoints - a.projectedPoints)[0];
+  const topValue = [...pool].sort((a, b) => b.baseValue - a.baseValue)[0];
+  const topVorp = [...pool].sort((a, b) => b.vorpScore - a.vorpScore)[0];
+  if (summary) summary.innerHTML = [
+    ["Players analyzed", pool.length],
+    ["Top weekly projection", `${topProjection.name} · ${topProjection.projectedPoints.toFixed(1)} pts`],
+    ["Highest model value", `${topValue.name} · ${topValue.baseValue}`],
+    ["Best VORP", `${topVorp.name} · ${topVorp.vorpScore.toFixed(1)}`]
+  ].map(([label, value]) => `<div class="analytics-summary-item"><span>${draftEscapeHtml(label)}</span><strong>${draftEscapeHtml(value)}</strong></div>`).join("");
+  if (poolSummary) poolSummary.textContent = `Showing ${pool.length} of ${Object.values(state.players).filter(player => !player.isPick && player.position === pool[0].position && player.isCurrentNfl).length} active ${pool[0].position}s`;
+
+  const xValues = pool.map(player => Number(player[config.xKey]) || 0);
+  const yValues = pool.map(player => Number(player[config.yKey]) || 0);
+  const medianX = getAnalyticsMedian(xValues), medianY = getAnalyticsMedian(yValues);
+  const aboveBoth = pool.filter(player => Number(player[config.xKey]) >= medianX && Number(player[config.yKey]) >= medianY).length;
+  const relation = config.yKey === "baseValue"
+    ? pool.filter(player => Number(player[config.xKey]) >= medianX && player.baseValue < medianY).sort((a, b) => b.projectedPoints - a.projectedPoints).slice(0, 3)
+    : [];
+  if (insight) {
+    insight.textContent = config.yKey === "baseValue"
+      ? `${aboveBoth} players are above the positional median for both projection and model value. Projection leaders below median model value: ${relation.length ? relation.map(player => player.name).join(", ") : "none in this group"}. Model value is a relative estimate, not a market quote.`
+      : `${aboveBoth} of ${pool.length} players are above the positional median on both ${config.xLbl.toLowerCase()} and ${config.yLbl.toLowerCase()}. Dashed guides mark the median; compare players within this position.`;
+  }
+}
+
 function drawSingleAnalyticsChart() {
   const pos = document.getElementById("analyticsPos")?.value || "QB";
   const viewMode = parseInt(document.getElementById("analyticsGraphSelect")?.value || "0", 10);
@@ -2873,6 +3147,8 @@ function drawSingleAnalyticsChart() {
     .sort((a, b) => (b.seasonPpg * 160 + b.baseValue) - (a.seasonPpg * 160 + a.baseValue))
     .slice(0, 32)
     .sort((a, b) => ((Number(b[resolvedSortProp] || 0) - Number(a[resolvedSortProp] || 0)) * (analyticsSortDir === 1 ? -1 : 1)));
+
+  renderAnalyticsReadout(pool, cfg);
 
   const titleEl = document.getElementById("singleGraphTitle");
   if (titleEl) titleEl.textContent = cfg.title;
@@ -2958,6 +3234,19 @@ function drawSingleAnalyticsChart() {
   ctx.beginPath();
   ctx.moveTo(plot.l, plot.t); ctx.lineTo(plot.l, plot.t + plot.h); ctx.lineTo(plot.l + plot.w, plot.t + plot.h);
   ctx.stroke();
+
+  const medianX = getAnalyticsMedian(xs), medianY = getAnalyticsMedian(ys);
+  const medianPixelX = plot.l + ((medianX - minX) / Math.max(0.001, maxX - minX)) * plot.w;
+  const medianPixelY = plot.t + plot.h - ((medianY - minY) / Math.max(0.001, maxY - minY)) * plot.h;
+  ctx.save();
+  ctx.strokeStyle = "rgba(233,185,95,0.55)"; ctx.lineWidth = 1; ctx.setLineDash([5, 4]);
+  ctx.beginPath();
+  ctx.moveTo(medianPixelX, plot.t); ctx.lineTo(medianPixelX, plot.t + plot.h);
+  ctx.moveTo(plot.l, medianPixelY); ctx.lineTo(plot.l + plot.w, medianPixelY);
+  ctx.stroke(); ctx.setLineDash([]);
+  ctx.fillStyle = "#E9B95F"; ctx.font = "600 9px sans-serif"; ctx.textAlign = "right";
+  ctx.fillText("POSITION MEDIAN", plot.l + plot.w, plot.t + 12);
+  ctx.restore();
 
   ctx.fillStyle = "#64D2FF"; ctx.font = "700 12px -apple-system, BlinkMacSystemFont, sans-serif";
   ctx.textAlign = "center";
@@ -3140,6 +3429,8 @@ async function getPortfolioLeagueRosters(league) {
         return getInternalPlayerIdFromEspn(player);
       }).filter(Boolean)
     }));
+  } else if (league.provider === "yahoo") {
+    rosters = state.managers.map(manager => ({ teamId: String(manager.rosterId), ownerId: String(manager.ownerId || ""), name: manager.teamName, rosterPositions: league.rosterPositions || [], scoringSettings: league.scoringSettings || {}, players: manager.players || [] }));
   } else {
     const [rosterResponse, userResponse] = await Promise.all([
       fetch(`https://api.sleeper.app/v1/league/${league.leagueId}/rosters`).then(response => response.json()),
@@ -3157,6 +3448,651 @@ async function getPortfolioLeagueRosters(league) {
   return rosters;
 }
 
+function populateHistorySeasonOptions() {
+  const select = document.getElementById("historySeason");
+  if (!select) return;
+  const current = Number(state.activeLeague?.season || state.season || new Date().getFullYear());
+  const selected = select.value || String(current - 1);
+  const firstYear = Math.max(2017, current - 8);
+  const seasons = state.activeLeague?.provider === "yahoo"
+    ? [current]
+    : Array.from({ length: current - firstYear + 1 }, (_, index) => current - index);
+  select.innerHTML = seasons
+    .map(year => `<option value="${year}">${year}</option>`).join("");
+  if (seasons.some(year => String(year) === selected)) select.value = selected;
+  else select.value = String(seasons[0]);
+}
+
+function renderHistoricalRows(rows) {
+  state.historicalRows = rows;
+  const table = document.getElementById("historyTable");
+  if (!table) return;
+  table.innerHTML = `<thead><tr><th>Season</th><th style="text-align:left;">League</th><th style="text-align:left;">Manager</th><th>Record</th><th>Points For</th><th>Points Against</th></tr></thead><tbody></tbody>`;
+  const body = table.querySelector("tbody");
+  body.innerHTML = rows.length ? rows.sort((a, b) => (b.wins - a.wins) || (b.pointsFor - a.pointsFor)).map(row =>
+    `<tr><td>${draftEscapeHtml(row.season)}</td><td>${draftEscapeHtml(row.leagueName)}</td><td>${draftEscapeHtml(row.manager)}</td><td>${row.wins}-${row.losses}${row.ties ? `-${row.ties}` : ""}</td><td>${Number(row.pointsFor || 0).toFixed(1)}</td><td>${Number(row.pointsAgainst || 0).toFixed(1)}</td></tr>`
+  ).join("") : `<tr><td colspan="6" class="draft-empty">No standings found for this season.</td></tr>`;
+}
+
+async function loadHistoricalSeason() {
+  const year = String(document.getElementById("historySeason")?.value || "");
+  const meta = document.getElementById("historyMeta");
+  if (!year || !state.leagues.length) { if (meta) meta.textContent = "Connect an account before browsing historical seasons."; return; }
+  if (meta) meta.textContent = `Loading ${year} standings...`;
+  try {
+    const rows = [];
+    if (state.provider === "sleeper" && state.userId) {
+      const leagues = await fetch(`https://api.sleeper.app/v1/user/${state.userId}/leagues/nfl/${year}`).then(response => response.json());
+      const histories = await Promise.all((leagues || []).map(async league => {
+        const [rosters, users] = await Promise.all([
+          fetch(`https://api.sleeper.app/v1/league/${league.league_id}/rosters`).then(response => response.json()),
+          fetch(`https://api.sleeper.app/v1/league/${league.league_id}/users`).then(response => response.json())
+        ]);
+        const names = Object.fromEntries((users || []).map(user => [user.user_id, user.metadata?.team_name || user.display_name || "Manager"]));
+        return (rosters || []).map(roster => {
+          const settings = roster.settings || {};
+          return {
+            season: year, leagueName: league.name || `League ${league.league_id}`,
+            manager: names[roster.owner_id] || `Team ${roster.roster_id}`,
+            wins: Number(settings.wins) || 0, losses: Number(settings.losses) || 0, ties: Number(settings.ties) || 0,
+            pointsFor: Number(settings.fpts || 0) + Number(settings.fpts_decimal || 0) / 100,
+            pointsAgainst: Number(settings.fpts_against || 0) + Number(settings.fpts_against_decimal || 0) / 100
+          };
+        });
+      }));
+      histories.forEach(items => rows.push(...items));
+    } else if (state.provider === "espn") {
+      const histories = await Promise.all(state.leagues.map(async league => {
+        try {
+          const data = await fetchEspnLeague(league.leagueId, year);
+          const memberNames = Object.fromEntries((data.members || []).map(member => [String(member.id), member.displayName || member.firstName || "Manager"]));
+          return (data.teams || []).map(team => {
+            const record = team.record?.overall || {};
+            return {
+              season: year, leagueName: data.settings?.name || league.name,
+              manager: (team.owners || []).map(owner => memberNames[String(owner)] || "Manager").join(", "),
+              wins: Number(record.wins) || 0, losses: Number(record.losses) || 0, ties: Number(record.ties) || 0,
+              pointsFor: Number(record.pointsFor ?? team.points) || 0, pointsAgainst: Number(record.pointsAgainst ?? team.pointsAgainst) || 0
+            };
+          });
+        } catch { return []; }
+      }));
+      histories.forEach(items => rows.push(...items));
+    } else if (state.provider === "yahoo" && year === String(state.activeLeague?.season)) {
+      rows.push(...state.managers.map(manager => ({
+        season: year, leagueName: state.activeLeague.name, manager: manager.teamName,
+        wins: manager.wins, losses: manager.losses, ties: manager.ties || 0, pointsFor: manager.pf, pointsAgainst: manager.pa
+      })));
+    }
+    renderHistoricalRows(rows);
+    if (meta) meta.textContent = `${rows.length} manager season record${rows.length === 1 ? "" : "s"} · ${year}`;
+  } catch (error) {
+    if (meta) meta.textContent = `Could not load ${year} history: ${error.message}`;
+    renderHistoricalRows([]);
+  }
+}
+
+function getNormalizedCurrentMatchups() {
+  if (!state.activeLeague) return [];
+  if (state.activeLeague.provider === "espn") {
+    return (state.currentMatchups || []).map((matchup, index) => {
+      const home = matchup.home || {}, away = matchup.away || {};
+      const homeId = String(home.teamId ?? home.id ?? ""), awayId = String(away.teamId ?? away.id ?? "");
+      const homeManager = state.managers.find(manager => String(manager.rosterId) === homeId);
+      const awayManager = state.managers.find(manager => String(manager.rosterId) === awayId);
+      return {
+        id: String(matchup.id || matchup.matchupPeriodId || index), homeId, awayId,
+        homeName: homeManager?.teamName || `Team ${homeId}`, awayName: awayManager?.teamName || `Team ${awayId}`,
+        homeScore: Number(home.totalPoints ?? home.points) || 0, awayScore: Number(away.totalPoints ?? away.points) || 0
+      };
+    }).filter(matchup => matchup.homeId && matchup.awayId);
+  }
+  if (state.activeLeague.provider === "yahoo") {
+    return (state.currentMatchups || []).map((matchup, index) => ({
+      id: String(matchup.id || index), homeId: String(matchup.homeId || matchup.home?.teamId || ""),
+      awayId: String(matchup.awayId || matchup.away?.teamId || ""),
+      homeName: matchup.homeName || matchup.home?.name || "Home team", awayName: matchup.awayName || matchup.away?.name || "Away team",
+      homeScore: Number(matchup.homeScore ?? matchup.home?.points) || 0, awayScore: Number(matchup.awayScore ?? matchup.away?.points) || 0
+    })).filter(matchup => matchup.homeId && matchup.awayId);
+  }
+  const groups = new Map();
+  (state.currentMatchups || []).forEach(matchup => {
+    if (matchup.matchup_id === undefined || matchup.matchup_id === null) return;
+    if (!groups.has(String(matchup.matchup_id))) groups.set(String(matchup.matchup_id), []);
+    groups.get(String(matchup.matchup_id)).push(matchup);
+  });
+  return [...groups.entries()].filter(([, teams]) => teams.length >= 2).map(([id, teams]) => {
+    const home = teams[0], away = teams[1];
+    const managerFor = rosterId => state.managers.find(manager => String(manager.rosterId) === String(rosterId));
+    return {
+      id, homeId: String(home.roster_id), awayId: String(away.roster_id),
+      homeName: managerFor(home.roster_id)?.teamName || `Team ${home.roster_id}`,
+      awayName: managerFor(away.roster_id)?.teamName || `Team ${away.roster_id}`,
+      homeScore: Number(home.points) || 0, awayScore: Number(away.points) || 0
+    };
+  });
+}
+
+function renderWeeklyLeagueReport() {
+  const content = document.getElementById("weeklyReportContent");
+  const meta = document.getElementById("weeklyReportMeta");
+  if (!state.activeLeague || !state.managers.length) {
+    if (content) content.innerHTML = `<p>Connect a league to generate this week's report.</p>`;
+    return null;
+  }
+  const games = getNormalizedCurrentMatchups();
+  const leader = [...state.managers].sort((a, b) => (b.wins - a.wins) || (b.pf - a.pf))[0];
+  const scores = games.flatMap(game => [{ name: game.homeName, score: game.homeScore }, { name: game.awayName, score: game.awayScore }]);
+  const topScore = scores.filter(item => item.score > 0).sort((a, b) => b.score - a.score)[0];
+  const closest = [...games].filter(game => game.homeScore > 0 || game.awayScore > 0).sort((a, b) => Math.abs(a.homeScore - a.awayScore) - Math.abs(b.homeScore - b.awayScore))[0];
+  const actions = buildWeeklyRecommendations().length;
+  const lines = [
+    `${state.activeLeague.name} · Week ${state.week} Report`,
+    `${state.activeLeague.season} season · ${state.managers.length} managers`,
+    leader ? `Standings leader: ${leader.teamName} (${leader.wins}-${leader.losses}, ${leader.pf.toFixed(1)} points for).` : "Standings are not available.",
+    topScore ? `Top score so far: ${topScore.name} with ${topScore.score.toFixed(1)} points.` : "Matchup scores are not available yet.",
+    closest ? `Closest matchup so far: ${closest.homeName} ${closest.homeScore.toFixed(1)} – ${closest.awayScore.toFixed(1)} ${closest.awayName}.` : "No scored matchups are available yet.",
+    `${actions} roster actions are available for the selected team.`
+  ];
+  const report = { title: `${state.activeLeague.name} Week ${state.week}`, lines, managers: [...state.managers].sort((a, b) => (b.wins - a.wins) || (b.pf - a.pf)).slice(0, 12), games };
+  state.weeklyReportText = lines.join("\n");
+  if (content) content.innerHTML = `<h4>${draftEscapeHtml(report.title)}</h4><ul>${lines.slice(2).map(line => `<li>${draftEscapeHtml(line)}</li>`).join("")}</ul>`;
+  if (meta) meta.textContent = `Generated ${new Date().toLocaleString()} · scores reflect the last provider sync`;
+  return report;
+}
+
+async function copyWeeklyLeagueReport() {
+  const report = renderWeeklyLeagueReport();
+  if (!report) return;
+  try {
+    await navigator.clipboard.writeText(state.weeklyReportText);
+    setStatus("Weekly recap copied.");
+  } catch {
+    const textarea = document.createElement("textarea");
+    textarea.value = state.weeklyReportText; document.body.appendChild(textarea); textarea.select();
+    try { document.execCommand("copy"); } catch {}
+    textarea.remove(); setStatus("Weekly recap ready to paste.");
+  }
+}
+
+function downloadLeagueHome() {
+  const report = renderWeeklyLeagueReport();
+  if (!report) return;
+  const standings = report.managers.map(manager => `<tr><td>${draftEscapeHtml(manager.teamName)}</td><td>${manager.wins}-${manager.losses}</td><td>${Number(manager.pf || 0).toFixed(1)}</td><td>${Number(manager.pa || 0).toFixed(1)}</td></tr>`).join("");
+  const games = report.games.map(game => `<li>${draftEscapeHtml(game.homeName)} ${game.homeScore.toFixed(1)} – ${game.awayScore.toFixed(1)} ${draftEscapeHtml(game.awayName)}</li>`).join("");
+  const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${draftEscapeHtml(report.title)}</title><style>body{font:16px system-ui,sans-serif;max-width:900px;margin:40px auto;padding:0 20px;color:#17211c}h1{font-size:30px}p,li{line-height:1.6;color:#53615a}table{width:100%;border-collapse:collapse;margin-top:24px}th,td{text-align:left;padding:10px;border-bottom:1px solid #d8e0dc}th{background:#eff4f1}</style></head><body><h1>${draftEscapeHtml(report.title)}</h1><ul>${report.lines.slice(2).map(line => `<li>${draftEscapeHtml(line)}</li>`).join("")}</ul><h2>Current matchups</h2><ul>${games || "<li>No scores available</li>"}</ul><h2>Standings</h2><table><thead><tr><th>Manager</th><th>Record</th><th>PF</th><th>PA</th></tr></thead><tbody>${standings}</tbody></table><p>Generated by Fantasy Front Office.</p></body></html>`;
+  const url = URL.createObjectURL(new Blob([html], { type: "text/html" }));
+  const link = document.createElement("a");
+  link.href = url; link.download = `${state.activeLeague.name.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}-week-${state.week}-home.html`;
+  link.click(); URL.revokeObjectURL(url);
+}
+
+function getNewsletterLeagueKey(league = state.activeLeague) {
+  if (!league) return "";
+  return `${league.provider}:${league.leagueId}:${league.season}`;
+}
+
+function getNewsletterArchive() {
+  try {
+    const archive = JSON.parse(localStorage.getItem("fantasy-front-office:newsletter:v1") || "{}");
+    return archive && typeof archive === "object" ? archive : {};
+  } catch { return {}; }
+}
+
+function buildLeagueNewsletterIssue() {
+  const league = state.activeLeague;
+  if (!league || !state.managers.length) return null;
+  const leader = [...state.managers].sort((a, b) => (b.wins - a.wins) || (b.pf - a.pf))[0];
+  const games = getNormalizedCurrentMatchups();
+  const scores = games.flatMap(game => [{ name: game.homeName, score: game.homeScore }, { name: game.awayName, score: game.awayScore }]).sort((a, b) => b.score - a.score);
+  const closest = [...games].filter(game => game.homeScore > 0 || game.awayScore > 0).sort((a, b) => Math.abs(a.homeScore - a.awayScore) - Math.abs(b.homeScore - b.awayScore))[0];
+  const actions = buildWeeklyRecommendations().slice(0, 5).map(item => ({ title: item.title, detail: item.detail, value: item.value, type: item.type }));
+  const standings = [...state.managers].sort((a, b) => (b.wins - a.wins) || (b.pf - a.pf)).slice(0, 12).map(manager => ({
+    teamName: manager.teamName, record: `${manager.wins}-${manager.losses}${manager.ties ? `-${manager.ties}` : ""}`,
+    pointsFor: Number(manager.pf) || 0, pointsAgainst: Number(manager.pa) || 0
+  }));
+  const topScore = scores.find(item => item.score > 0);
+  const summary = [
+    leader ? `${leader.teamName} leads the standings at ${leader.wins}-${leader.losses} with ${Number(leader.pf || 0).toFixed(1)} points for.` : "Standings are not available yet.",
+    topScore ? `${topScore.name} owns the top score so far at ${topScore.score.toFixed(1)} points.` : "Matchup scoring is not available yet.",
+    closest ? `The closest game is ${closest.homeName} vs ${closest.awayName}, separated by ${Math.abs(closest.homeScore - closest.awayScore).toFixed(1)} points.` : "No close matchup is available to highlight yet.",
+    `${actions.length} front-office move${actions.length === 1 ? "" : "s"} to review this week.`
+  ];
+  return {
+    id: `${league.season}-week-${state.week}`, leagueKey: getNewsletterLeagueKey(league),
+    leagueName: league.name, season: String(league.season), week: state.week,
+    title: `${league.name} · Week ${state.week}`, generatedAt: new Date().toISOString(),
+    summary, games, standings, actions
+  };
+}
+
+function newsletterIssueText(issue) {
+  return [
+    issue.title, `${issue.season} season · Generated ${new Date(issue.generatedAt).toLocaleString()}`,
+    "", "THE WEEK IN BRIEF", ...issue.summary,
+    "", "MATCHUP BOARD", ...(issue.games.length ? issue.games.map(game => `${game.homeName} ${game.homeScore.toFixed(1)} — ${game.awayScore.toFixed(1)} ${game.awayName}`) : ["No matchup scores available."]),
+    "", "STANDINGS", ...issue.standings.map((team, index) => `${index + 1}. ${team.teamName} · ${team.record} · ${team.pointsFor.toFixed(1)} PF`),
+    "", "FRONT OFFICE WATCH", ...(issue.actions.length ? issue.actions.map(action => `${action.title} — ${action.detail} (${action.value})`) : ["No recommended actions right now."]),
+    "", "Fantasy Front Office"
+  ].join("\n");
+}
+
+function renderNewsletterIssue(issue, isSaved = false) {
+  const content = document.getElementById("leagueNewsletterContent");
+  const status = document.getElementById("newsletterStatus");
+  if (!content || !issue) return;
+  const games = issue.games.length ? issue.games.map(game => {
+    const winner = game.homeScore === game.awayScore ? "Tied" : (game.homeScore > game.awayScore ? game.homeName : game.awayName);
+    return `<li><div><strong>${draftEscapeHtml(game.homeName)}</strong><span>${game.homeScore.toFixed(1)}</span></div><div><strong>${draftEscapeHtml(game.awayName)}</strong><span>${game.awayScore.toFixed(1)}</span></div><small>${draftEscapeHtml(winner)} leads</small></li>`;
+  }).join("") : `<li class="newsletter-empty">Matchups are not available for this week.</li>`;
+  const standings = issue.standings.map((team, index) => `<tr><td>${index + 1}</td><td>${draftEscapeHtml(team.teamName)}</td><td>${draftEscapeHtml(team.record)}</td><td>${team.pointsFor.toFixed(1)}</td><td>${team.pointsAgainst.toFixed(1)}</td></tr>`).join("");
+  const actions = issue.actions.length ? issue.actions.map(action => `<li><span class="newsletter-action-type">${draftEscapeHtml(action.type)}</span><div><strong>${draftEscapeHtml(action.title)}</strong><small>${draftEscapeHtml(action.detail)} · ${draftEscapeHtml(action.value)}</small></div></li>`).join("") : `<li class="newsletter-empty">No front-office actions to highlight.</li>`;
+  content.innerHTML = `<header class="newsletter-masthead"><div><span>FANTASY FRONT OFFICE · ${draftEscapeHtml(issue.season)} SEASON</span><h1>${draftEscapeHtml(issue.title)}</h1></div><time>${draftEscapeHtml(new Date(issue.generatedAt).toLocaleString())}${isSaved ? " · archived" : ""}</time></header><section class="newsletter-brief"><h3>THE WEEK IN BRIEF</h3><ul>${issue.summary.map(line => `<li>${draftEscapeHtml(line)}</li>`).join("")}</ul></section><section class="newsletter-section"><h3>Matchup Board</h3><ol class="newsletter-games">${games}</ol></section><section class="newsletter-section"><h3>Standings</h3><div class="table-wrap"><table class="newsletter-standings"><thead><tr><th>#</th><th>Team</th><th>Record</th><th>PF</th><th>PA</th></tr></thead><tbody>${standings}</tbody></table></div></section><section class="newsletter-section"><h3>Front Office Watch</h3><ol class="newsletter-actions">${actions}</ol></section><footer class="newsletter-footer">Generated for ${draftEscapeHtml(issue.leagueName)} by Fantasy Front Office.</footer>`;
+  if (status) status.textContent = isSaved ? `Viewing archived Week ${issue.week} · ${issue.season}.` : `Previewing the current Week ${issue.week} issue. Save it to keep this edition in the league archive.`;
+}
+
+function renderLeagueNewsletter() {
+  const leagueSelect = document.getElementById("newsletterLeagueSelect");
+  const archiveSelect = document.getElementById("newsletterArchiveSelect");
+  const badge = document.getElementById("newsletterLeagueBadge");
+  if (!leagueSelect || !archiveSelect) return;
+  const previousLeague = leagueSelect.value;
+  leagueSelect.innerHTML = state.leagues.map((league, index) => `<option value="${index}">${draftEscapeHtml(league.name)} · ${draftEscapeHtml(league.season)}</option>`).join("");
+  if (!state.activeLeague || !state.leagues.length) {
+    leagueSelect.innerHTML = `<option value="">Connect a league first</option>`;
+    archiveSelect.innerHTML = `<option value="">No saved issues</option>`;
+    if (badge) badge.textContent = "No league selected";
+    document.getElementById("leagueNewsletterContent").innerHTML = `<p>Connect a league to generate its weekly edition.</p>`;
+    document.getElementById("newsletterStatus").textContent = "Connect a league to generate its weekly edition.";
+    return;
+  }
+  const activeIndex = state.leagues.indexOf(state.activeLeague);
+  leagueSelect.value = previousLeague === String(activeIndex) ? previousLeague : String(activeIndex);
+  if (badge) badge.textContent = state.activeLeague.name;
+  const archive = getNewsletterArchive();
+  const leagueKey = getNewsletterLeagueKey();
+  const savedIssues = Object.values(archive[leagueKey] || {}).sort((a, b) => (Number(b.week) - Number(a.week)) || String(b.generatedAt).localeCompare(String(a.generatedAt)));
+  const previousIssue = archiveSelect.value;
+  archiveSelect.innerHTML = `<option value="current">Current week · ${state.week}</option>${savedIssues.map(issue => `<option value="${draftEscapeHtml(issue.id)}">Saved · ${draftEscapeHtml(issue.season)} W${draftEscapeHtml(issue.week)}</option>`).join("")}`;
+  const selectedIssue = savedIssues.find(issue => issue.id === previousIssue);
+  archiveSelect.value = selectedIssue ? previousIssue : "current";
+  if (archiveSelect.value === "current") renderNewsletterIssue(buildLeagueNewsletterIssue());
+  else renderNewsletterIssue(selectedIssue, true);
+  const meta = document.getElementById("newsletterArchiveMeta");
+  if (meta) meta.textContent = `${savedIssues.length} saved issue${savedIssues.length === 1 ? "" : "s"} for ${state.activeLeague.name}.`;
+}
+
+function getSelectedNewsletterIssue() {
+  const select = document.getElementById("newsletterArchiveSelect");
+  if (!state.activeLeague || !select || select.value === "current") return buildLeagueNewsletterIssue();
+  const archive = getNewsletterArchive();
+  return archive[getNewsletterLeagueKey()]?.[select.value] || buildLeagueNewsletterIssue();
+}
+
+function saveNewsletterIssue() {
+  const issue = buildLeagueNewsletterIssue();
+  if (!issue) return;
+  const archive = getNewsletterArchive();
+  if (!archive[issue.leagueKey]) archive[issue.leagueKey] = {};
+  archive[issue.leagueKey][issue.id] = issue;
+  try { localStorage.setItem("fantasy-front-office:newsletter:v1", JSON.stringify(archive)); } catch {}
+  renderLeagueNewsletter();
+  const select = document.getElementById("newsletterArchiveSelect");
+  if (select) select.value = issue.id;
+  renderNewsletterIssue(issue, true);
+  document.getElementById("newsletterStatus").textContent = `Week ${issue.week} saved to ${issue.leagueName}'s newsletter archive.`;
+}
+
+async function copyNewsletterIssue() {
+  const issue = getSelectedNewsletterIssue();
+  if (!issue) return;
+  const text = newsletterIssueText(issue);
+  try { await navigator.clipboard.writeText(text); }
+  catch {
+    const textarea = document.createElement("textarea");
+    textarea.value = text; document.body.appendChild(textarea); textarea.select();
+    try { document.execCommand("copy"); } catch {}
+    textarea.remove();
+  }
+  document.getElementById("newsletterStatus").textContent = "Newsletter copied as text.";
+}
+
+function downloadNewsletterIssue() {
+  const issue = getSelectedNewsletterIssue();
+  if (!issue) return;
+  const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${draftEscapeHtml(issue.title)}</title><style>body{font:16px Georgia,serif;max-width:820px;margin:40px auto;padding:0 20px;color:#18221e}h1{font:700 34px Georgia,serif}h2,h3{font:700 15px Arial,sans-serif;text-transform:uppercase;letter-spacing:1px;margin-top:30px}li{line-height:1.6;margin:8px 0}table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:9px;border-bottom:1px solid #d8e0dc}footer{margin-top:35px;color:#63716a;font:12px Arial,sans-serif}</style></head><body><p>FANTASY FRONT OFFICE · ${draftEscapeHtml(issue.season)} SEASON</p><h1>${draftEscapeHtml(issue.title)}</h1><h2>The week in brief</h2><ul>${issue.summary.map(line => `<li>${draftEscapeHtml(line)}</li>`).join("")}</ul><h2>Matchups</h2><ul>${issue.games.map(game => `<li>${draftEscapeHtml(game.homeName)} ${game.homeScore.toFixed(1)} — ${game.awayScore.toFixed(1)} ${draftEscapeHtml(game.awayName)}</li>`).join("")}</ul><h2>Standings</h2><table><thead><tr><th>#</th><th>Team</th><th>Record</th><th>PF</th><th>PA</th></tr></thead><tbody>${issue.standings.map((team, index) => `<tr><td>${index + 1}</td><td>${draftEscapeHtml(team.teamName)}</td><td>${draftEscapeHtml(team.record)}</td><td>${team.pointsFor.toFixed(1)}</td><td>${team.pointsAgainst.toFixed(1)}</td></tr>`).join("")}</tbody></table><h2>Front office watch</h2><ul>${issue.actions.map(action => `<li><strong>${draftEscapeHtml(action.title)}</strong> — ${draftEscapeHtml(action.detail)} · ${draftEscapeHtml(action.value)}</li>`).join("")}</ul><footer>Generated for ${draftEscapeHtml(issue.leagueName)} by Fantasy Front Office.</footer></body></html>`;
+  const url = URL.createObjectURL(new Blob([html], { type: "text/html" }));
+  const link = document.createElement("a");
+  link.href = url; link.download = `${issue.leagueName.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}-week-${issue.week}-newsletter.html`;
+  link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+  document.getElementById("newsletterStatus").textContent = "Standalone newsletter HTML downloaded.";
+}
+
+function getPickemStorageKey() {
+  return `fantasy-pickem-v1:${state.activeLeague?.provider || state.provider}:${state.activeLeague?.leagueId || "none"}:${state.activeLeague?.season || state.season}:${state.week}`;
+}
+
+function renderPickemChallenge() {
+  const matchupSelect = document.getElementById("pickemMatchup"), winnerSelect = document.getElementById("pickemWinner");
+  const status = document.getElementById("pickemStatus"), historyEl = document.getElementById("pickemHistory");
+  if (!matchupSelect || !winnerSelect || !status || !historyEl) return;
+  const games = getNormalizedCurrentMatchups();
+  const key = getPickemStorageKey(), historyKey = `${key.split(":").slice(0, 3).join(":")}:history`;
+  let saved = null, history = [];
+  try { saved = JSON.parse(localStorage.getItem(key) || "null"); history = JSON.parse(localStorage.getItem(historyKey) || "[]"); } catch {}
+  const priorMatchup = matchupSelect.value || saved?.matchupId || "";
+  matchupSelect.innerHTML = games.length ? games.map(game => `<option value="${draftEscapeHtml(game.id)}">${draftEscapeHtml(game.homeName)} vs ${draftEscapeHtml(game.awayName)}</option>`).join("") : `<option value="">No matchup data loaded</option>`;
+  if (games.some(game => game.id === priorMatchup)) matchupSelect.value = priorMatchup;
+  const selectedGame = games.find(game => game.id === matchupSelect.value);
+  if (selectedGame) {
+    const priorWinner = winnerSelect.value || (saved?.matchupId === selectedGame.id ? saved.winnerId : "");
+    winnerSelect.innerHTML = `<option value="${draftEscapeHtml(selectedGame.homeId)}">${draftEscapeHtml(selectedGame.homeName)}</option><option value="${draftEscapeHtml(selectedGame.awayId)}">${draftEscapeHtml(selectedGame.awayName)}</option>`;
+    winnerSelect.value = [selectedGame.homeId, selectedGame.awayId].includes(String(priorWinner)) ? String(priorWinner) : selectedGame.homeId;
+  } else winnerSelect.innerHTML = `<option value="">No teams</option>`;
+  const currentPick = saved && selectedGame?.id === saved.matchupId;
+  status.textContent = currentPick ? `Saved pick: ${saved.winnerName} · current score ${selectedGame.homeScore.toFixed(1)}–${selectedGame.awayScore.toFixed(1)} (refresh after scoring updates)` : (games.length ? `Week ${state.week} · ${games.length} matchups loaded` : "No matchup data available for this week.");
+  historyEl.innerHTML = history.slice(-8).reverse().map(pick => `<span class="pickem-result">W${pick.week}: ${draftEscapeHtml(pick.winnerName)} · ${draftEscapeHtml(pick.leagueName)}</span>`).join("");
+}
+
+function savePickemPrediction() {
+  const game = getNormalizedCurrentMatchups().find(item => item.id === document.getElementById("pickemMatchup")?.value);
+  const winnerId = document.getElementById("pickemWinner")?.value;
+  if (!game || !winnerId) { const status = document.getElementById("pickemStatus"); if (status) status.textContent = "No matchup is available for a pick."; return; }
+  const winnerName = String(winnerId) === game.homeId ? game.homeName : game.awayName;
+  const key = getPickemStorageKey(), historyKey = `${key.split(":").slice(0, 3).join(":")}:history`;
+  const pick = { week: state.week, matchupId: game.id, winnerId: String(winnerId), winnerName, leagueName: state.activeLeague?.name || "League", savedAt: Date.now() };
+  try {
+    localStorage.setItem(key, JSON.stringify(pick));
+    const history = JSON.parse(localStorage.getItem(historyKey) || "[]").filter(item => !(item.week === state.week && item.matchupId === game.id));
+    history.push(pick); localStorage.setItem(historyKey, JSON.stringify(history.slice(-50)));
+  } catch {}
+  renderPickemChallenge();
+}
+
+function getNormalizedCurrentMatchups() {
+  if (!state.activeLeague) return [];
+  if (state.activeLeague.provider === "espn") {
+    return (state.currentMatchups || []).map((matchup, index) => {
+      const home = matchup.home || {};
+      const away = matchup.away || {};
+      const homeId = String(home.teamId ?? home.id ?? "");
+      const awayId = String(away.teamId ?? away.id ?? "");
+      const homeManager = state.managers.find(manager => String(manager.rosterId) === homeId);
+      const awayManager = state.managers.find(manager => String(manager.rosterId) === awayId);
+      return {
+        id: String(matchup.id || matchup.matchupPeriodId || index),
+        homeId, awayId, homeName: homeManager?.teamName || `Team ${homeId}`,
+        awayName: awayManager?.teamName || `Team ${awayId}`,
+        homeScore: Number(home.totalPoints ?? home.points) || 0,
+        awayScore: Number(away.totalPoints ?? away.points) || 0
+      };
+    }).filter(matchup => matchup.homeId && matchup.awayId);
+  }
+
+  if (state.activeLeague.provider === "yahoo") {
+    return (state.currentMatchups || []).map((matchup, index) => ({
+      id: String(matchup.id || index), homeId: String(matchup.homeId || matchup.home?.teamId || ""),
+      awayId: String(matchup.awayId || matchup.away?.teamId || ""),
+      homeName: matchup.homeName || matchup.home?.name || "Home team", awayName: matchup.awayName || matchup.away?.name || "Away team",
+      homeScore: Number(matchup.homeScore ?? matchup.home?.points) || 0, awayScore: Number(matchup.awayScore ?? matchup.away?.points) || 0
+    })).filter(matchup => matchup.homeId && matchup.awayId);
+  }
+
+  const groups = new Map();
+  (state.currentMatchups || []).forEach(matchup => {
+    if (matchup.matchup_id === undefined || matchup.matchup_id === null) return;
+    if (!groups.has(String(matchup.matchup_id))) groups.set(String(matchup.matchup_id), []);
+    groups.get(String(matchup.matchup_id)).push(matchup);
+  });
+  return [...groups.entries()].filter(([, teams]) => teams.length >= 2).map(([id, teams]) => {
+    const home = teams[0], away = teams[1];
+    const managerFor = rosterId => state.managers.find(manager => String(manager.rosterId) === String(rosterId));
+    return {
+      id, homeId: String(home.roster_id), awayId: String(away.roster_id),
+      homeName: managerFor(home.roster_id)?.teamName || `Team ${home.roster_id}`,
+      awayName: managerFor(away.roster_id)?.teamName || `Team ${away.roster_id}`,
+      homeScore: Number(home.points) || 0, awayScore: Number(away.points) || 0
+    };
+  });
+}
+
+function updateHistorySeasonOptions() {
+  const select = document.getElementById("historySeason");
+  if (!select) return;
+  const current = Number(state.activeLeague?.season || state.season || new Date().getFullYear());
+  const selected = select.value || String(current - 1);
+  select.innerHTML = Array.from({ length: Math.min(10, Math.max(1, current - 2016)) }, (_, index) => current - index - 1)
+    .map(year => `<option value="${year}">${year}</option>`).join("");
+  select.value = [...select.options].some(option => option.value === selected) ? selected : select.options[0]?.value;
+}
+
+function renderHistoricalRows(rows) {
+  state.historicalRows = rows;
+  const table = document.getElementById("historyTable");
+  if (!table) return;
+  table.innerHTML = `<thead><tr><th>Season</th><th style="text-align:left;">League</th><th style="text-align:left;">Manager</th><th>Record</th><th>Points For</th><th>Points Against</th></tr></thead><tbody></tbody>`;
+  const body = table.querySelector("tbody");
+  body.innerHTML = rows.length ? rows.sort((a, b) => (b.wins - a.wins) || (b.pointsFor - a.pointsFor)).map(row =>
+    `<tr><td>${draftEscapeHtml(row.season)}</td><td>${draftEscapeHtml(row.leagueName)}</td><td>${draftEscapeHtml(row.manager)}</td><td>${row.wins}-${row.losses}${row.ties ? `-${row.ties}` : ""}</td><td>${Number(row.pointsFor || 0).toFixed(1)}</td><td>${Number(row.pointsAgainst || 0).toFixed(1)}</td></tr>`
+  ).join("") : `<tr><td colspan="6" class="draft-empty">No standings found for this season.</td></tr>`;
+}
+
+async function loadHistoricalSeason() {
+  const year = String(document.getElementById("historySeason")?.value || "");
+  const meta = document.getElementById("historyMeta");
+  if (!year || !state.leagues.length) { if (meta) meta.textContent = "Connect an account before browsing historical seasons."; return; }
+  if (meta) meta.textContent = `Loading ${year} standings...`;
+  try {
+    const rows = [];
+    if (state.provider === "sleeper" && state.userId) {
+      const leagues = await fetch(`https://api.sleeper.app/v1/user/${state.userId}/leagues/nfl/${year}`).then(response => response.json());
+      const histories = await Promise.all((leagues || []).map(async league => {
+        const [rosters, users] = await Promise.all([
+          fetch(`https://api.sleeper.app/v1/league/${league.league_id}/rosters`).then(response => response.json()),
+          fetch(`https://api.sleeper.app/v1/league/${league.league_id}/users`).then(response => response.json())
+        ]);
+        const names = Object.fromEntries((users || []).map(user => [user.user_id, user.metadata?.team_name || user.display_name || "Manager"]));
+        return (rosters || []).map(roster => {
+          const settings = roster.settings || {};
+          return {
+            season: year, leagueName: league.name || `League ${league.league_id}`,
+            manager: names[roster.owner_id] || `Team ${roster.roster_id}`,
+            wins: Number(settings.wins) || 0, losses: Number(settings.losses) || 0, ties: Number(settings.ties) || 0,
+            pointsFor: Number(settings.fpts || 0) + Number(settings.fpts_decimal || 0) / 100,
+            pointsAgainst: Number(settings.fpts_against || 0) + Number(settings.fpts_against_decimal || 0) / 100
+          };
+        });
+      }));
+      histories.forEach(items => rows.push(...items));
+    } else if (state.provider === "espn") {
+      const histories = await Promise.all(state.leagues.map(async league => {
+        try {
+          const data = await fetchEspnLeague(league.leagueId, year);
+          const memberNames = Object.fromEntries((data.members || []).map(member => [String(member.id), member.displayName || member.firstName || "Manager"]));
+          return (data.teams || []).map(team => {
+            const record = team.record?.overall || {};
+            return {
+              season: year, leagueName: data.settings?.name || league.name,
+              manager: (team.owners || []).map(owner => memberNames[String(owner)] || "Manager").join(", "),
+              wins: Number(record.wins) || 0, losses: Number(record.losses) || 0, ties: Number(record.ties) || 0,
+              pointsFor: Number(record.pointsFor ?? team.points) || 0, pointsAgainst: Number(record.pointsAgainst ?? team.pointsAgainst) || 0
+            };
+          });
+        } catch { return []; }
+      }));
+      histories.forEach(items => rows.push(...items));
+    } else if (state.provider === "yahoo" && year === String(state.activeLeague?.season)) {
+      rows.push(...state.managers.map(manager => ({
+        season: year, leagueName: state.activeLeague.name, manager: manager.teamName,
+        wins: manager.wins, losses: manager.losses, ties: manager.ties || 0, pointsFor: manager.pf, pointsAgainst: manager.pa
+      })));
+    }
+    renderHistoricalRows(rows);
+    if (meta) meta.textContent = `${rows.length} manager season record${rows.length === 1 ? "" : "s"} · ${year}`;
+  } catch (error) {
+    if (meta) meta.textContent = `Could not load ${year} history: ${error.message}`;
+    renderHistoricalRows([]);
+  }
+}
+
+function getPickemStorageKey() {
+  return `fantasy-pickem-v1:${state.activeLeague?.provider || state.provider}:${state.activeLeague?.leagueId || "none"}:${state.activeLeague?.season || state.season}:${state.week}`;
+}
+
+function renderPickemChallenge() {
+  const matchupSelect = document.getElementById("pickemMatchup");
+  const winnerSelect = document.getElementById("pickemWinner");
+  const status = document.getElementById("pickemStatus");
+  const historyEl = document.getElementById("pickemHistory");
+  if (!matchupSelect || !winnerSelect || !status || !historyEl) return;
+  const games = getNormalizedCurrentMatchups();
+  const savedKey = getPickemStorageKey();
+  let saved = null;
+  let allPicks = [];
+  try {
+    saved = JSON.parse(localStorage.getItem(savedKey) || "null");
+    allPicks = JSON.parse(localStorage.getItem(`${savedKey.split(":").slice(0, 3).join(":")}:history`) || "[]");
+  } catch {}
+  const previousMatchup = matchupSelect.value || saved?.matchupId || "";
+  matchupSelect.innerHTML = games.length
+    ? games.map(game => `<option value="${draftEscapeHtml(game.id)}">${draftEscapeHtml(game.homeName)} vs ${draftEscapeHtml(game.awayName)}</option>`).join("")
+    : `<option value="">No matchup data loaded</option>`;
+  if (games.some(game => game.id === previousMatchup)) matchupSelect.value = previousMatchup;
+  const selectedGame = games.find(game => game.id === matchupSelect.value);
+  if (selectedGame) {
+    const previousWinner = winnerSelect.value || (saved?.matchupId === selectedGame.id ? saved.winnerId : "");
+    winnerSelect.innerHTML = `<option value="${draftEscapeHtml(selectedGame.homeId)}">${draftEscapeHtml(selectedGame.homeName)}</option><option value="${draftEscapeHtml(selectedGame.awayId)}">${draftEscapeHtml(selectedGame.awayName)}</option>`;
+    if ([selectedGame.homeId, selectedGame.awayId].includes(String(previousWinner))) winnerSelect.value = previousWinner;
+    else winnerSelect.value = selectedGame.homeId;
+  } else winnerSelect.innerHTML = `<option value="">No teams</option>`;
+
+  const currentSaved = saved && games.find(game => game.id === saved.matchupId);
+  status.textContent = currentSaved
+    ? `Saved pick: ${currentSaved.winnerId === currentSaved.homeId ? currentSaved.homeName : currentSaved.awayName} · current score ${currentSaved.homeScore.toFixed(1)}–${currentSaved.awayScore.toFixed(1)} (refresh as scores update)`
+    : (games.length ? `Week ${state.week} · ${games.length} matchups loaded` : "No matchup data available for this provider/week.");
+  historyEl.innerHTML = allPicks.slice(-8).reverse().map(pick => `<span class="pickem-result">W${pick.week}: ${draftEscapeHtml(pick.winnerName)} · ${draftEscapeHtml(pick.leagueName)}</span>`).join("");
+}
+
+function savePickemPrediction() {
+  const game = getNormalizedCurrentMatchups().find(item => item.id === document.getElementById("pickemMatchup")?.value);
+  const winnerId = document.getElementById("pickemWinner")?.value;
+  if (!game || !winnerId) { const status = document.getElementById("pickemStatus"); if (status) status.textContent = "No matchup is available for a pick."; return; }
+  const winnerName = String(winnerId) === game.homeId ? game.homeName : game.awayName;
+  const key = getPickemStorageKey();
+  const historyKey = `${key.split(":").slice(0, 3).join(":")}:history`;
+  const pick = { week: state.week, matchupId: game.id, winnerId: String(winnerId), winnerName, leagueName: state.activeLeague?.name || "League", savedAt: Date.now() };
+  try {
+    localStorage.setItem(key, JSON.stringify(pick));
+    const history = JSON.parse(localStorage.getItem(historyKey) || "[]");
+    const filtered = history.filter(item => !(item.week === state.week && item.matchupId === game.id));
+    filtered.push(pick);
+    localStorage.setItem(historyKey, JSON.stringify(filtered.slice(-50)));
+  } catch {}
+  renderPickemChallenge();
+}
+
+function generateWeeklyLeagueReport() {
+  if (!state.activeLeague || !state.managers.length) return null;
+  const games = getNormalizedCurrentMatchups();
+  const leader = [...state.managers].sort((a, b) => (b.wins - a.wins) || (b.pf - a.pf))[0];
+  const topScore = games.length ? Math.max(...games.flatMap(game => [game.homeScore, game.awayScore])) : 0;
+  const closest = [...games].filter(game => game.homeScore > 0 || game.awayScore > 0).sort((a, b) => Math.abs(a.homeScore - a.awayScore) - Math.abs(b.homeScore - b.awayScore))[0];
+  const actionCount = buildWeeklyRecommendations().length;
+  const lines = [
+    `${state.activeLeague.name} · Week ${state.week} Report`,
+    `${state.activeLeague.season} season · ${state.activeLeague.totalTeams || state.managers.length} teams`,
+    leader ? `Standings leader: ${leader.teamName} (${leader.wins}-${leader.losses}, ${leader.pf.toFixed(1)} points for).` : "Standings are not available.",
+    topScore > 0 ? `Top matchup score so far: ${topScore.toFixed(1)} points.` : "Matchup scores are not available yet.",
+    closest ? `Closest matchup so far: ${closest.homeName} ${closest.homeScore.toFixed(1)} – ${closest.awayScore.toFixed(1)} ${closest.awayName}.` : "No completed matchup scores are available yet.",
+    `${actionCount} roster recommendations are available for the selected team.`
+  ];
+  const report = { title: `${state.activeLeague.name} Week ${state.week}`, lines, games, managers: [...state.managers].sort((a, b) => (b.wins - a.wins) || (b.pf - a.pf)).slice(0, 12) };
+  state.weeklyReportText = lines.join("\n");
+  const content = document.getElementById("weeklyReportContent");
+  if (content) content.innerHTML = `<h4>${draftEscapeHtml(report.title)}</h4><ul>${lines.slice(2).map(line => `<li>${draftEscapeHtml(line)}</li>`).join("")}</ul>`;
+  const meta = document.getElementById("weeklyReportMeta");
+  if (meta) meta.textContent = `Generated ${new Date().toLocaleString()} · share or download this snapshot`;
+  return report;
+}
+
+async function copyWeeklyReport() {
+  const report = generateWeeklyLeagueReport();
+  if (!report) return;
+  try {
+    await navigator.clipboard.writeText(state.weeklyReportText);
+    setStatus("Weekly recap copied.");
+  } catch {
+    const helper = document.createElement("textarea");
+    helper.value = state.weeklyReportText;
+    document.body.appendChild(helper); helper.select();
+    try { document.execCommand("copy"); } catch {}
+    helper.remove();
+    setStatus("Weekly recap ready to paste.");
+  }
+}
+
+function downloadLeagueHome() {
+  const report = generateWeeklyLeagueReport();
+  if (!report) return;
+  const rows = report.managers.map(manager => `<tr><td>${draftEscapeHtml(manager.teamName)}</td><td>${manager.wins}-${manager.losses}</td><td>${manager.pf.toFixed(1)}</td><td>${manager.pa.toFixed(1)}</td></tr>`).join("");
+  const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${draftEscapeHtml(report.title)}</title><style>body{font:16px system-ui,sans-serif;max-width:900px;margin:40px auto;padding:0 20px;color:#17211c}h1{font-size:30px}p,li{line-height:1.6;color:#53615a}table{width:100%;border-collapse:collapse;margin-top:24px}th,td{text-align:left;padding:10px;border-bottom:1px solid #d8e0dc}th{background:#eff4f1}</style></head><body><h1>${draftEscapeHtml(report.title)}</h1><ul>${report.lines.slice(2).map(line => `<li>${draftEscapeHtml(line)}</li>`).join("")}</ul><h2>Standings</h2><table><thead><tr><th>Manager</th><th>Record</th><th>Points for</th><th>Points against</th></tr></thead><tbody>${rows}</tbody></table><p>Generated by Fantasy Front Office.</p></body></html>`;
+  const url = URL.createObjectURL(new Blob([html], { type: "text/html" }));
+  const link = document.createElement("a");
+  link.href = url; link.download = `${state.activeLeague.name.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}-week-${state.week}-report.html`;
+  link.click(); URL.revokeObjectURL(url);
+}
+
+function getBasePositionSlotCounts(rosterPositions = []) {
+  const positions = ["QB", "RB", "WR", "TE"];
+  const counts = Object.fromEntries(positions.map(position => [position, 0]));
+  rosterPositions.filter(slot => positions.includes(slot)).forEach(position => counts[position]++);
+  return positions.some(position => counts[position]) ? counts : { QB: 1, RB: 2, WR: 2, TE: 1 };
+}
+
+function getManagerPositionCounts(manager) {
+  const counts = { QB: 0, RB: 0, WR: 0, TE: 0 };
+  (manager?.players || []).forEach(playerId => {
+    const position = state.players[playerId]?.position;
+    if (Object.hasOwn(counts, position)) counts[position]++;
+  });
+  return counts;
+}
+
+function buildOpponentAwareRecommendations(manager) {
+  if (!manager || !state.activeLeague || state.managers.length < 2) return [];
+  const requirements = getBasePositionSlotCounts(state.activeLeague.rosterPositions || []);
+  const ownedCounts = getManagerPositionCounts(manager);
+  const starters = new Set((manager.starters || []).map(String));
+  const surplusPlayers = (manager.players || []).map(id => state.players[id]).filter(player => player && !player.isPick && !starters.has(String(player.id)) && ownedCounts[player.position] > requirements[player.position]);
+  const profiles = new Map((state.managerTendencies || []).map(profile => [String(profile.rosterId), profile]));
+  const results = [];
+  state.managers.filter(opponent => String(opponent.rosterId) !== String(manager.rosterId)).forEach(opponent => {
+    const counts = getManagerPositionCounts(opponent);
+    const needs = Object.keys(requirements).map(position => ({ position, gap: requirements[position] - counts[position] })).filter(item => item.gap > 0).sort((a, b) => b.gap - a.gap);
+    const need = needs.find(item => surplusPlayers.some(player => player.position === item.position));
+    if (!need) return;
+    const player = surplusPlayers.filter(item => item.position === need.position).sort((a, b) => (b.baseValue || 0) - (a.baseValue || 0))[0];
+    if (!player) return;
+    const profile = profiles.get(String(opponent.rosterId));
+    const acquisitionMix = Object.entries(profile?.positions || {}).sort((a, b) => b[1] - a[1]);
+    const positionAdds = Number(profile?.positions?.[need.position]) || 0;
+    const acquisitionCount = Number(profile?.acquisitions) || 0;
+    const behaviorFit = acquisitionCount ? positionAdds / acquisitionCount : 0;
+    const behaviorBonus = Math.round(behaviorFit * 12) + Math.min(4, Number(profile?.trades) || 0);
+    const recentLean = positionAdds
+      ? ` Added ${positionAdds} ${need.position} player${positionAdds === 1 ? "" : "s"} in recent transactions.`
+      : acquisitionMix[0] ? ` Recent acquisitions lean ${acquisitionMix[0][0]}.` : " Recent transaction history is unavailable.";
+    results.push({
+      priority: 46 + need.gap * 3 + behaviorBonus, level: "normal", type: "Trade fit", playerId: player.id,
+      title: `Explore ${player.name} with ${opponent.teamName}`,
+      detail: `${opponent.teamName} is short at ${need.position}; your roster has bench depth there.${recentLean}`,
+      value: "Potential fit · verify return value", confidence: profile?.acquisitions >= 3 && behaviorFit >= 0.25 ? "Medium" : "Low",
+      actionKind: "trade", opponentRosterId: String(opponent.rosterId)
+    });
+  });
+  return results.sort((a, b) => b.priority - a.priority).slice(0, 3);
+}
+
 function buildWeeklyRecommendations() {
   const managerIndex = parseInt(document.getElementById("teamSelect")?.value || "0", 10);
   const manager = state.managers[managerIndex];
@@ -3170,8 +4106,10 @@ function buildWeeklyRecommendations() {
     const gain = (best.projectedPoints || 0) - (current.projectedPoints || 0);
     if (gain < 0.5) return;
     recommendations.push({
-      priority: gain >= 5 ? 100 + gain : 65 + gain, level: gain >= 5 ? "urgent" : "high",
+      priority: gain >= 5 ? 100 + gain : 65 + gain, level: gain >= 5 ? "urgent" : "high", confidence: gain >= 5 ? "Medium" : "Low", actionKind: "lineup",
       type: "Start / sit", playerId: best.id, title: `Start ${best.name} over ${current.name}`,
+      comparisonPlayerId: current.id, projectedGain: gain, recommendedProjection: best.projectedPoints || 0,
+      comparisonProjection: current.projectedPoints || 0, lineupSlot: slot,
       detail: `${slot} slot · estimated +${gain.toFixed(1)} points`, value: `+${gain.toFixed(1)} pts`
     });
   });
@@ -3180,22 +4118,23 @@ function buildWeeklyRecommendations() {
     const player = state.players[playerId];
     if (!player || player.isPick) return;
     if (["Out", "IR", "PUP", "Suspended"].includes(player.injuryStatus)) {
-      recommendations.push({ priority: 94, level: "urgent", type: "Roster risk", playerId, title: `${player.name} is ${player.injuryStatus}`, detail: `${player.position} · ${player.team}`, value: "Review lineup" });
+      recommendations.push({ priority: 94, level: "urgent", type: "Roster risk", playerId, title: `${player.name} is ${player.injuryStatus}`, detail: `${player.position} · ${player.team}`, value: "Review lineup", confidence: "High", actionKind: "lineup" });
     }
     if (player.byeWeek === state.week) {
-      recommendations.push({ priority: 78, level: "high", type: "Bye week", playerId, title: `${player.name} is on bye`, detail: `${player.position} · Week ${state.week}`, value: "Find coverage" });
+      recommendations.push({ priority: 78, level: "high", type: "Bye week", playerId, title: `${player.name} is on bye`, detail: `${player.position} · Week ${state.week}`, value: "Find coverage", confidence: "High", actionKind: "lineup" });
     }
   });
 
   state.waiverTargets.slice(0, 5).forEach((player, index) => {
-    recommendations.push({ priority: 55 - index, level: "normal", type: "Waiver", playerId: player.id, title: `Available: ${player.name}`, detail: `${player.position} · +${player.vorpScore.toFixed(1)} VORP`, value: `$${getSuggestedFaabBid(player)} bid` });
+    recommendations.push({ priority: 55 - index, level: "normal", type: "Waiver", playerId: player.id, title: `Available: ${player.name}`, detail: `${player.position} · +${player.vorpScore.toFixed(1)} VORP`, value: `$${getSuggestedFaabBid(player)} bid`, confidence: "Low", actionKind: "waivers" });
   });
 
   const managerPlayerIds = new Set(manager.players);
   state.dbTrades.filter(trade => trade.src === "LEAGUE" && (trade.aIds.some(id => managerPlayerIds.has(id)) || trade.bIds.some(id => managerPlayerIds.has(id)))).slice(0, 3).forEach(trade => {
     const playerId = trade.aIds.find(id => managerPlayerIds.has(id)) || trade.bIds.find(id => managerPlayerIds.has(id));
-    recommendations.push({ priority: 48, level: "normal", type: "Trade history", playerId, title: "Review a recent league trade", detail: trade.label, value: `${Math.round(Math.min(trade.aVal, trade.bVal))} value` });
+    recommendations.push({ priority: 48, level: "normal", type: "Trade history", playerId, title: "Review a recent league trade", detail: trade.label, value: `${Math.round(Math.min(trade.aVal, trade.bVal))} value`, confidence: "Low", actionKind: "trade" });
   });
+  recommendations.push(...buildOpponentAwareRecommendations(manager));
   return recommendations.sort((a, b) => b.priority - a.priority).slice(0, 18);
 }
 
@@ -3211,6 +4150,318 @@ function renderWeeklyRecommendations() {
   body.innerHTML = recommendations.length ? recommendations.map(item =>
     `<tr><td><span class="recommendation-priority ${item.level}">${draftEscapeHtml(item.type)}</span></td><td><div class="recommendation-action"><strong>${draftEscapeHtml(item.title)}</strong><span>${draftEscapeHtml(item.detail)}</span></div></td><td>${draftEscapeHtml(item.value)}</td><td>${item.playerId ? `<button class="btn-builder-action" type="button" data-watch-player="${draftEscapeHtml(item.playerId)}">${playerAlertState.watchlist.includes(item.playerId) ? "Watching" : "Watch"}</button>` : ""}</td></tr>`
   ).join("") : `<tr><td colspan="4" class="draft-empty">Connect a roster to build your weekly action queue.</td></tr>`;
+}
+
+function getTrackedPortfolioEntries() {
+  return state.leagues.flatMap(league => {
+    const cacheKey = `${league.provider}:${league.leagueId}`;
+    const rosters = portfolioState.rostersByLeague.get(cacheKey) || [];
+    const rosterId = state.portfolioRosterSelections[cacheKey];
+    const roster = rosters.find(item => item.teamId === rosterId) || rosters[0];
+    return roster ? [{ league, roster }] : [];
+  });
+}
+
+function buildPortfolioPressureRecommendations() {
+  const tracked = getTrackedPortfolioEntries();
+  const exposures = new Map();
+  tracked.forEach(({ league, roster }) => [...new Set(roster.players || [])].forEach(playerId => {
+    const player = state.players[playerId];
+    if (!player || player.isPick) return;
+    if (!exposures.has(playerId)) exposures.set(playerId, { player, leagues: [] });
+    exposures.get(playerId).leagues.push(league.name);
+  }));
+  const recommendations = [];
+  exposures.forEach(({ player, leagues }) => {
+    if (leagues.length < 2) return;
+    const urgent = ["Out", "IR", "PUP", "Suspended"].includes(player.injuryStatus);
+    const onBye = player.byeWeek === state.week;
+    if (!urgent && !onBye && leagues.length / Math.max(1, tracked.length) < 0.6) return;
+    recommendations.push({
+      priority: urgent ? 106 : onBye ? 90 : 66 + leagues.length,
+      level: urgent ? "urgent" : "high", type: "Portfolio exposure", playerId: player.id,
+      title: urgent ? `${player.name} risk is concentrated` : (onBye ? `${player.name} is on bye across leagues` : `${player.name} is a shared portfolio anchor`),
+      detail: `${leagues.length}/${tracked.length} tracked rosters · ${leagues.join(", ")}${urgent ? ` · ${player.injuryStatus}` : ""}`,
+      value: urgent ? "Review every lineup" : (onBye ? "Check replacement coverage" : "Monitor shared exposure"),
+      confidence: urgent || onBye ? "High" : "Medium", actionKind: "watch"
+    });
+  });
+
+  tracked.forEach(({ league, roster }) => {
+    const required = getBasePositionSlotCounts(roster.rosterPositions || league.rosterPositions || []);
+    const counts = { QB: 0, RB: 0, WR: 0, TE: 0 };
+    (roster.players || []).forEach(playerId => {
+      const position = state.players[playerId]?.position;
+      if (Object.hasOwn(counts, position)) counts[position]++;
+    });
+    Object.keys(required).forEach(position => {
+      const gap = required[position] - counts[position];
+      if (gap <= 0) return;
+      recommendations.push({
+        priority: 72 + gap * 4, level: gap > 1 ? "urgent" : "high", type: "Portfolio roster gap",
+        title: `${league.name} needs ${position} depth`,
+        detail: `${roster.name} has ${counts[position]} ${position} player${counts[position] === 1 ? "" : "s"} for ${required[position]} base starter slots.`,
+        value: `Short ${gap}`, confidence: "Medium", actionKind: "waivers"
+      });
+    });
+  });
+  return recommendations.sort((a, b) => b.priority - a.priority).slice(0, 8);
+}
+
+function readGmFeedback() {
+  try {
+    const records = JSON.parse(localStorage.getItem("fantasy-front-office:gm-feedback:v1") || "{}");
+    return records && typeof records === "object" ? records : {};
+  } catch { return {}; }
+}
+
+function readGmAdviceSnapshots() {
+  try {
+    const snapshots = JSON.parse(localStorage.getItem("fantasy-front-office:gm-advice-snapshots:v1") || "{}");
+    return snapshots && typeof snapshots === "object" ? snapshots : {};
+  } catch { return {}; }
+}
+
+function saveGmAdviceSnapshots(snapshots) {
+  const entries = Object.entries(snapshots).sort((a, b) => Number(b[1].createdAt) - Number(a[1].createdAt)).slice(0, 500);
+  try { localStorage.setItem("fantasy-front-office:gm-advice-snapshots:v1", JSON.stringify(Object.fromEntries(entries))); } catch {}
+}
+
+async function fetchSleeperNflState(forceRefresh = false) {
+  if (!forceRefresh && sleeperNflStateCache.data && Date.now() - sleeperNflStateCache.checkedAt < 60000) return sleeperNflStateCache.data;
+  const response = await fetch("https://api.sleeper.app/v1/state/nfl");
+  if (!response.ok) throw new Error(`NFL state returned ${response.status}.`);
+  const data = await response.json();
+  sleeperNflStateCache = { data, checkedAt: Date.now() };
+  return data;
+}
+
+function captureStartSitSnapshots(recommendations, nflState) {
+  const league = state.activeLeague;
+  if (!league || league.provider !== "sleeper" || !nflState || String(league.season) !== String(nflState.season) || Number(state.week) !== Number(nflState.week)) return;
+  const snapshots = readGmAdviceSnapshots();
+  const manager = state.managers[parseInt(document.getElementById("teamSelect")?.value || "0", 10)];
+  let changed = false;
+  recommendations.filter(item => item.type === "Start / sit" && item.playerId && item.comparisonPlayerId).forEach(item => {
+    const key = getGmRecommendationKey(item);
+    if (snapshots[key]) return;
+    snapshots[key] = {
+      key, leagueKey: getNewsletterLeagueKey(league), provider: league.provider,
+      leagueId: league.leagueId, leagueName: league.name, season: String(league.season), week: Number(state.week),
+      rosterId: String(manager?.rosterId || ""), managerName: manager?.teamName || "Roster",
+      title: item.title, slot: item.lineupSlot || "Lineup", playerId: String(item.playerId),
+      comparisonPlayerId: String(item.comparisonPlayerId), projectedGain: Number(item.projectedGain) || 0,
+      recommendedProjection: Number(item.recommendedProjection) || 0, comparisonProjection: Number(item.comparisonProjection) || 0,
+      createdAt: Date.now()
+    };
+    changed = true;
+  });
+  if (changed) saveGmAdviceSnapshots(snapshots);
+}
+
+async function fetchSleeperActualPoints(league, week, forceRefresh = false) {
+  const cacheKey = `${league.provider}:${league.leagueId}:${league.season}:${week}`;
+  if (!forceRefresh && gmOutcomeCache.has(cacheKey)) return gmOutcomeCache.get(cacheKey);
+  const response = await fetch(`https://api.sleeper.app/v1/league/${league.leagueId}/matchups/${week}`);
+  if (!response.ok) throw new Error(`Sleeper matchup scores returned ${response.status}.`);
+  const rows = await response.json();
+  const points = new Map();
+  (rows || []).forEach(row => {
+    (row.players || []).forEach(playerId => points.set(String(playerId), Number(row.players_points?.[playerId]) || 0));
+    Object.entries(row.players_points || {}).forEach(([playerId, score]) => {
+      if (Number.isFinite(Number(score))) points.set(String(playerId), Number(score));
+    });
+  });
+  gmOutcomeCache.set(cacheKey, points);
+  return points;
+}
+
+async function reconcileGmAdviceOutcomes(nflState, forceRefresh = false) {
+  const snapshots = readGmAdviceSnapshots();
+  if (!nflState) return snapshots;
+  if (forceRefresh) gmOutcomeCache.clear();
+  const pending = Object.values(snapshots).filter(snapshot => snapshot.provider === "sleeper" && !snapshot.evaluatedAt && (
+    Number(snapshot.season) < Number(nflState.season) || (String(snapshot.season) === String(nflState.season) && Number(snapshot.week) < Number(nflState.week))
+  ));
+  const groups = new Map();
+  pending.forEach(snapshot => {
+    const league = state.leagues.find(item => item.provider === snapshot.provider && String(item.leagueId) === String(snapshot.leagueId) && String(item.season) === String(snapshot.season))
+      || { provider: snapshot.provider, leagueId: snapshot.leagueId, season: snapshot.season };
+    const key = `${league.provider}:${league.leagueId}:${league.season}:${snapshot.week}`;
+    if (!groups.has(key)) groups.set(key, { league, week: snapshot.week, snapshots: [] });
+    groups.get(key).snapshots.push(snapshot);
+  });
+  let changed = false;
+  for (const { league, week, snapshots: weekSnapshots } of groups.values()) {
+    try {
+      const points = await fetchSleeperActualPoints(league, week, forceRefresh);
+      weekSnapshots.forEach(snapshot => {
+        if (!points.has(snapshot.playerId) || !points.has(snapshot.comparisonPlayerId)) return;
+        snapshot.actualRecommended = points.get(snapshot.playerId);
+        snapshot.actualComparison = points.get(snapshot.comparisonPlayerId);
+        snapshot.actualGain = snapshot.actualRecommended - snapshot.actualComparison;
+        snapshot.evaluatedAt = Date.now();
+        changed = true;
+      });
+    } catch {}
+  }
+  if (changed) saveGmAdviceSnapshots(snapshots);
+  return snapshots;
+}
+
+function renderGmOutcomeScorecard(snapshots, feedback, leagueKey) {
+  const summary = document.getElementById("gmOutcomeSummary");
+  const table = document.getElementById("gmOutcomeTable");
+  const meta = document.getElementById("gmOutcomeMeta");
+  if (!summary || !table) return;
+  const records = Object.values(snapshots).filter(snapshot => snapshot.leagueKey === leagueKey).sort((a, b) => Number(b.week) - Number(a.week));
+  const evaluated = records.filter(snapshot => snapshot.evaluatedAt);
+  const accepted = evaluated.filter(snapshot => feedback[snapshot.key]?.status === "done");
+  const avg = items => items.length ? items.reduce((sum, item) => sum + item.actualGain, 0) / items.length : null;
+  const positiveRate = evaluated.length ? `${Math.round(evaluated.filter(item => item.actualGain > 0).length / evaluated.length * 100)}% positive` : "--";
+  summary.innerHTML = [
+    ["Evaluated", evaluated.length], ["Completed advice", accepted.length],
+    ["Avg. actual edge", avg(accepted) === null ? "--" : `${avg(accepted) > 0 ? "+" : ""}${avg(accepted).toFixed(1)} pts`],
+    ["Recommended move won", positiveRate]
+  ].map(([label, value]) => `<div><span>${draftEscapeHtml(label)}</span><strong>${draftEscapeHtml(value)}</strong></div>`).join("");
+  const pending = records.filter(snapshot => !snapshot.evaluatedAt).length;
+  if (meta) meta.textContent = state.activeLeague?.provider === "sleeper"
+    ? `${evaluated.length} completed-week result${evaluated.length === 1 ? "" : "s"} · ${pending} pending · actual scores use Sleeper league scoring`
+    : "Actual player-score reconciliation is currently available for Sleeper leagues; other providers remain pending.";
+  table.className = "gm-outcome-table";
+  table.innerHTML = `<thead><tr><th>Week</th><th style="text-align:left;">Recommendation</th><th>Projected edge</th><th>Actual points</th><th>Actual edge</th><th>Status</th></tr></thead><tbody></tbody>`;
+  const rows = records.slice(0, 12);
+  table.querySelector("tbody").innerHTML = rows.length ? rows.map(snapshot => {
+    const status = feedback[snapshot.key]?.status === "done" ? "Done" : feedback[snapshot.key]?.status === "dismissed" ? "Dismissed" : "Not completed";
+    return `<tr><td>W${snapshot.week}</td><td class="gm-outcome-advice">${draftEscapeHtml(snapshot.title)}<small>${draftEscapeHtml(snapshot.managerName)} · ${draftEscapeHtml(snapshot.slot)}</small></td><td>+${Number(snapshot.projectedGain).toFixed(1)}</td><td>${snapshot.evaluatedAt ? `${Number(snapshot.actualRecommended).toFixed(1)} / ${Number(snapshot.actualComparison).toFixed(1)}` : "Pending"}</td><td>${snapshot.evaluatedAt ? `${snapshot.actualGain > 0 ? "+" : ""}${Number(snapshot.actualGain).toFixed(1)} pts` : "Pending"}</td><td>${snapshot.evaluatedAt ? `${status} · scored` : `${status} · awaiting final week`}</td></tr>`;
+  }).join("") : `<tr><td colspan="6" class="draft-empty">Start/sit advice will be snapshotted while the Sleeper week is live, then scored after it closes.</td></tr>`;
+}
+
+function getGmRecommendationKey(item) {
+  const manager = state.managers[parseInt(document.getElementById("teamSelect")?.value || "0", 10)];
+  return [state.activeLeague?.provider, state.activeLeague?.leagueId, state.activeLeague?.season, state.week, manager?.rosterId, item.type, item.playerId, item.title].map(value => encodeURIComponent(String(value || ""))).join("|");
+}
+
+function getConfidenceLabel(item, feedback, leagueKey, snapshots) {
+  if (item.type === "Start / sit") {
+    const outcomes = Object.values(snapshots).filter(snapshot => snapshot.leagueKey === leagueKey && snapshot.evaluatedAt);
+    if (outcomes.length >= 5) {
+      const rate = outcomes.filter(snapshot => snapshot.actualGain > 0).length / outcomes.length;
+      return `${rate >= 0.7 ? "High" : rate <= 0.35 ? "Low" : "Medium"} · ${outcomes.length} scored weeks`;
+    }
+    if (outcomes.length) return `${outcomes.length} actual result${outcomes.length === 1 ? "" : "s"}`;
+  }
+  const rated = Object.values(feedback).filter(record => record.leagueKey === leagueKey && record.type === item.type && typeof record.helpful === "boolean");
+  if (rated.length >= 5) {
+    const rate = rated.filter(record => record.helpful).length / rated.length;
+    return `${rate >= 0.7 ? "High" : rate <= 0.35 ? "Low" : "Medium"} · ${rated.length} ratings`;
+  }
+  return `${item.confidence || "Low"} signal`;
+}
+
+async function renderGMInbox(forceRefresh = false) {
+  const summary = document.getElementById("gmInboxSummary");
+  const list = document.getElementById("gmInboxList");
+  const completedList = document.getElementById("gmInboxCompleted");
+  const pressureList = document.getElementById("portfolioPressureList");
+  const meta = document.getElementById("gmInboxMeta");
+  if (!summary || !list || !pressureList) return;
+  if (!state.activeLeague || !state.managers.length) {
+    summary.innerHTML = `<div><span>Active league</span><strong>Not connected</strong></div><div><span>Priority actions</span><strong>--</strong></div><div><span>Feedback record</span><strong>--</strong></div>`;
+    list.innerHTML = `<p class="draft-empty">Connect a league to build your GM Inbox.</p>`;
+    if (completedList) completedList.innerHTML = "";
+    pressureList.innerHTML = `<p class="draft-empty">Connect or import leagues to compare portfolio pressure.</p>`;
+    document.getElementById("gmOutcomeSummary").innerHTML = "";
+    document.getElementById("gmOutcomeTable").innerHTML = `<tbody><tr><td class="draft-empty">Connect a league to track recommendation outcomes.</td></tr></tbody>`;
+    document.getElementById("gmOutcomeMeta").textContent = "Actual player points are reconciled after the NFL week closes.";
+    return;
+  }
+  if (forceRefresh) {
+    portfolioState.rostersByLeague.clear();
+    gmOutcomeCache.clear();
+    sleeperNflStateCache = { data: null, checkedAt: 0 };
+  }
+  await Promise.all(state.leagues.map(league => getPortfolioLeagueRosters(league).catch(() => [])));
+  const pressure = buildPortfolioPressureRecommendations();
+  const weeklyRecommendations = buildWeeklyRecommendations();
+  let nflState = null;
+  if (state.activeLeague.provider === "sleeper") {
+    try { nflState = await fetchSleeperNflState(forceRefresh); } catch {}
+  }
+  captureStartSitSnapshots(weeklyRecommendations, nflState);
+  await reconcileGmAdviceOutcomes(nflState, forceRefresh);
+  const adviceSnapshots = readGmAdviceSnapshots();
+  const allRecommendations = [...weeklyRecommendations, ...pressure].sort((a, b) => b.priority - a.priority);
+  const feedback = readGmFeedback();
+  const leagueKey = getNewsletterLeagueKey();
+  const activeRecommendations = allRecommendations.filter(item => !["done", "dismissed"].includes(feedback[getGmRecommendationKey(item)]?.status)).slice(0, 12);
+  const closedRecommendations = allRecommendations.filter(item => ["done", "dismissed"].includes(feedback[getGmRecommendationKey(item)]?.status)).slice(0, 8);
+  const leagueRecords = Object.values(feedback).filter(record => record.leagueKey === leagueKey);
+  const completed = leagueRecords.filter(record => record.status === "done").length;
+  const rated = leagueRecords.filter(record => typeof record.helpful === "boolean");
+  const helpfulRate = rated.length ? `${Math.round(rated.filter(record => record.helpful).length / rated.length * 100)}% helpful · ${rated.length} ratings` : "No ratings yet";
+  summary.innerHTML = [
+    ["Active league", state.activeLeague.name], ["Priority actions", activeRecommendations.length],
+    ["Completed", completed], ["Your feedback", helpfulRate]
+  ].map(([label, value]) => `<div><span>${draftEscapeHtml(label)}</span><strong>${draftEscapeHtml(value)}</strong></div>`).join("");
+  if (meta) meta.textContent = `${activeRecommendations.length} open recommendations · Week ${state.week} · confidence updates after 5 ratings per category`;
+  renderGmOutcomeScorecard(adviceSnapshots, feedback, leagueKey);
+  if (pressure.length) {
+    const injuryCount = pressure.filter(item => item.title.includes("risk is concentrated")).length;
+    const byeCount = pressure.filter(item => item.title.includes("on bye across leagues")).length;
+    const gapCount = pressure.filter(item => item.type === "Portfolio roster gap").length;
+    const counts = [`${injuryCount} concentrated injury risk${injuryCount === 1 ? "" : "s"}`, `${byeCount} shared bye conflict${byeCount === 1 ? "" : "s"}`, `${gapCount} roster depth gap${gapCount === 1 ? "" : "s"}`].filter((label, index) => [injuryCount, byeCount, gapCount][index] > 0);
+    pressureList.innerHTML = `<div class="portfolio-pressure-summary"><strong>${pressure.length} portfolio signal${pressure.length === 1 ? "" : "s"}</strong><span>${draftEscapeHtml(counts.join(" · "))}</span><small>${draftEscapeHtml(pressure.slice(0, 3).map(item => item.title).join(" · "))}</small></div>`;
+  } else pressureList.innerHTML = `<p class="draft-empty">No cross-league concentration or base-position gaps detected in the tracked rosters.</p>`;
+  const renderAction = (item, isClosed) => {
+    const key = getGmRecommendationKey(item);
+    const record = feedback[key] || {};
+    const action = item.actionKind || (item.type === "Waiver" ? "waivers" : item.type.toLowerCase().includes("trade") ? "trade" : "lineup");
+    const confidence = getConfidenceLabel(item, feedback, leagueKey, adviceSnapshots);
+    const controls = record.status === "done"
+      ? `<span class="gm-action-state">Done</span><button type="button" class="btn-builder-action" data-gm-feedback="true" data-gm-type="${draftEscapeHtml(item.type)}" data-gm-value="1" data-gm-id="${draftEscapeHtml(key)}">Helpful</button><button type="button" class="btn-builder-action" data-gm-feedback="true" data-gm-type="${draftEscapeHtml(item.type)}" data-gm-value="0" data-gm-id="${draftEscapeHtml(key)}">Missed</button>`
+      : record.status === "dismissed"
+        ? `<span class="gm-action-state">Dismissed</span><button type="button" class="btn-builder-action" data-gm-state="open" data-gm-id="${draftEscapeHtml(key)}">Reopen</button>`
+        : `<button type="button" class="btn-builder-action" data-gm-state="done" data-gm-type="${draftEscapeHtml(item.type)}" data-gm-id="${draftEscapeHtml(key)}">Mark done</button><button type="button" class="btn-builder-action" data-gm-state="dismissed" data-gm-type="${draftEscapeHtml(item.type)}" data-gm-id="${draftEscapeHtml(key)}">Dismiss</button>`;
+    const tradeData = action === "trade" ? `data-gm-opponent="${draftEscapeHtml(item.opponentRosterId || "")}"` : "";
+    const review = `<button type="button" data-gm-open="${draftEscapeHtml(action)}" data-gm-player="${draftEscapeHtml(item.playerId || "")}" ${tradeData}>${action === "trade" ? "Build trade" : action === "waivers" ? "Review waivers" : action === "watch" ? "Watch player" : action === "portfolio" ? "Review portfolio" : "Review lineup"}</button>`;
+    return `<article class="gm-action-card ${item.level || "normal"}"><div class="gm-action-topline"><span class="recommendation-priority ${item.level || "normal"}">${draftEscapeHtml(item.type)}</span><span class="gm-confidence">${draftEscapeHtml(confidence)}</span><span class="gm-action-value">${draftEscapeHtml(item.value || "Review")}</span></div><h3>${draftEscapeHtml(item.title)}</h3><p>${draftEscapeHtml(item.detail)}</p><div class="gm-action-controls">${isClosed ? "" : review}${controls}</div></article>`;
+  };
+  list.innerHTML = activeRecommendations.length ? activeRecommendations.map(item => renderAction(item, false)).join("") : `<p class="draft-empty">No open recommendations for this roster right now.</p>`;
+  if (completedList) completedList.innerHTML = closedRecommendations.length ? closedRecommendations.map(item => renderAction(item, true)).join("") : `<p class="draft-empty">No completed or dismissed actions this week.</p>`;
+}
+
+function handleGMInboxClick(event) {
+  const feedbackButton = event.target.closest("[data-gm-feedback]");
+  const stateButton = event.target.closest("[data-gm-state]");
+  const actionButton = event.target.closest("[data-gm-open]");
+  if (feedbackButton || stateButton) {
+    const key = (feedbackButton || stateButton).dataset.gmId;
+    const records = readGmFeedback();
+    const existing = records[key] || {};
+    if (feedbackButton) records[key] = { ...existing, type: feedbackButton.dataset.gmType || existing.type, helpful: feedbackButton.dataset.gmValue === "1", ratedAt: Date.now() };
+    else records[key] = { ...existing, status: stateButton.dataset.gmState, leagueKey: getNewsletterLeagueKey(), type: stateButton.dataset.gmType || existing.type || "Other", week: state.week, updatedAt: Date.now() };
+    try { localStorage.setItem("fantasy-front-office:gm-feedback:v1", JSON.stringify(records)); } catch {}
+    renderGMInbox();
+    return;
+  }
+  if (!actionButton) return;
+  const action = actionButton.dataset.gmOpen;
+  const playerId = actionButton.dataset.gmPlayer;
+  if (action === "watch" && playerId) { togglePlayerWatch(playerId); renderGMInbox(); return; }
+  if (action === "trade") {
+    const ownIndex = state.managers.findIndex(manager => String(manager.rosterId) === String(state.managers[parseInt(document.getElementById("teamSelect")?.value || "0", 10)]?.rosterId));
+    const opponentIndex = state.managers.findIndex(manager => String(manager.rosterId) === actionButton.dataset.gmOpponent);
+    if (ownIndex >= 0) document.getElementById("tradeTeamA").value = String(ownIndex);
+    if (opponentIndex >= 0) document.getElementById("tradeTeamB").value = String(opponentIndex);
+    state.tradeSideA = playerId ? [playerId] : [];
+    state.tradeSideB = [];
+    renderTradeBuilderSide(true); renderTradeBuilderSide(false); updateTradeEvaluation();
+    document.querySelector('.nav-btn[data-tab="tab-trade"]')?.click();
+    return;
+  }
+  const targetTab = action === "waivers" ? "tab-waiver" : action === "portfolio" ? "tab-intel" : "tab-opt";
+  document.querySelector(`.nav-btn[data-tab="${targetTab}"]`)?.click();
 }
 
 function getPortfolioPlayerPoints(player, league) {
@@ -3378,6 +4629,7 @@ async function enablePlayerBrowserAlerts() {
 }
 
 async function renderLeagueIntelTab(forceRefresh = false) {
+  populateHistorySeasonOptions();
   const selectors = document.getElementById("portfolioRosterSelectors");
   const exposureTable = document.getElementById("portfolioExposureTable");
   const byeTable = document.getElementById("portfolioByeTable");
@@ -3395,6 +4647,9 @@ async function renderLeagueIntelTab(forceRefresh = false) {
     renderWeeklyRecommendations();
     renderPortfolioMoveComparison();
     renderPlayerAlerts();
+    renderHistoricalRows([]);
+    renderWeeklyLeagueReport();
+    renderPickemChallenge();
     return;
   }
 
@@ -3479,6 +4734,8 @@ async function renderLeagueIntelTab(forceRefresh = false) {
   renderWeeklyRecommendations();
   renderPortfolioMoveComparison();
   renderPlayerAlerts();
+  renderWeeklyLeagueReport();
+  renderPickemChallenge();
 }
 
 function renderPlayoffBracketTab() {
@@ -4253,6 +5510,39 @@ function renderDraftRoom() {
   renderDraftKeeperLedger();
 }
 
+async function refreshLiveMatchups() {
+  const button = document.getElementById("refreshMatchupsBtn");
+  const status = document.getElementById("matchupLiveStatus");
+  const league = state.activeLeague;
+  if (!league) { if (status) status.textContent = "Connect a league before refreshing scores."; return; }
+  if (league.provider === "yahoo") { if (status) status.textContent = "Yahoo import is a snapshot. Re-import an updated roster/matchup file to refresh."; return; }
+  if (button) button.disabled = true;
+  if (status) status.textContent = "Refreshing matchup scores...";
+  try {
+    if (league.provider === "sleeper") {
+      const response = await fetch(`https://api.sleeper.app/v1/league/${league.leagueId}/matchups/${state.week}`);
+      if (!response.ok) throw new Error(`Provider returned ${response.status}.`);
+      state.currentMatchups = await response.json();
+      renderSuperlatives(state.currentMatchups || []);
+    } else if (league.provider === "espn") {
+      const data = await fetchEspnLeague(league.leagueId, league.season);
+      league.espnData = data;
+      state.currentMatchups = (data.schedule || []).filter(matchup => Number(matchup.matchupPeriodId) === Number(state.week));
+    }
+    markDataSource("matchups");
+    renderMatchupSim();
+    renderWeeklyLeagueReport();
+    renderPickemChallenge();
+    if (document.getElementById("tab-intel")?.classList.contains("active")) renderLeagueIntelTab();
+    if (status) status.textContent = `Scores refreshed at ${new Date().toLocaleTimeString()}.`;
+  } catch (error) {
+    markDataSource("matchups", error);
+    if (status) status.textContent = `Could not refresh live scores: ${error.message}`;
+  } finally {
+    if (button) button.disabled = false;
+  }
+}
+
 function renderMatchupSim() {
   const selA = document.getElementById("simTeamA")?.value;
   const selB = document.getElementById("simTeamB")?.value;
@@ -4306,6 +5596,8 @@ function renderAllViews(teamIdx) {
   renderOptimizerTab(teamIdx); renderWaiversTab();
   renderMatchupSim(); drawSingleAnalyticsChart();
   renderSosTab(); renderPlayoffBracketTab(); renderDraftRoom();
+  if (document.getElementById("tab-inbox")?.classList.contains("active")) renderGMInbox();
+  if (document.getElementById("tab-newsletter")?.classList.contains("active")) renderLeagueNewsletter();
 }
 
 // 10. Form Control Bindings & Boot
@@ -4318,11 +5610,17 @@ function bindControlEvents() {
     state.leagues = [];
     state.activeLeague = null;
     state.managers = [];
+    state.currentMatchups = [];
     document.getElementById("leagueSelect").innerHTML = `<option value="">Connect a provider first</option>`;
     document.getElementById("teamSelect").innerHTML = `<option value="">Select a league</option>`;
+    renderHistoricalRows([]);
+    document.getElementById("historyMeta").textContent = "History will update after you connect or import a league.";
+    renderWeeklyLeagueReport();
+    renderPickemChallenge();
     updateProviderControls();
     setStatus("Provider changed. Connect a league to load its data.");
   });
+  document.getElementById("yahooImportFile")?.addEventListener("change", event => importYahooRosterFile(event.target.files?.[0]));
   updateDraftSlotOptions();
   updateDraftTypeSettings();
   document.getElementById("draftType")?.addEventListener("change", updateDraftTypeSettings);
@@ -4365,6 +5663,10 @@ function bindControlEvents() {
     const button = e.target.closest("[data-faab-player]");
     if (button) toggleFaabClaim(button.dataset.faabPlayer);
   });
+  document.getElementById("waiverNeedTargets")?.addEventListener("click", e => {
+    const button = e.target.closest("[data-waiver-fit-player]");
+    if (button) toggleFaabClaim(button.dataset.waiverFitPlayer);
+  });
   document.getElementById("faabClaims")?.addEventListener("change", e => {
     const input = e.target.closest("[data-faab-bid]");
     if (!input) return;
@@ -4388,6 +5690,32 @@ function bindControlEvents() {
     document.querySelector(`.nav-btn[data-tab="${e.target.value}"]`)?.click();
   });
   document.getElementById("refreshIntelBtn")?.addEventListener("click", () => { portfolioState.rostersByLeague.clear(); renderLeagueIntelTab(true); });
+  document.getElementById("refreshGmInboxBtn")?.addEventListener("click", () => renderGMInbox(true));
+  document.getElementById("gmInboxList")?.addEventListener("click", handleGMInboxClick);
+  document.getElementById("gmInboxCompleted")?.addEventListener("click", handleGMInboxClick);
+  document.getElementById("portfolioPressureList")?.addEventListener("click", handleGMInboxClick);
+  document.getElementById("newsletterLeagueSelect")?.addEventListener("change", event => {
+    const leagueSelect = document.getElementById("leagueSelect");
+    if (!leagueSelect || !event.target.value) return;
+    leagueSelect.value = event.target.value;
+    leagueSelect.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+  document.getElementById("newsletterArchiveSelect")?.addEventListener("change", renderLeagueNewsletter);
+  document.getElementById("generateNewsletterBtn")?.addEventListener("click", () => {
+    const archiveSelect = document.getElementById("newsletterArchiveSelect");
+    if (archiveSelect) archiveSelect.value = "current";
+    renderLeagueNewsletter();
+  });
+  document.getElementById("saveNewsletterBtn")?.addEventListener("click", saveNewsletterIssue);
+  document.getElementById("copyNewsletterBtn")?.addEventListener("click", copyNewsletterIssue);
+  document.getElementById("downloadNewsletterBtn")?.addEventListener("click", downloadNewsletterIssue);
+  document.getElementById("loadHistoryBtn")?.addEventListener("click", loadHistoricalSeason);
+  document.getElementById("generateWeeklyReportBtn")?.addEventListener("click", renderWeeklyLeagueReport);
+  document.getElementById("copyWeeklyReportBtn")?.addEventListener("click", copyWeeklyLeagueReport);
+  document.getElementById("downloadLeagueHomeBtn")?.addEventListener("click", downloadLeagueHome);
+  document.getElementById("pickemMatchup")?.addEventListener("change", renderPickemChallenge);
+  document.getElementById("savePickemBtn")?.addEventListener("click", savePickemPrediction);
+  document.getElementById("refreshMatchupsBtn")?.addEventListener("click", refreshLiveMatchups);
   document.getElementById("portfolioRosterSelectors")?.addEventListener("change", e => {
     const select = e.target.closest("[data-portfolio-league]");
     if (!select) return;
@@ -4418,17 +5746,24 @@ function bindControlEvents() {
     renderPlayerAlerts();
   });
   document.getElementById("usernameInput")?.addEventListener("keydown", e => { if (e.key === "Enter") syncUserAccount(); });
-  document.getElementById("leagueSelect")?.addEventListener("change", e => loadLeague(parseInt(e.target.value, 10)));
+  document.getElementById("leagueSelect")?.addEventListener("change", async e => {
+    await loadLeague(parseInt(e.target.value, 10));
+    if (document.getElementById("tab-inbox")?.classList.contains("active")) await renderGMInbox();
+    if (document.getElementById("tab-newsletter")?.classList.contains("active")) renderLeagueNewsletter();
+  });
   document.getElementById("teamSelect")?.addEventListener("change", e => {
     const idx = parseInt(e.target.value, 10);
     if (document.getElementById("tradeTeamA")) document.getElementById("tradeTeamA").value = idx;
-    renderRosterTab(idx); renderOptimizerTab(idx); renderSosTab(); renderTradeFinder(); renderDraftKeeperLedger(); buildTradeDatabase();
+    renderRosterTab(idx); renderOptimizerTab(idx); renderWaiversTab(); renderSosTab(); renderTradeFinder(); renderDraftKeeperLedger(); buildTradeDatabase();
+    if (document.getElementById("tab-intel")?.classList.contains("active")) renderLeagueIntelTab();
   });
   weekSelect?.addEventListener("change", async e => {
     state.week = parseInt(e.target.value, 10);
     syncLiveEspnSchedule();
     renderSosTab();
     if (state.activeLeague) await loadLeague(document.getElementById("leagueSelect").value);
+    if (document.getElementById("tab-inbox")?.classList.contains("active")) await renderGMInbox();
+    if (document.getElementById("tab-newsletter")?.classList.contains("active")) renderLeagueNewsletter();
   });
   document.getElementById("powerChartMode")?.addEventListener("change", drawPowerChart);
   document.getElementById("tradeTeamA")?.addEventListener("change", e => {
