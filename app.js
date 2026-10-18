@@ -11,6 +11,8 @@ document.addEventListener("click", e => {
     navBtn.classList.add("active");
     const targetPage = document.getElementById(navBtn.dataset.tab);
     if (targetPage) targetPage.classList.add("active");
+    const mobileTabSelect = document.getElementById("mobileTabSelect");
+    if (mobileTabSelect) mobileTabSelect.value = navBtn.dataset.tab;
     switch (navBtn.dataset.tab) {
       case "tab-power": drawPowerChart(); break;
       case "tab-waiver": drawWaiverChart(); break;
@@ -141,8 +143,9 @@ const state = {
   dataFreshness: { season: 0, schedule: 0, players: 0, stats: 0, projections: 0, account: 0 }, dataErrors: {}
 };
 const portfolioState = { rostersByLeague: new Map(), loading: false };
+const playerAlertState = { loaded: false, watchlist: [], events: [], snapshots: {} };
 const draftState = {
-  settings: { type: "redraft", teams: 12, slot: 6, rounds: 15, scoring: "ppr", rosterFormat: "standard", dynastyYears: 3, keeperSlots: 2, keeperYears: 2 },
+  settings: { type: "redraft", teams: 12, slot: 6, rounds: 15, scoring: "ppr", rosterFormat: "standard", opponentStrategy: "adp", dynastyYears: 3, keeperSlots: 2, keeperYears: 2 },
   userPicks: [], adpByName: {}, keepers: [], loadedSessionKey: ""
 };
 const faabState = { budget: 100, weeksRemaining: 12, strategy: "balanced", claims: [], loadedKey: "" };
@@ -470,6 +473,73 @@ function setStatus(txt) {
   const el = document.getElementById("statusLabel");
   if (el) el.textContent = txt;
   renderDataFreshness();
+}
+
+function getSafeMonetizationUrl(value) {
+  try {
+    const url = new URL(value, location.href);
+    return url.protocol === "https:" ? url.href : "";
+  } catch { return ""; }
+}
+
+function initMonetization() {
+  const config = window.FFO_MONETIZATION || {};
+  const area = document.getElementById("monetizationArea");
+  const sponsorSlot = document.getElementById("sponsorPlacement");
+  const affiliateSlot = document.getElementById("affiliatePlacement");
+  const adSlot = document.getElementById("adsensePlacement");
+  const disclosure = document.getElementById("monetizationDisclosure");
+  if (!area || !sponsorSlot || !affiliateSlot || !adSlot || !disclosure) return;
+
+  let hasPlacement = false;
+  const sponsor = config.sponsor || {};
+  const sponsorUrl = getSafeMonetizationUrl(sponsor.url);
+  if (sponsor.name && sponsor.message && sponsorUrl) {
+    const imageUrl = getSafeMonetizationUrl(sponsor.imageUrl);
+    sponsorSlot.innerHTML = `<span class="monetization-label">Sponsored</span>${imageUrl ? `<img src="${imageUrl}" alt="${draftEscapeHtml(sponsor.name)}" loading="lazy" />` : ""}<div><strong>${draftEscapeHtml(sponsor.name)}</strong><p>${draftEscapeHtml(sponsor.message)}</p><a class="monetization-link" href="${sponsorUrl}" target="_blank" rel="sponsored nofollow noopener">Visit sponsor</a></div>`;
+    sponsorSlot.hidden = false;
+    hasPlacement = true;
+  }
+
+  const offers = (Array.isArray(config.affiliateOffers) ? config.affiliateOffers : []).map(offer => ({
+    ...offer, safeUrl: getSafeMonetizationUrl(offer.url)
+  })).filter(offer => offer.name && offer.safeUrl);
+  if (offers.length) {
+    affiliateSlot.innerHTML = `<span class="monetization-label">Partner offers</span><div class="affiliate-offers">${offers.map(offer => `<div class="affiliate-offer"><strong>${draftEscapeHtml(offer.name)}</strong><a class="monetization-link" href="${offer.safeUrl}" target="_blank" rel="sponsored nofollow noopener">View offer</a></div>`).join("")}</div>`;
+    affiliateSlot.hidden = false;
+    hasPlacement = true;
+  }
+
+  const ads = config.adsense || {};
+  const productionHttps = location.protocol === "https:" && !["localhost", "127.0.0.1"].includes(location.hostname);
+  const validClient = /^ca-pub-\d+$/.test(ads.clientId || "");
+  const validSlot = /^\d+$/.test(ads.footerSlot || "");
+  if (productionHttps && ads.enabled === true && ads.consentManagementConfigured === true && validClient && validSlot) {
+    adSlot.innerHTML = `<span class="monetization-label">Advertisement</span><ins class="adsbygoogle" style="display:block" data-ad-client="${draftEscapeHtml(ads.clientId)}" data-ad-slot="${draftEscapeHtml(ads.footerSlot)}" data-ad-format="auto" data-full-width-responsive="true"></ins>`;
+    adSlot.hidden = false;
+    const scriptId = "google-adsense-script";
+    const initializeAd = () => {
+      try { (window.adsbygoogle = window.adsbygoogle || []).push({}); } catch {}
+    };
+    let script = document.getElementById(scriptId);
+    if (!script) {
+      script = document.createElement("script");
+      script.id = scriptId;
+      script.async = true;
+      script.crossOrigin = "anonymous";
+      script.src = `https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${encodeURIComponent(ads.clientId)}`;
+      script.onload = initializeAd;
+      document.head.appendChild(script);
+    } else if (window.adsbygoogle) initializeAd();
+    hasPlacement = true;
+  }
+
+  const privacyUrl = getSafeMonetizationUrl(config.privacyUrl);
+  if (hasPlacement) {
+    area.hidden = false;
+    disclosure.hidden = false;
+    disclosure.innerHTML = `Sponsored and affiliate links are labeled. Affiliate links may earn a commission.${privacyUrl ? ` <a class="monetization-link" href="${privacyUrl}" target="_blank" rel="noopener">Privacy</a>` : ""}`;
+  }
 }
 
 function markDataSource(source, error = null, timestamp = Date.now()) {
@@ -1364,6 +1434,7 @@ async function loadEspnLeague(idx) {
   renderSuperlatives([]);
   renderAllViews(0);
   await buildTradeDatabase();
+  scanPlayerAlertChanges();
   setStatus(`Imported ${league.name} from ESPN • ${state.managers.length} teams • Week ${state.week}`);
 }
 
@@ -1531,6 +1602,7 @@ async function loadLeague(idx) {
   renderSuperlatives(matchups || []);
   renderAllViews(myIdx);
   await buildTradeDatabase();
+  scanPlayerAlertChanges();
   setStatus(`Synced ${state.activeLeague.name} (${state.activeLeague.playoffTeams}-Team Playoff) • Week ${state.week}`);
 }
 
@@ -3053,6 +3125,7 @@ async function getPortfolioLeagueRosters(league) {
     rosters = (league.espnData?.teams || []).map(team => ({
       teamId: String(team.id), ownerId: String(team.owners?.[0] || ""),
       name: team.name || `${team.location || ""} ${team.nickname || ""}`.trim() || `Team ${team.id}`,
+      rosterPositions: league.rosterPositions || [], scoringSettings: league.scoringSettings || {},
       players: (team.roster?.entries || []).map(entry => {
         const player = entry.playerPoolEntry?.player || entry.player || {};
         return getInternalPlayerIdFromEspn(player);
@@ -3067,11 +3140,232 @@ async function getPortfolioLeagueRosters(league) {
     rosters = (rosterResponse || []).map(roster => ({
       teamId: String(roster.roster_id), ownerId: String(roster.owner_id || ""),
       name: userNames[roster.owner_id] || `Team ${roster.roster_id}`,
+      rosterPositions: league.rosterPositions || [], scoringSettings: league.scoringSettings || {},
       players: roster.players || []
     }));
   }
   portfolioState.rostersByLeague.set(cacheKey, rosters);
   return rosters;
+}
+
+function buildWeeklyRecommendations() {
+  const managerIndex = parseInt(document.getElementById("teamSelect")?.value || "0", 10);
+  const manager = state.managers[managerIndex];
+  if (!manager) return [];
+  const recommendations = [];
+  const optimal = calcOptimalLineup(manager.players, false);
+  optimal.slots.forEach((slot, index) => {
+    const current = state.players[manager.starters[index]];
+    const best = optimal.filled[index];
+    if (!current || !best || current.id === best.id) return;
+    const gain = (best.projectedPoints || 0) - (current.projectedPoints || 0);
+    if (gain < 0.5) return;
+    recommendations.push({
+      priority: gain >= 5 ? 100 + gain : 65 + gain, level: gain >= 5 ? "urgent" : "high",
+      type: "Start / sit", playerId: best.id, title: `Start ${best.name} over ${current.name}`,
+      detail: `${slot} slot · estimated +${gain.toFixed(1)} points`, value: `+${gain.toFixed(1)} pts`
+    });
+  });
+
+  manager.players.forEach(playerId => {
+    const player = state.players[playerId];
+    if (!player || player.isPick) return;
+    if (["Out", "IR", "PUP", "Suspended"].includes(player.injuryStatus)) {
+      recommendations.push({ priority: 94, level: "urgent", type: "Roster risk", playerId, title: `${player.name} is ${player.injuryStatus}`, detail: `${player.position} · ${player.team}`, value: "Review lineup" });
+    }
+    if (player.byeWeek === state.week) {
+      recommendations.push({ priority: 78, level: "high", type: "Bye week", playerId, title: `${player.name} is on bye`, detail: `${player.position} · Week ${state.week}`, value: "Find coverage" });
+    }
+  });
+
+  state.waiverTargets.slice(0, 5).forEach((player, index) => {
+    recommendations.push({ priority: 55 - index, level: "normal", type: "Waiver", playerId: player.id, title: `Available: ${player.name}`, detail: `${player.position} · +${player.vorpScore.toFixed(1)} VORP`, value: `$${getSuggestedFaabBid(player)} bid` });
+  });
+
+  const managerPlayerIds = new Set(manager.players);
+  state.dbTrades.filter(trade => trade.src === "LEAGUE" && (trade.aIds.some(id => managerPlayerIds.has(id)) || trade.bIds.some(id => managerPlayerIds.has(id)))).slice(0, 3).forEach(trade => {
+    const playerId = trade.aIds.find(id => managerPlayerIds.has(id)) || trade.bIds.find(id => managerPlayerIds.has(id));
+    recommendations.push({ priority: 48, level: "normal", type: "Trade history", playerId, title: "Review a recent league trade", detail: trade.label, value: `${Math.round(Math.min(trade.aVal, trade.bVal))} value` });
+  });
+  return recommendations.sort((a, b) => b.priority - a.priority).slice(0, 18);
+}
+
+function renderWeeklyRecommendations() {
+  loadPlayerAlertState();
+  const table = document.getElementById("recommendationTable");
+  if (!table) return;
+  const recommendations = buildWeeklyRecommendations();
+  const meta = document.getElementById("recommendationMeta");
+  if (meta) meta.textContent = `${recommendations.length} suggested action${recommendations.length === 1 ? "" : "s"} for the selected roster · Week ${state.week}`;
+  table.innerHTML = `<thead><tr><th>Priority</th><th>Action</th><th>Impact</th><th></th></tr></thead><tbody></tbody>`;
+  const body = table.querySelector("tbody");
+  body.innerHTML = recommendations.length ? recommendations.map(item =>
+    `<tr><td><span class="recommendation-priority ${item.level}">${draftEscapeHtml(item.type)}</span></td><td><div class="recommendation-action"><strong>${draftEscapeHtml(item.title)}</strong><span>${draftEscapeHtml(item.detail)}</span></div></td><td>${draftEscapeHtml(item.value)}</td><td>${item.playerId ? `<button class="btn-builder-action" type="button" data-watch-player="${draftEscapeHtml(item.playerId)}">${playerAlertState.watchlist.includes(item.playerId) ? "Watching" : "Watch"}</button>` : ""}</td></tr>`
+  ).join("") : `<tr><td colspan="4" class="draft-empty">Connect a roster to build your weekly action queue.</td></tr>`;
+}
+
+function getPortfolioPlayerPoints(player, league) {
+  const stats = state.rawStats[player.id];
+  const receptionPoints = Number(league.scoringSettings?.rec ?? 1);
+  const statsKey = receptionPoints >= 0.9 ? "pts_ppr" : (receptionPoints >= 0.4 ? "pts_half_ppr" : "pts_std");
+  const games = Math.max(1, Number(stats?.gp || stats?.gms_active || 1));
+  if (Number.isFinite(Number(stats?.[statsKey]))) {
+    let points = Number(stats[statsKey]) / games;
+    const teBonus = Number(league.scoringSettings?.bonus_rec_te || 0);
+    if (player.position === "TE" && teBonus) points += (Number(stats.rec || 0) / games) * teBonus;
+    return points;
+  }
+  const activeReceptionPoints = Number(state.activeLeague?.scoringSettings?.rec ?? 1);
+  const receptionDelta = receptionPoints - activeReceptionPoints;
+  return Number(player.projectedPoints || player.seasonPpg || 0) + receptionDelta * Number(player.receptionsPerGame || 0);
+}
+
+function getPortfolioStarterSlots(roster, position) {
+  const positions = roster.rosterPositions || [];
+  const slots = positions.length ? positions.filter(slot => !["BN", "IR", "TAXI"].includes(slot)) : ["QB", "RB", "RB", "WR", "WR", "TE", "FLEX", "K", "DEF"];
+  return slots.filter(slot => isPosEligible(position, slot)).length;
+}
+
+function renderPortfolioMoveComparison() {
+  const select = document.getElementById("portfolioMovePlayer");
+  const table = document.getElementById("portfolioMoveTable");
+  if (!select || !table) return;
+  const candidates = Object.values(state.players)
+    .filter(player => !player.isPick && player.isCurrentNfl && ["QB", "RB", "WR", "TE", "K", "DEF"].includes(player.position))
+    .sort((a, b) => ((b.vorpScore || 0) - (a.vorpScore || 0)) || ((b.projectedPoints || 0) - (a.projectedPoints || 0)))
+    .slice(0, 300);
+  const selectedId = select.value;
+  select.innerHTML = `<option value="">Choose a player</option>${candidates.map(player => `<option value="${draftEscapeHtml(player.id)}">${draftEscapeHtml(player.name)} · ${draftEscapeHtml(player.position)} · ${draftEscapeHtml(player.team || "FA")}</option>`).join("")}`;
+  if (candidates.some(player => player.id === selectedId)) select.value = selectedId;
+  table.innerHTML = `<thead><tr><th style="text-align:left;">League / roster</th><th>Availability</th><th>Position need</th><th>Estimated PPG</th><th>Pickup outlook</th></tr></thead><tbody></tbody>`;
+  const body = table.querySelector("tbody");
+  const player = state.players[select.value];
+  if (!player) { body.innerHTML = `<tr><td colspan="5" class="draft-empty">Select a player to compare the move across your leagues.</td></tr>`; return; }
+
+  const results = state.leagues.map(league => {
+    const cacheKey = `${league.provider}:${league.leagueId}`;
+    const rosters = portfolioState.rostersByLeague.get(cacheKey) || [];
+    const rosterId = state.portfolioRosterSelections[cacheKey];
+    const roster = rosters.find(item => item.teamId === rosterId) || rosters[0];
+    if (!roster) return { league, roster: null, status: "Roster unavailable" };
+    const owner = rosters.find(item => item.players.includes(player.id));
+    if (owner) return { league, roster, status: owner.teamId === roster.teamId ? "Already on your roster" : `Rostered by ${owner.name}`, outlook: "Unavailable", points: getPortfolioPlayerPoints(player, league) };
+    const ownedAtPosition = roster.players.map(id => state.players[id]).filter(item => item && !item.isPick && item.position === player.position);
+    const starterSlots = getPortfolioStarterSlots(roster, player.position);
+    const need = Math.max(0, starterSlots - ownedAtPosition.length);
+    const replacement = ownedAtPosition.map(item => getPortfolioPlayerPoints(item, league)).sort((a, b) => a - b)[Math.max(0, ownedAtPosition.length - starterSlots)] || 0;
+    const points = getPortfolioPlayerPoints(player, league);
+    const impact = Math.max(0, points - replacement);
+    return { league, roster, status: "Available", need: need ? `Starter need (${need})` : "Depth", points, impact, outlook: need ? "Priority add" : impact >= 8 ? "Useful depth" : "Low priority" };
+  });
+  body.innerHTML = results.map(result => result.roster
+    ? `<tr><td>${draftEscapeHtml(result.league.name)} · ${draftEscapeHtml(result.roster.name)}</td><td>${draftEscapeHtml(result.status)}</td><td>${draftEscapeHtml(result.need || "--")}</td><td>${result.points === undefined ? "--" : result.points.toFixed(1)}</td><td>${draftEscapeHtml(result.outlook || "--")}${result.impact ? ` · +${result.impact.toFixed(1)}` : ""}</td></tr>`
+    : `<tr><td>${draftEscapeHtml(result.league.name)}</td><td colspan="4">${draftEscapeHtml(result.status)}</td></tr>`
+  ).join("");
+}
+
+function loadPlayerAlertState() {
+  if (playerAlertState.loaded) return;
+  playerAlertState.loaded = true;
+  try {
+    const saved = JSON.parse(localStorage.getItem("fantasy-front-office:player-alerts") || "null");
+    if (saved && typeof saved === "object") {
+      playerAlertState.watchlist = Array.isArray(saved.watchlist) ? saved.watchlist : [];
+      playerAlertState.events = Array.isArray(saved.events) ? saved.events : [];
+      playerAlertState.snapshots = saved.snapshots && typeof saved.snapshots === "object" ? saved.snapshots : {};
+    }
+  } catch {}
+}
+
+function savePlayerAlertState() {
+  try {
+    localStorage.setItem("fantasy-front-office:player-alerts", JSON.stringify({
+      watchlist: playerAlertState.watchlist, events: playerAlertState.events, snapshots: playerAlertState.snapshots
+    }));
+  } catch {}
+}
+
+function getWatchedPlayerKey(playerId) {
+  return `${state.activeLeague?.provider || state.provider}:${state.activeLeague?.leagueId || "none"}:${playerId}`;
+}
+
+function scanPlayerAlertChanges() {
+  loadPlayerAlertState();
+  if (!state.activeLeague) { renderPlayerAlerts(); return; }
+  const severity = { Healthy: 0, Questionable: 1, Doubtful: 2, Out: 3, IR: 3, PUP: 3, Suspended: 3 };
+  const rosteredIds = new Set(state.managers.flatMap(manager => manager.players));
+  playerAlertState.watchlist.forEach(playerId => {
+    const player = state.players[playerId];
+    if (!player) return;
+    const key = getWatchedPlayerKey(playerId);
+    const next = { injuryStatus: player.injuryStatus || "Healthy", rostered: rosteredIds.has(playerId), checkedAt: Date.now() };
+    const previous = playerAlertState.snapshots[key];
+    if (previous && (severity[next.injuryStatus] || 0) > (severity[previous.injuryStatus] || 0)) {
+      const event = { id: `${key}:injury:${next.injuryStatus}:${Date.now()}`, playerId, title: `${player.name}: ${next.injuryStatus}`, detail: `Injury status changed from ${previous.injuryStatus} · ${state.activeLeague.name}`, level: next.injuryStatus === "Questionable" ? "high" : "urgent", createdAt: Date.now() };
+      playerAlertState.events.unshift(event);
+      if (window.Notification?.permission === "granted") new Notification("Fantasy Front Office alert", { body: event.title });
+    }
+    if (previous?.rostered && !next.rostered) {
+      const event = { id: `${key}:available:${Date.now()}`, playerId, title: `${player.name} became available`, detail: `No longer on a roster in ${state.activeLeague.name}`, level: "normal", createdAt: Date.now() };
+      playerAlertState.events.unshift(event);
+      if (window.Notification?.permission === "granted") new Notification("Fantasy Front Office alert", { body: event.title });
+    }
+    playerAlertState.snapshots[key] = next;
+  });
+  playerAlertState.events = playerAlertState.events.slice(0, 30);
+  savePlayerAlertState();
+  renderPlayerAlerts();
+}
+
+function togglePlayerWatch(playerId) {
+  loadPlayerAlertState();
+  const index = playerAlertState.watchlist.indexOf(playerId);
+  if (index >= 0) playerAlertState.watchlist.splice(index, 1);
+  else {
+    const player = state.players[playerId];
+    if (!player) return;
+    playerAlertState.watchlist.push(playerId);
+    if (state.activeLeague) playerAlertState.snapshots[getWatchedPlayerKey(playerId)] = {
+      injuryStatus: player.injuryStatus || "Healthy",
+      rostered: state.managers.some(manager => manager.players.includes(playerId)),
+      checkedAt: Date.now()
+    };
+  }
+  savePlayerAlertState();
+  renderPlayerAlerts();
+  renderWeeklyRecommendations();
+}
+
+function renderPlayerAlerts() {
+  const selector = document.getElementById("alertPlayerSelect");
+  const feed = document.getElementById("playerAlertFeed");
+  const watchlist = document.getElementById("playerWatchlist");
+  const permissionStatus = document.getElementById("alertPermissionStatus");
+  if (!selector || !feed || !watchlist) return;
+  loadPlayerAlertState();
+  const watched = new Set(playerAlertState.watchlist);
+  const candidates = Object.values(state.players).filter(player => !player.isPick && player.isCurrentNfl && !watched.has(player.id)).sort((a, b) => (b.baseValue || 0) - (a.baseValue || 0)).slice(0, 300);
+  const selected = selector.value;
+  selector.innerHTML = `<option value="">Choose a player to watch</option>${candidates.map(player => `<option value="${draftEscapeHtml(player.id)}">${draftEscapeHtml(player.name)} · ${draftEscapeHtml(player.position)} · ${draftEscapeHtml(player.team || "FA")}</option>`).join("")}`;
+  if (candidates.some(player => player.id === selected)) selector.value = selected;
+  feed.innerHTML = playerAlertState.events.length ? playerAlertState.events.slice(0, 12).map(event =>
+    `<div class="player-alert-item ${event.level}"><div><strong>${draftEscapeHtml(event.title)}</strong><span>${draftEscapeHtml(event.detail)} · ${new Date(event.createdAt).toLocaleString()}</span></div><button class="player-alert-remove" data-dismiss-alert="${draftEscapeHtml(event.id)}" type="button">Dismiss</button></div>`
+  ).join("") : `<div class="draft-empty">No new watchlist alerts.</div>`;
+  watchlist.innerHTML = playerAlertState.watchlist.length ? playerAlertState.watchlist.map(playerId => {
+    const player = state.players[playerId];
+    const snapshot = playerAlertState.snapshots[getWatchedPlayerKey(playerId)];
+    return `<div class="player-watch-item"><div><strong>${draftEscapeHtml(player?.name || playerId)}</strong><span>${draftEscapeHtml(player?.position || "")} · ${draftEscapeHtml(player?.injuryStatus || "Unknown status")}${snapshot?.rostered ? " · Rostered" : " · Available"}</span></div><button class="player-alert-remove" data-remove-watch="${draftEscapeHtml(playerId)}" type="button">Unwatch</button></div>`;
+  }).join("") : `<div class="draft-empty">No players watched yet.</div>`;
+  if (permissionStatus) permissionStatus.textContent = window.Notification
+    ? `In-app alerts are on · Browser notifications ${Notification.permission === "granted" ? "enabled" : "optional"}`
+    : "In-app injury and availability alerts · Browser notifications unavailable in this browser";
+}
+
+async function enablePlayerBrowserAlerts() {
+  const status = document.getElementById("alertPermissionStatus");
+  if (!window.Notification) { if (status) status.textContent = "Browser notifications are unavailable in this browser."; return; }
+  const permission = await Notification.requestPermission();
+  if (status) status.textContent = permission === "granted" ? "Browser notifications enabled." : "Browser notifications not enabled; in-app alerts remain on.";
 }
 
 async function renderLeagueIntelTab(forceRefresh = false) {
@@ -3089,6 +3383,9 @@ async function renderLeagueIntelTab(forceRefresh = false) {
     exposureTable.innerHTML = `<tbody><tr><td class="draft-empty">No league data loaded.</td></tr></tbody>`;
     byeTable.innerHTML = `<tbody><tr><td class="draft-empty">No league data loaded.</td></tr></tbody>`;
     tendencyTable.innerHTML = `<tbody><tr><td class="draft-empty">No active league selected.</td></tr></tbody>`;
+    renderWeeklyRecommendations();
+    renderPortfolioMoveComparison();
+    renderPlayerAlerts();
     return;
   }
 
@@ -3170,6 +3467,9 @@ async function renderLeagueIntelTab(forceRefresh = false) {
   tendencyBody.innerHTML = tendencyRows.length ? tendencyRows.map(({ profile, name, top, mix, draftMix }) =>
     `<tr><td>${draftEscapeHtml(name)}</td><td>${profile.acquisitions}</td><td>${profile.trades}</td><td class="tendency-position">${draftEscapeHtml(top)}</td><td>${draftEscapeHtml(mix)}</td><td>${profile.draftPicks || 0}</td><td>${draftEscapeHtml(draftMix)}</td></tr>`
   ).join("") : `<tr><td colspan="7" class="draft-empty">No transaction or draft history available for the active league yet.</td></tr>`;
+  renderWeeklyRecommendations();
+  renderPortfolioMoveComparison();
+  renderPlayerAlerts();
 }
 
 function renderPlayoffBracketTab() {
@@ -3440,12 +3740,14 @@ function updateDraftSlotOptions() {
 
 function updateDraftTypeSettings() {
   const type = document.getElementById("draftType")?.value || "redraft";
+  const keeperPanel = document.getElementById("draftKeeperPanel");
   const dynastySettings = document.getElementById("draftDynastySettings");
   const keeperSettings = document.getElementById("draftKeeperSettings");
   const keeperYearsSettings = document.getElementById("draftKeeperYearsSettings");
   if (dynastySettings) dynastySettings.hidden = type !== "dynasty";
   if (keeperSettings) keeperSettings.hidden = type !== "keeper";
   if (keeperYearsSettings) keeperYearsSettings.hidden = type !== "keeper";
+  if (keeperPanel) keeperPanel.hidden = type !== "keeper";
 }
 
 function getDraftSessionKey() {
@@ -3488,6 +3790,7 @@ function restoreDraftSession() {
       draftType: draftState.settings.type, draftTeams: draftState.settings.teams,
       draftSlot: draftState.settings.slot, draftRounds: draftState.settings.rounds,
       draftScoring: draftState.settings.scoring, draftRosterFormat: draftState.settings.rosterFormat,
+      draftOpponentStrategy: draftState.settings.opponentStrategy || "adp",
       draftDynastyYears: draftState.settings.dynastyYears, draftKeeperSlots: draftState.settings.keeperSlots,
       draftKeeperYears: draftState.settings.keeperYears
     };
@@ -3624,6 +3927,27 @@ function getDraftTeamAtPick(overallPick, teams) {
   return round % 2 === 1 ? positionInRound : teams - positionInRound + 1;
 }
 
+function chooseSimulatedOpponentPick(rankedPlayers, draftedIds, settings, currentPick) {
+  const available = rankedPlayers.filter(entry => !draftedIds.has(entry.player.id));
+  if (!available.length || settings.opponentStrategy === "value") return available[0] || null;
+  const adpAvailable = available.map(entry => ({ ...entry, adp: getDraftAdp(entry.player).rank })).filter(entry => entry.adp !== null);
+  if (!adpAvailable.length) return available[0];
+
+  const adpWindow = currentPick + Math.max(3, Math.ceil(settings.teams * 0.5));
+  const likelyAvailable = adpAvailable.filter(entry => entry.adp <= adpWindow);
+  const candidates = likelyAvailable.length ? likelyAvailable : adpAvailable;
+  if (settings.opponentStrategy === "adp") {
+    return candidates.sort((a, b) => (a.adp - b.adp) || (b.score - a.score))[0];
+  }
+
+  const adpShortlist = [...candidates].sort((a, b) => a.adp - b.adp).slice(0, 4);
+  return adpShortlist.sort((a, b) => {
+    const scoreA = a.score - Math.max(0, a.adp - currentPick) * 24;
+    const scoreB = b.score - Math.max(0, b.adp - currentPick) * 24;
+    return scoreB - scoreA;
+  })[0];
+}
+
 function simulateDraft(rankedPlayers) {
   const settings = draftState.settings;
   const maxPicks = settings.teams * settings.rounds;
@@ -3642,9 +3966,9 @@ function simulateDraft(rankedPlayers) {
     if (isUserPick) {
       if (manualPickIndex >= draftState.userPicks.length) break;
       entry = playerById.get(draftState.userPicks[manualPickIndex++]);
-      if (!entry || draftedIds.has(entry.player.id)) continue;
+      if (!entry || draftedIds.has(entry.player.id)) { overallPick++; continue; }
     } else {
-      entry = rankedPlayers.find(candidate => !draftedIds.has(candidate.player.id));
+      entry = chooseSimulatedOpponentPick(rankedPlayers, draftedIds, settings, overallPick);
       if (!entry) break;
     }
 
@@ -3666,6 +3990,7 @@ function applyDraftSettings() {
     rounds: Math.min(30, Math.max(1, parseInt(document.getElementById("draftRounds")?.value, 10) || 15)),
     scoring: document.getElementById("draftScoring")?.value || "ppr",
     rosterFormat: document.getElementById("draftRosterFormat")?.value || "standard",
+    opponentStrategy: document.getElementById("draftOpponentStrategy")?.value || "adp",
     dynastyYears: parseInt(document.getElementById("draftDynastyYears")?.value, 10) || 3,
     keeperSlots: parseInt(document.getElementById("draftKeeperSlots")?.value, 10) || 0,
     keeperYears: parseInt(document.getElementById("draftKeeperYears")?.value, 10) || 2
@@ -3816,7 +4141,7 @@ function renderDraftRoom() {
       entries.forEach(({ player, score }, index) => {
         const row = document.createElement("tr");
         const adp = getDraftAdp(player);
-        row.innerHTML = `<td class="draft-rank">${index + 1}</td><td class="draft-name">${draftEscapeHtml(player.name)}</td><td><span class="pos-pill">${draftEscapeHtml(player.position)}</span></td><td>${draftEscapeHtml(player.team || "FA")}</td><td>${adp.rank === null ? "--" : `${adp.rank.toFixed(1)} <span class="draft-adp-source">${adp.source}</span>`}</td><td>${player.age || "--"}</td><td>${Number(player.seasonPpg || player.projectedPoints || 0).toFixed(1)}</td><td><button class="draft-pick-btn" type="button" data-draft-pick="${draftEscapeHtml(player.id)}" title="Draft ${draftEscapeHtml(player.name)}">Draft</button></td>`;
+        row.innerHTML = `<td class="draft-rank">${index + 1}</td><td class="draft-name"><span class="draft-player-cell"><img src="${draftEscapeHtml(avatarUrl(player))}" alt="" loading="lazy" onerror="this.style.visibility='hidden'" /><span>${draftEscapeHtml(player.name)}</span></span></td><td><span class="pos-pill">${draftEscapeHtml(player.position)}</span></td><td>${draftEscapeHtml(player.team || "FA")}</td><td>${adp.rank === null ? "--" : `${adp.rank.toFixed(1)} <span class="draft-adp-source">${adp.source}</span>`}</td><td>${player.age || "--"}</td><td>${Number(player.seasonPpg || player.projectedPoints || 0).toFixed(1)}</td><td><button class="draft-pick-btn" type="button" data-draft-pick="${draftEscapeHtml(player.id)}" title="Draft ${draftEscapeHtml(player.name)}">Draft</button></td>`;
         row.dataset.draftScore = String(Math.round(score));
         body.appendChild(row);
       });
@@ -3834,8 +4159,22 @@ function renderDraftRoom() {
   if (userPicksEl) {
     const picks = simulation.picks.filter(pick => pick.isUserPick);
     userPicksEl.innerHTML = picks.length ? picks.map(pick =>
-      `<div class="draft-picked-player"><span class="draft-picked-round">R${pick.round} · #${pick.overallPick}</span><strong>${draftEscapeHtml(pick.player.name)}</strong><span>${draftEscapeHtml(pick.player.position)} · ${draftEscapeHtml(pick.player.team || "FA")}</span></div>`
+      `<div class="draft-picked-player"><span class="draft-picked-round">R${pick.round} · #${pick.overallPick}</span><span class="draft-player-cell"><img src="${draftEscapeHtml(avatarUrl(pick.player))}" alt="" loading="lazy" onerror="this.style.visibility='hidden'" /><strong>${draftEscapeHtml(pick.player.name)}</strong></span><span>${draftEscapeHtml(pick.player.position)} · ${draftEscapeHtml(pick.player.team || "FA")}</span></div>`
     ).join("") : `<div class="draft-empty">No players drafted yet.</div>`;
+  }
+
+  const takenCount = document.getElementById("draftTakenCount");
+  if (takenCount) takenCount.textContent = simulation.picks.length
+    ? `${simulation.picks.length} picks made • ${simulation.draftedIds.size} players off the board`
+    : "No picks made yet";
+  const takenTable = document.getElementById("draftTakenTable");
+  if (takenTable) {
+    takenTable.innerHTML = `<thead><tr><th>Round</th><th>Overall</th><th>Slot</th><th style="text-align:left;">Player</th><th>Pos</th><th>ADP</th></tr></thead><tbody></tbody>`;
+    const takenBody = takenTable.querySelector("tbody");
+    takenBody.innerHTML = simulation.picks.length ? simulation.picks.map(pick => {
+      const adp = getDraftAdp(pick.player).rank;
+      return `<tr class="${pick.isUserPick ? "draft-user-pick-row" : ""}"><td>R${pick.round}</td><td>#${pick.overallPick}</td><td>${pick.isUserPick ? "You" : `Team ${pick.teamSlot}`}</td><td class="draft-name"><span class="draft-player-cell"><img src="${draftEscapeHtml(avatarUrl(pick.player))}" alt="" loading="lazy" onerror="this.style.visibility='hidden'" /><span>${draftEscapeHtml(pick.player.name)}</span></span></td><td>${draftEscapeHtml(pick.player.position)}</td><td>${adp === null ? "--" : adp.toFixed(1)}</td></tr>`;
+    }).join("") : `<tr><td colspan="6" class="draft-empty">The draft board is clear.</td></tr>`;
   }
 
   const undoButton = document.getElementById("draftUndoBtn");
@@ -3966,6 +4305,9 @@ function bindControlEvents() {
 
   document.getElementById("syncBtn")?.addEventListener("click", syncUserAccount);
   document.getElementById("retryDataBtn")?.addEventListener("click", retryDataSync);
+  document.getElementById("mobileTabSelect")?.addEventListener("change", e => {
+    document.querySelector(`.nav-btn[data-tab="${e.target.value}"]`)?.click();
+  });
   document.getElementById("refreshIntelBtn")?.addEventListener("click", () => { portfolioState.rostersByLeague.clear(); renderLeagueIntelTab(true); });
   document.getElementById("portfolioRosterSelectors")?.addEventListener("change", e => {
     const select = e.target.closest("[data-portfolio-league]");
@@ -3973,6 +4315,28 @@ function bindControlEvents() {
     state.portfolioRosterSelections[select.dataset.portfolioLeague] = select.value;
     try { localStorage.setItem("fantasy-front-office:portfolio-rosters", JSON.stringify(state.portfolioRosterSelections)); } catch {}
     renderLeagueIntelTab();
+  });
+  document.getElementById("portfolioMovePlayer")?.addEventListener("change", renderPortfolioMoveComparison);
+  document.getElementById("recommendationTable")?.addEventListener("click", e => {
+    const button = e.target.closest("[data-watch-player]");
+    if (button) togglePlayerWatch(button.dataset.watchPlayer);
+  });
+  document.getElementById("addAlertPlayerBtn")?.addEventListener("click", () => {
+    const playerId = document.getElementById("alertPlayerSelect")?.value;
+    if (playerId) togglePlayerWatch(playerId);
+  });
+  document.getElementById("enableBrowserAlertsBtn")?.addEventListener("click", enablePlayerBrowserAlerts);
+  document.getElementById("playerWatchlist")?.addEventListener("click", e => {
+    const button = e.target.closest("[data-remove-watch]");
+    if (button) togglePlayerWatch(button.dataset.removeWatch);
+  });
+  document.getElementById("playerAlertFeed")?.addEventListener("click", e => {
+    const button = e.target.closest("[data-dismiss-alert]");
+    if (!button) return;
+    loadPlayerAlertState();
+    playerAlertState.events = playerAlertState.events.filter(event => event.id !== button.dataset.dismissAlert);
+    savePlayerAlertState();
+    renderPlayerAlerts();
   });
   document.getElementById("usernameInput")?.addEventListener("keydown", e => { if (e.key === "Enter") syncUserAccount(); });
   document.getElementById("leagueSelect")?.addEventListener("change", e => loadLeague(parseInt(e.target.value, 10)));
@@ -4065,8 +4429,9 @@ function bindControlEvents() {
 }
 
 if (document.readyState === "loading") {
-  document.addEventListener("DOMContentLoaded", () => { bindControlEvents(); initApp(); });
+  document.addEventListener("DOMContentLoaded", () => { initMonetization(); bindControlEvents(); initApp(); });
 } else {
+  initMonetization();
   bindControlEvents();
   initApp();
 }

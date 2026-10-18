@@ -40,6 +40,20 @@
 
 <div class="body-layout">
   <div class="sidebar">
+    <label class="mobile-nav-label" for="mobileTabSelect">VIEW</label>
+    <select id="mobileTabSelect" class="mobile-nav-select" aria-label="Navigate to section">
+      <option value="tab-roster">Roster Overview</option>
+      <option value="tab-power">Power Rankings</option>
+      <option value="tab-trade">Trade Center</option>
+      <option value="tab-opt">Lineup Optimizer</option>
+      <option value="tab-draft">Draft Room</option>
+      <option value="tab-intel">League Intel</option>
+      <option value="tab-waiver">Waiver Wire</option>
+      <option value="tab-analytics">Player Analytics</option>
+      <option value="tab-sos">SOS Heat-Map</option>
+      <option value="tab-bracket">Playoff Bracket</option>
+      <option value="tab-matchup">Matchup Simulator</option>
+    </select>
     <button class="nav-btn active" data-tab="tab-roster">Roster Overview</button>
     <button class="nav-btn" data-tab="tab-power">Power Rankings</button>
     <button class="nav-btn" data-tab="tab-trade">Trade Center</button>
@@ -474,6 +488,25 @@
         <div class="table-wrap"><table id="portfolioByeTable"></table></div>
       </section>
       <section class="portfolio-panel">
+        <div class="draft-panel-heading"><div><h3>Weekly Action Queue</h3><span id="recommendationMeta" class="draft-subtitle">Start/sit, waiver, trade, injury, and bye-week actions</span></div></div>
+        <div class="table-wrap"><table id="recommendationTable"></table></div>
+      </section>
+      <section class="portfolio-panel">
+        <div class="draft-panel-heading"><div><h3>Acquisition Impact Across Leagues</h3><span class="draft-subtitle">Compare roster need and point impact before adding a player.</span></div></div>
+        <label class="portfolio-player-picker">Player to compare<select id="portfolioMovePlayer"></select></label>
+        <div class="table-wrap"><table id="portfolioMoveTable"></table></div>
+      </section>
+      <section class="portfolio-panel">
+        <div class="draft-panel-heading"><div><h3>Player Alerts</h3><span id="alertPermissionStatus" class="draft-subtitle">In-app injury and availability alerts for watched players</span></div></div>
+        <div class="alert-controls">
+          <select id="alertPlayerSelect" aria-label="Choose player to watch"></select>
+          <button id="addAlertPlayerBtn" class="btn-builder-action" type="button">Watch player</button>
+          <button id="enableBrowserAlertsBtn" class="btn-builder-action" type="button">Enable browser notifications</button>
+        </div>
+        <div id="playerAlertFeed" class="player-alert-feed"></div>
+        <div id="playerWatchlist" class="player-watchlist"></div>
+      </section>
+      <section class="portfolio-panel">
         <div class="draft-panel-heading"><div><h3>Manager Tendencies</h3><span id="tendencyMeta" class="draft-subtitle">Recent transaction activity from the active league</span></div></div>
         <div class="table-wrap"><table id="managerTendencyTable"></table></div>
       </section>
@@ -519,6 +552,13 @@
           <select id="draftRosterFormat">
             <option value="standard">1 QB</option>
             <option value="superflex">Superflex</option>
+          </select>
+        </label>
+        <label>Opponent picks
+          <select id="draftOpponentStrategy">
+            <option value="adp" selected>ADP consensus</option>
+            <option value="balanced">Balanced</option>
+            <option value="value">Best available value</option>
           </select>
         </label>
         <label id="draftDynastySettings" class="draft-setting-extra" hidden>Value horizon
@@ -590,8 +630,12 @@
             <button id="draftUndoBtn" class="btn-builder-action" type="button" title="Undo your last pick">Undo</button>
           </div>
           <div id="draftRosterCounts" class="draft-roster-counts"></div>
+          <div class="draft-pick-history">
+            <div class="draft-panel-heading"><div><h3>Draft so far</h3><span id="draftTakenCount" class="draft-subtitle">No picks made</span></div></div>
+            <div class="table-wrap draft-history-wrap"><table id="draftTakenTable" class="draft-taken-table"></table></div>
+          </div>
           <div id="draftUserPicks" class="draft-user-picks"></div>
-          <div class="draft-keeper-section">
+          <div id="draftKeeperPanel" class="draft-keeper-section" hidden>
             <div class="draft-panel-heading"><div><h3>Keeper Ledger</h3><span class="draft-subtitle">Cost and years remaining</span></div></div>
             <label>Player
               <select id="draftKeeperPlayer"><option value="">Sync a league to select a roster player</option></select>
@@ -610,6 +654,14 @@
   </div>
 </div>
 
+<footer id="monetizationArea" class="monetization-area" hidden aria-label="Sponsored links">
+  <div id="sponsorPlacement" class="monetization-unit sponsor-unit" hidden></div>
+  <div id="affiliatePlacement" class="monetization-unit affiliate-unit" hidden></div>
+  <div id="adsensePlacement" class="monetization-unit adsense-unit" hidden></div>
+  <div id="monetizationDisclosure" class="monetization-disclosure" hidden></div>
+</footer>
+
+<script src="monetization-config.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
