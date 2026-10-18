@@ -29,7 +29,12 @@ document.addEventListener("click", e => {
       case "tab-sos": renderSosTab(); break;
       case "tab-bracket": renderPlayoffBracketTab(); break;
       case "tab-draft": renderDraftRoom(); break;
-      case "tab-opt": renderOptimizerTab(parseInt(document.getElementById("teamSelect")?.value || "0", 10)); break;
+      case "tab-opt": {
+        const managerIndex = parseInt(document.getElementById("teamSelect")?.value || "0", 10);
+        renderOptimizerTab(managerIndex);
+        refreshGameDaySchedule().then(() => renderOptimizerTab(managerIndex));
+        break;
+      }
       case "tab-intel": renderLeagueIntelTab(); break;
       case "tab-inbox": renderGMInbox(); break;
       case "tab-newsletter": renderLeagueNewsletter(); break;
@@ -149,7 +154,7 @@ const state = {
   season: String(new Date().getFullYear()),
   week: 6, userId: "", leagues: [], activeLeague: null,
   provider: "", portfolioRosterSelections: {}, managerTendencies: [],
-  currentMatchups: [], livePlayerPoints: {}, currentNflWeek: 0, historicalRows: [], historicalSeasons: [], weeklyReportText: "",
+  currentMatchups: [], livePlayerPoints: {}, currentNflWeek: 0, gameDayByTeam: {}, gameDayScheduleKey: "", gameDayScheduleCheckedAt: 0, gameDayScheduleAvailable: false, historicalRows: [], historicalSeasons: [], weeklyReportText: "",
   players: {}, rawProj: {}, rawStats: {}, managers: [],
   tradeSideA: [], tradeSideB: [], dbTrades: [], waiverTargets: [],
   weakestPosByTeam: {}, sosWindowMode: "NEXT4", bracketOverrides: {},
@@ -648,6 +653,92 @@ function isPosEligible(pos, slot) {
 
 function replacementPpg(pos) { return { QB:15.2, RB:7.8, WR:8.4, TE:6.2, DEF:6.5, K:7.0 }[pos] || 8.0; }
 
+function normalizeGameDaySchedule(data, now = Date.now()) {
+  const byTeam = {};
+  (data.events || []).forEach(event => {
+    const competition = event.competitions?.[0];
+    if (!competition) return;
+    const kickoff = Date.parse(event.date || competition.date || "");
+    const eventStatus = event.status?.type || competition.status?.type || {};
+    const startsAt = Number.isFinite(kickoff) ? kickoff : 0;
+    const completed = Boolean(eventStatus.completed) || eventStatus.state === "post";
+    const inProgress = eventStatus.state === "in" || /IN[_ ]?PROGRESS/i.test(eventStatus.name || "");
+    const started = completed || inProgress || Boolean(startsAt && now >= startsAt);
+    const status = completed ? "final" : inProgress ? "live" : started ? "locked" : "upcoming";
+    (competition.competitors || []).forEach(competitor => {
+      const team = normalizeTeamCode(competitor.team?.abbreviation);
+      if (!team) return;
+      byTeam[team] = {
+        status, kickoff: startsAt || null, eventId: String(event.id || event.name || team),
+        eventName: event.name || "NFL game",
+        opponent: (competition.competitors || []).find(other => other !== competitor)?.team?.abbreviation || ""
+      };
+    });
+  });
+  return byTeam;
+}
+
+async function refreshGameDaySchedule(forceRefresh = false) {
+  const league = state.activeLeague;
+  if (!league) return false;
+  const key = `${league.season}:${state.week}`;
+  if (!forceRefresh && state.gameDayScheduleKey === key && Date.now() - state.gameDayScheduleCheckedAt < 60000) return state.gameDayScheduleAvailable;
+  state.gameDayScheduleKey = key;
+  state.gameDayScheduleCheckedAt = Date.now();
+  state.gameDayScheduleAvailable = false;
+  state.gameDayByTeam = {};
+  try {
+    const endpoint = new URL("https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard");
+    endpoint.searchParams.set("seasontype", "2");
+    endpoint.searchParams.set("week", String(state.week));
+    endpoint.searchParams.set("year", String(league.season));
+    const response = await fetch(endpoint);
+    if (!response.ok) throw new Error(`Scoreboard returned ${response.status}.`);
+    const data = await response.json();
+    state.gameDayByTeam = normalizeGameDaySchedule(data);
+    state.gameDayScheduleAvailable = Object.keys(state.gameDayByTeam).length > 0;
+  } catch {
+    state.gameDayByTeam = {};
+  }
+  const lockStatus = document.getElementById("optimizerLockStatus");
+  if (lockStatus) lockStatus.textContent = getGameDaySummary();
+  return state.gameDayScheduleAvailable;
+}
+
+function getGameDaySummary() {
+  if (!state.gameDayScheduleAvailable) return "Kickoff data unavailable · lock filtering disabled";
+  const uniqueGames = [...new Map(Object.values(state.gameDayByTeam).map(game => [game.eventId, game])).values()];
+  const locked = uniqueGames.filter(game => ["locked", "live", "final"].includes(game.status)).length;
+  const upcoming = uniqueGames.filter(game => game.status === "upcoming" && game.kickoff).sort((a, b) => a.kickoff - b.kickoff)[0];
+  return `${locked} game${locked === 1 ? "" : "s"} locked${upcoming ? ` · next kickoff ${new Date(upcoming.kickoff).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}` : ""}`;
+}
+
+function getPlayerGameDayStatus(player) {
+  if (!player?.team || player.team === "FA") return { status: "unknown", label: "Kickoff unknown", locked: false };
+  const game = state.gameDayByTeam[normalizeTeamCode(player.team)];
+  if (!state.gameDayScheduleAvailable || !game) return { status: "unknown", label: "Kickoff unavailable", locked: false };
+  if (game.status === "final") return { ...game, label: "Final", locked: true };
+  if (game.status === "live") return { ...game, label: "Live", locked: true };
+  if (game.status === "locked") return { ...game, label: "Locked", locked: true };
+  const kickoffLabel = game.kickoff ? new Date(game.kickoff).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "Scheduled";
+  return { ...game, label: `Kickoff ${kickoffLabel}`, locked: false };
+}
+
+function getLineupLockConstraints(manager) {
+  if (!manager || !state.gameDayScheduleAvailable) return { requiredPlayerIds: [], excludedPlayerIds: [] };
+  const starters = new Set((manager.starters || []).filter(Boolean).map(String));
+  const requiredPlayerIds = [];
+  const excludedPlayerIds = [];
+  (manager.players || []).forEach(playerId => {
+    const id = String(playerId);
+    const player = state.players[id];
+    if (!player || !getPlayerGameDayStatus(player).locked) return;
+    if (starters.has(id)) requiredPlayerIds.push(id);
+    else excludedPlayerIds.push(id);
+  });
+  return { requiredPlayerIds, excludedPlayerIds };
+}
+
 function defaultRealisticProj(m) {
   if (m.position !== "DEF" && (!m.team || m.team === "FA" || !m.isCurrentNfl || ["Out","IR","Suspended","PUP"].includes(m.injuryStatus))) return 0;
   if (m.byeWeek > 0 && m.byeWeek === state.week) return 0;
@@ -1007,7 +1098,7 @@ function assignLineupPlayersToSlots(slots, candidates) {
   if (!rowCount) return [];
   const players = candidates;
   const columnCount = players.length + rowCount;
-  const weights = players.map(candidate => Number.isFinite(Number(candidate.score)) ? Number(candidate.score) : 0);
+  const weights = players.map(candidate => Number.isFinite(Number(candidate.assignmentScore ?? candidate.score)) ? Number(candidate.assignmentScore ?? candidate.score) : 0);
   const maxWeight = Math.max(0, ...weights);
   const ineligibleCost = maxWeight + 1000000;
   const emptySlotCost = maxWeight + 0.000001;
@@ -1071,12 +1162,17 @@ function assignLineupPlayersToSlots(slots, candidates) {
   return assignments;
 }
 
-function calcOptimalLineup(rosterIds, useRos = true) {
+function calcOptimalLineup(rosterIds, useRos = true, constraints = {}) {
+  const requiredPlayerIds = new Set((constraints.requiredPlayerIds || []).map(String));
+  const excludedPlayerIds = new Set((constraints.excludedPlayerIds || []).map(String));
   let slots = (state.activeLeague?.rosterPositions || []).filter(s => !["BN","IR","TAXI"].includes(s));
   if (!slots.length) slots = ["QB","RB","RB","WR","WR","TE","FLEX","K","DEF"];
-  const avail = rosterIds.map(id => state.players[id]).filter(m => m && !m.isPick).map(m => ({
-    m, score: useRos ? (m.projectedPoints > 0.1 ? m.projectedPoints * 0.65 + m.seasonPpg * 0.35 : m.seasonPpg) : m.projectedPoints
-  }));
+  const avail = rosterIds.map(id => state.players[id]).filter(m => m && !m.isPick && !excludedPlayerIds.has(String(m.id))).map(m => {
+    const score = useRos ? (m.projectedPoints > 0.1 ? m.projectedPoints * 0.65 + m.seasonPpg * 0.35 : m.seasonPpg) : m.projectedPoints;
+    return {
+      m, score, assignmentScore: score + (requiredPlayerIds.has(String(m.id)) ? (Math.max(1, slots.length) * 1000000) : 0)
+    };
+  });
   const assignment = assignLineupPlayersToSlots(slots, avail);
   const filled = assignment.map(candidate => candidate?.m || null);
   const total = assignment.reduce((sum, candidate) => sum + (candidate ? candidate.score : 0), 0);
@@ -1334,7 +1430,8 @@ async function importYahooRosterFile(file) {
         if (!teams.has(teamName)) teams.set(teamName, {
           teamName, manager: get(row, ["manager", "owner"]), wins: Number(get(row, ["wins"])) || 0,
           losses: Number(get(row, ["losses"])) || 0, pointsFor: Number(get(row, ["pointsfor", "pf"])) || 0,
-          pointsAgainst: Number(get(row, ["pointsagainst", "pa"])) || 0, players: []
+          pointsAgainst: Number(get(row, ["pointsagainst", "pa"])) || 0,
+          waiverPriority: Number(get(row, ["waiverpriority", "waiverposition"])) || 0, players: []
         });
         teams.get(teamName).players.push({
           playerId: get(row, ["playerid", "yahooid"]), name, position: row[positionIndex],
@@ -1376,6 +1473,7 @@ async function importYahooRosterFile(file) {
       return {
         rosterId: index + 1, ownerId: String(team.manager || team.owner || ""),
         teamName: team.teamName || team.name || `Team ${index + 1}`,
+        waiverPriority: Number(team.waiverPriority ?? team.waiverPosition) || null,
         wins: Number(team.wins) || 0, losses: Number(team.losses) || 0,
         pf: Number(team.pointsFor) || 0, pa: Number(team.pointsAgainst) || 0, maxPf: Number(team.pointsFor) || 0,
         eff: 0, rosPpg: 112, starters: starters.length ? starters : ids, reserve: [], taxi: [],
@@ -1431,7 +1529,7 @@ function updateProviderControls() {
   if (input) { input.placeholder = espn ? "ESPN league ID(s), comma-separated" : (sleeper ? "Sleeper username..." : (yahoo ? "Use roster import" : "Choose a provider first")); input.hidden = yahoo; }
   if (yahooImportLabel) yahooImportLabel.hidden = !yahoo;
   if (button) { button.textContent = espn ? "Import League(s)" : (sleeper ? "Sync Account" : "Connect"); button.disabled = !provider || yahoo; button.hidden = yahoo; }
-  if (help) help.textContent = espn ? "Public ESPN leagues need a league ID. Private leagues use an ESPN session already signed in to this browser." : (sleeper ? "Connect with your account username to load league settings and rosters." : (yahoo ? "Import CSV headers: manager, player, position, nfl_team. Optional current-week scores use actual_points. JSON accepts currentWeek and player actualPoints. Yahoo OAuth is not configured on this static site." : "Choose ESPN Fantasy or Sleeper to connect league data."));
+  if (help) help.textContent = espn ? "Public ESPN leagues need a league ID. Private leagues use an ESPN session already signed in to this browser." : (sleeper ? "Connect with your account username to load league settings and rosters." : (yahoo ? "CSV: manager, player, position, nfl_team; optional waiver_priority and actual_points. JSON teams may include waiverPriority; players may include actualPoints. Set FAAB remaining in the planner. Yahoo OAuth is not configured on this static site." : "Choose ESPN Fantasy or Sleeper to connect league data."));
 }
 
 function normalizeEspnRosterPositions(slotCounts = {}) {
@@ -2891,18 +2989,19 @@ function getOptimizerActualPoints() {
 
 function renderOptimizerPlayerCard(player, side, scores, scorePhase) {
   const actualPoints = scores.get(String(player.id));
+  const kickoff = getPlayerGameDayStatus(player);
   const actual = scorePhase === "UPCOMING"
     ? `<span class="opt-actual-score unavailable">Actual -- <small>UPCOMING</small></span>`
     : actualPoints === undefined
       ? `<span class="opt-actual-score unavailable">Actual -- <small>No score data</small></span>`
     : `<span class="opt-actual-score">Actual ${actualPoints.toFixed(1)} <small>${scorePhase === "THIS WEEK" ? "SO FAR" : "FINAL"}</small></span>`;
-  return `<div class="opt-player-card ${side}"><img class="avatar" src="${avatarUrl(player)}" onerror="this.style.display='none'" /><div class="opt-player-details"><b><img class="team-logo-sm" src="${teamLogoUrl(player.team)}" onerror="this.style.display='none'"/>${draftEscapeHtml(player.name)}</b><span>${draftEscapeHtml(player.position)} · ${draftEscapeHtml(player.team)}</span></div><div class="opt-score-stack"><strong>Proj ${Number(player.projectedPoints || 0).toFixed(1)}</strong>${actual}</div></div>`;
+  return `<div class="opt-player-card ${side}"><img class="avatar" src="${avatarUrl(player)}" onerror="this.style.display='none'" /><div class="opt-player-details"><b><img class="team-logo-sm" src="${teamLogoUrl(player.team)}" onerror="this.style.display='none'"/>${draftEscapeHtml(player.name)}</b><span>${draftEscapeHtml(player.position)} · ${draftEscapeHtml(player.team)}</span><small class="optimizer-kickoff-status ${kickoff.locked ? "locked" : kickoff.status}">${draftEscapeHtml(kickoff.label)}</small></div><div class="opt-score-stack"><strong>Proj ${Number(player.projectedPoints || 0).toFixed(1)}</strong>${actual}</div></div>`;
 }
 
 function renderOptimizerTab(idx) {
   const tm = state.managers[idx];
   if (!tm) return;
-  const opt = calcOptimalLineup(tm.players, false);
+  const opt = calcOptimalLineup(tm.players, false, getLineupLockConstraints(tm));
   const rowsEl = document.getElementById("optRows");
   if (!rowsEl) return;
   rowsEl.innerHTML = "";
@@ -2956,8 +3055,12 @@ function renderOptimizerTab(idx) {
   ].filter(Boolean).join(" · ");
 }
 
+function getFaabStorageKeyForLeague(league = state.activeLeague) {
+  return `fantasy-faab-v1:${league?.provider || state.provider}:${league?.season || state.season || DEFAULT_SEASON}:${league?.leagueId || "custom"}`;
+}
+
 function getFaabStorageKey() {
-  return `fantasy-faab-v1:${state.activeLeague?.provider || state.provider}:${state.activeLeague?.season || state.season || DEFAULT_SEASON}:${state.activeLeague?.leagueId || "custom"}`;
+  return getFaabStorageKeyForLeague();
 }
 
 function loadFaabState() {
@@ -2967,7 +3070,7 @@ function loadFaabState() {
   try {
     const saved = JSON.parse(localStorage.getItem(key) || "null");
     if (saved && typeof saved === "object") {
-      faabState.budget = Math.max(0, Number(saved.budget) || 100);
+      faabState.budget = Number.isFinite(Number(saved.budget)) ? Math.max(0, Number(saved.budget)) : 100;
       faabState.weeksRemaining = Math.min(18, Math.max(1, Number(saved.weeksRemaining) || 12));
       faabState.strategy = ["conservative", "balanced", "aggressive"].includes(saved.strategy) ? saved.strategy : "balanced";
       faabState.claims = Array.isArray(saved.claims) ? saved.claims : [];
@@ -2988,14 +3091,31 @@ function getQueuedFaabTotal() {
   return faabState.claims.reduce((sum, claim) => sum + Math.max(0, Number(claim.bid) || 0), 0);
 }
 
-function getSuggestedFaabBid(player) {
-  const availableBudget = Math.max(0, faabState.budget - getQueuedFaabTotal());
+function estimateFaabBid(player, budget, queuedTotal, strategy, weeksRemaining) {
+  const availableBudget = Math.max(0, budget - queuedTotal);
   if (!availableBudget) return 0;
-  const styleMultiplier = { conservative: 0.72, balanced: 1, aggressive: 1.32 }[faabState.strategy] || 1;
-  const timingMultiplier = faabState.weeksRemaining <= 3 ? 1.3 : (faabState.weeksRemaining <= 6 ? 1.12 : 1);
+  const styleMultiplier = { conservative: 0.72, balanced: 1, aggressive: 1.32 }[strategy] || 1;
+  const timingMultiplier = weeksRemaining <= 3 ? 1.3 : (weeksRemaining <= 6 ? 1.12 : 1);
   const scarcityMultiplier = ["RB", "WR"].includes(player.position) && player.posRank <= 12 ? 1.1 : 1;
   const share = Math.min(0.4, Math.max(0.02, (player.vorpScore / 26) * styleMultiplier * timingMultiplier * scarcityMultiplier));
   return Math.min(availableBudget, Math.max(1, Math.round(availableBudget * share)));
+}
+
+function getSuggestedFaabBid(player) {
+  return estimateFaabBid(player, faabState.budget, getQueuedFaabTotal(), faabState.strategy, faabState.weeksRemaining);
+}
+
+function getFaabDropCandidates(manager, addPlayer) {
+  if (!manager || !addPlayer) return [];
+  const starters = new Set((manager.starters || []).filter(Boolean).map(String));
+  return (manager.players || []).map(id => state.players[id]).filter(player => {
+    if (!player || player.isPick || player.id === addPlayer.id || starters.has(String(player.id))) return false;
+    return !getPlayerGameDayStatus(player).locked;
+  }).sort((a, b) => {
+    const aSamePos = a.position === addPlayer.position ? 1 : 0;
+    const bSamePos = b.position === addPlayer.position ? 1 : 0;
+    return bSamePos - aSamePos || Number(a.projectedPoints || 0) - Number(b.projectedPoints || 0) || Number(a.baseValue || 0) - Number(b.baseValue || 0);
+  });
 }
 
 function renderFaabPlanner() {
@@ -3014,8 +3134,23 @@ function renderFaabPlanner() {
   const list = document.getElementById("faabClaims");
   if (list) list.innerHTML = faabState.claims.length ? faabState.claims.map((claim, index) => {
     const player = state.players[claim.playerId];
-    return `<div class="faab-claim-row"><div><strong>${draftEscapeHtml(player?.name || claim.playerName || "Unknown player")}</strong><span>${draftEscapeHtml(player?.position || claim.position || "")}</span></div><label>Bid $<input type="number" min="0" max="${faabState.budget}" value="${Math.max(0, Number(claim.bid) || 0)}" data-faab-bid="${index}" /></label><button type="button" class="btn-builder-action" data-remove-faab="${index}" aria-label="Remove claim for ${draftEscapeHtml(player?.name || claim.playerName || "player")}">Remove</button></div>`;
+    const manager = state.managers[parseInt(document.getElementById("teamSelect")?.value || "0", 10)];
+    const dropCandidates = getFaabDropCandidates(manager, player);
+    if (!claim.dropChoiceSet && !claim.dropPlayerId && dropCandidates[0]) {
+      claim.dropPlayerId = dropCandidates[0].id;
+      claim.dropPlayerName = dropCandidates[0].name;
+      claim.dropProjection = Number(dropCandidates[0].projectedPoints) || 0;
+      claim.dropChoiceSet = true;
+    }
+    const dropOptions = dropCandidates.map(candidate => `<option value="${draftEscapeHtml(candidate.id)}" ${String(candidate.id) === String(claim.dropPlayerId) ? "selected" : ""}>${draftEscapeHtml(candidate.name)} · ${Number(candidate.projectedPoints || 0).toFixed(1)} proj</option>`).join("");
+    const outcome = claim.outcome
+      ? claim.outcome.comparisonType === "none"
+        ? `W${claim.outcome.week}: ${Number(claim.outcome.addedPoints).toFixed(1)} actual · no drop baseline`
+        : `W${claim.outcome.week}: ${Number(claim.outcome.addedPoints).toFixed(1)} vs ${Number(claim.outcome.comparisonPoints).toFixed(1)} ${claim.outcome.comparisonType === "actual" ? "actual alt" : "baseline proj"} (${claim.outcome.edge > 0 ? "+" : ""}${Number(claim.outcome.edge).toFixed(1)} pts)`
+      : claim.status === "acquired" ? `Acquired W${claim.claimedWeek} · outcome pending final scores` : "Plan only · not submitted to provider";
+    return `<div class="faab-claim-row"><div><strong>${draftEscapeHtml(player?.name || claim.playerName || "Unknown player")}</strong><span>${draftEscapeHtml(player?.position || claim.position || "")}${player ? ` · ${Number(player.projectedPoints || 0).toFixed(1)} projected` : ""}</span><small class="faab-claim-outcome">${draftEscapeHtml(outcome)}</small></div><label>Drop alternative<select data-faab-drop="${index}"><option value="">No bench drop</option>${dropOptions}</select></label><label>Bid $<input type="number" min="0" max="${faabState.budget}" value="${Math.max(0, Number(claim.bid) || 0)}" data-faab-bid="${index}" /></label><div class="faab-claim-actions"><button type="button" class="btn-builder-action" data-faab-acquired="${index}">${claim.status === "acquired" ? "Undo acquired" : "Mark acquired"}</button><button type="button" class="btn-builder-action" data-remove-faab="${index}" aria-label="Remove claim for ${draftEscapeHtml(player?.name || claim.playerName || "player")}">Remove</button></div></div>`;
   }).join("") : `<div class="draft-empty">Queue a free agent below to plan bids.</div>`;
+  void reconcileWaiverClaimOutcomes();
 }
 
 function updateFaabSettings() {
@@ -3031,7 +3166,15 @@ function toggleFaabClaim(playerId) {
   if (!player) return;
   const existingIndex = faabState.claims.findIndex(claim => claim.playerId === playerId);
   if (existingIndex >= 0) faabState.claims.splice(existingIndex, 1);
-  else faabState.claims.push({ playerId, playerName: player.name, position: player.position, bid: getSuggestedFaabBid(player) });
+  else {
+    const manager = state.managers[parseInt(document.getElementById("teamSelect")?.value || "0", 10)];
+    const drop = getFaabDropCandidates(manager, player)[0] || null;
+    faabState.claims.push({
+      playerId, playerName: player.name, position: player.position, bid: getSuggestedFaabBid(player),
+      dropPlayerId: drop?.id || "", dropPlayerName: drop?.name || "", dropProjection: drop ? Number(drop.projectedPoints) || 0 : null,
+      dropChoiceSet: true, status: "queued", queuedWeek: state.week
+    });
+  }
   saveFaabState();
   renderWaiversTab();
 }
@@ -3172,6 +3315,7 @@ function renderWaiversTab() {
     tbody.appendChild(tr);
   });
   renderFaabPlanner();
+  void renderPortfolioClaimPlan();
   drawWaiverChart();
 }
 
@@ -3537,17 +3681,22 @@ async function getPortfolioLeagueRosters(league) {
   if (portfolioState.rostersByLeague.has(cacheKey)) return portfolioState.rostersByLeague.get(cacheKey);
   let rosters = [];
   if (league.provider === "espn") {
-    rosters = (league.espnData?.teams || []).map(team => ({
-      teamId: String(team.id), ownerId: String(team.owners?.[0] || ""),
-      name: team.name || `${team.location || ""} ${team.nickname || ""}`.trim() || `Team ${team.id}`,
-      rosterPositions: league.rosterPositions || [], scoringSettings: league.scoringSettings || {},
-      players: (team.roster?.entries || []).map(entry => {
-        const player = entry.playerPoolEntry?.player || entry.player || {};
-        return getInternalPlayerIdFromEspn(player);
-      }).filter(Boolean)
-    }));
+    rosters = (league.espnData?.teams || []).map(team => {
+      const entries = team.roster?.entries || [];
+      const mapped = entries.map(entry => ({
+        playerId: getInternalPlayerIdFromEspn(entry.playerPoolEntry?.player || entry.player || {}),
+        slot: Number(entry.lineupSlotId)
+      })).filter(entry => entry.playerId);
+      return {
+        teamId: String(team.id), ownerId: String(team.owners?.[0] || ""),
+        name: team.name || `${team.location || ""} ${team.nickname || ""}`.trim() || `Team ${team.id}`,
+        rosterPositions: league.rosterPositions || [], scoringSettings: league.scoringSettings || {},
+        waiverPriority: Number(team.waiverRank ?? team.waiverPriority) || null,
+        players: mapped.map(entry => entry.playerId), starters: mapped.filter(entry => ![20, 21, 22].includes(entry.slot)).map(entry => entry.playerId)
+      };
+    });
   } else if (league.provider === "yahoo") {
-    rosters = state.managers.map(manager => ({ teamId: String(manager.rosterId), ownerId: String(manager.ownerId || ""), name: manager.teamName, rosterPositions: league.rosterPositions || [], scoringSettings: league.scoringSettings || {}, players: manager.players || [] }));
+      rosters = state.managers.map(manager => ({ teamId: String(manager.rosterId), ownerId: String(manager.ownerId || ""), name: manager.teamName, rosterPositions: league.rosterPositions || [], scoringSettings: league.scoringSettings || {}, waiverPriority: Number(manager.waiverPriority) || null, players: manager.players || [], starters: manager.starters || [] }));
   } else {
     const [rosterResponse, userResponse] = await Promise.all([
       fetch(`https://api.sleeper.app/v1/league/${league.leagueId}/rosters`).then(response => response.json()),
@@ -3558,11 +3707,140 @@ async function getPortfolioLeagueRosters(league) {
       teamId: String(roster.roster_id), ownerId: String(roster.owner_id || ""),
       name: userNames[roster.owner_id] || `Team ${roster.roster_id}`,
       rosterPositions: league.rosterPositions || [], scoringSettings: league.scoringSettings || {},
-      players: roster.players || []
+      waiverPriority: Number(roster.settings?.waiver_position) || null,
+      players: roster.players || [], starters: roster.starters || []
     }));
   }
   portfolioState.rostersByLeague.set(cacheKey, rosters);
   return rosters;
+}
+
+function readFaabStateForLeague(league) {
+  const defaults = { budget: 100, weeksRemaining: 12, strategy: "balanced", claims: [] };
+  try {
+    const saved = JSON.parse(localStorage.getItem(getFaabStorageKeyForLeague(league)) || "null");
+    if (!saved || typeof saved !== "object") return defaults;
+    return {
+      budget: Number.isFinite(Number(saved.budget)) ? Math.max(0, Number(saved.budget)) : 100,
+      weeksRemaining: Math.min(18, Math.max(1, Number(saved.weeksRemaining) || 12)),
+      strategy: ["conservative", "balanced", "aggressive"].includes(saved.strategy) ? saved.strategy : "balanced",
+      claims: Array.isArray(saved.claims) ? saved.claims : []
+    };
+  } catch { return defaults; }
+}
+
+function getPortfolioClaimDrop(roster, addPlayer) {
+  const starters = new Set((roster.starters || []).map(String));
+  return (roster.players || []).map(id => state.players[id]).filter(player => {
+    return player && !player.isPick && String(player.id) !== String(addPlayer.id) && !starters.has(String(player.id)) && !getPlayerGameDayStatus(player).locked;
+  }).sort((a, b) => Number(a.projectedPoints || 0) - Number(b.projectedPoints || 0) || Number(a.baseValue || 0) - Number(b.baseValue || 0))[0] || null;
+}
+
+function buildPortfolioClaimSuggestions(entries) {
+  const playerPool = Object.values(state.players).filter(player => player && !player.isPick && player.isCurrentNfl && ["QB", "RB", "WR", "TE", "K", "DEF"].includes(player.position));
+  const suggestions = [];
+  entries.forEach(({ league, roster, rosters }) => {
+    const saved = readFaabStateForLeague(league);
+    const queued = saved.claims.reduce((sum, claim) => sum + Math.max(0, Number(claim.bid) || 0), 0);
+    const requirements = getBasePositionSlotCounts(roster.rosterPositions || league.rosterPositions || []);
+    const counts = { QB: 0, RB: 0, WR: 0, TE: 0, K: 0, DEF: 0 };
+    const healthyCounts = { QB: 0, RB: 0, WR: 0, TE: 0, K: 0, DEF: 0 };
+    (roster.players || []).forEach(id => {
+      const player = state.players[id];
+      const position = player?.position;
+      if (Object.hasOwn(counts, position)) {
+        counts[position]++;
+        if (!["Out", "IR", "PUP", "Suspended", "Doubtful"].includes(player.injuryStatus) && player.byeWeek !== state.week) healthyCounts[position]++;
+      }
+    });
+    const flexSlots = (roster.rosterPositions || league.rosterPositions || []).filter(slot => ["FLEX", "WR/RB", "W/R", "W/T", "REC_FLEX", "WR/TE", "W/R/T", "WRRB_FLEX"].includes(slot)).length;
+    const healthySkillCount = (roster.players || []).map(id => state.players[id]).filter(player => player && ["RB", "WR", "TE"].includes(player.position) && !["Out", "IR", "PUP", "Suspended"].includes(player.injuryStatus) && player.byeWeek !== state.week).length;
+    const baseSkillSlots = requirements.RB + requirements.WR + requirements.TE;
+    const flexGap = flexSlots ? Math.max(0, baseSkillSlots + flexSlots - healthySkillCount) : 0;
+    const owned = new Set(rosters.flatMap(item => item.players || []));
+    const needs = ["QB", "RB", "WR", "TE", "K", "DEF"].flatMap(position => {
+      const required = requirements[position] || 0;
+      const gap = Math.max(0, required - healthyCounts[position]);
+      return gap ? [{ position, score: 100 + gap * 20, gap, label: `${position} starter coverage short by ${gap}` }] : [];
+    });
+    if (flexGap) needs.push({ position: "FLEX", score: 65 + flexGap * 10, gap: flexGap, label: `Flexible starter coverage short by ${flexGap}` });
+    if (!needs.length) {
+      ["RB", "WR", "TE"].forEach(position => {
+        if (counts[position] < (requirements[position] || 0) + 1) needs.push({ position, score: 25, gap: 0, label: `${position} depth` });
+      });
+    }
+    const available = playerPool.filter(player => !owned.has(player.id));
+    needs.forEach(need => {
+      const candidates = available.filter(player => need.position === "FLEX" ? ["RB", "WR", "TE"].includes(player.position) : player.position === need.position)
+        .sort((a, b) => Number(b.vorpScore || 0) - Number(a.vorpScore || 0) || Number(b.projectedPoints || 0) - Number(a.projectedPoints || 0));
+      const player = candidates.find(candidate => !saved.claims.some(claim => String(claim.playerId) === String(candidate.id)));
+      if (!player) return;
+      const drop = getPortfolioClaimDrop(roster, player);
+      const waiverRank = Number(roster.waiverPriority) || 0;
+      const waiverRankBonus = waiverRank > 0 && waiverRank <= rosters.length ? (rosters.length - waiverRank + 1) * 2 : 0;
+      suggestions.push({
+        league, roster, player, drop, need, priority: need.score + Number(player.vorpScore || 0) + waiverRankBonus,
+        waiverPriority: waiverRank || null,
+        bid: estimateFaabBid(player, saved.budget, queued, saved.strategy, saved.weeksRemaining),
+        leagueIndex: state.leagues.indexOf(league)
+      });
+    });
+  });
+  return suggestions.sort((a, b) => b.priority - a.priority).slice(0, 12);
+}
+
+async function renderPortfolioClaimPlan(forceRefresh = false) {
+  const container = document.getElementById("portfolioClaimPlan");
+  const meta = document.getElementById("portfolioClaimMeta");
+  if (!container) return;
+  if (!state.leagues.length) {
+    container.innerHTML = `<div class="draft-empty">Connect leagues to compare waiver needs and budgets.</div>`;
+    if (meta) meta.textContent = "No connected leagues.";
+    return;
+  }
+  if (forceRefresh) portfolioState.rostersByLeague.clear();
+  const results = await Promise.all(state.leagues.map(async league => {
+    try { return { league, rosters: await getPortfolioLeagueRosters(league) }; }
+    catch { return { league, rosters: [] }; }
+  }));
+  const entries = results.flatMap(({ league, rosters }) => {
+    const cacheKey = `${league.provider}:${league.leagueId}`;
+    const preferred = (league.provider === "sleeper" && rosters.find(roster => roster.ownerId === String(state.userId))) || rosters[0];
+    const selectedId = state.portfolioRosterSelections[cacheKey] || preferred?.teamId;
+    const roster = rosters.find(item => item.teamId === selectedId);
+    return roster ? [{ league, roster, rosters }] : [];
+  });
+  const suggestions = buildPortfolioClaimSuggestions(entries);
+  if (meta) meta.textContent = `${entries.length} tracked rosters · ${suggestions.length} locally queued opportunities · player availability checked per league`;
+  container.innerHTML = suggestions.length ? suggestions.map(item => {
+    const queued = readFaabStateForLeague(item.league).claims.some(claim => String(claim.playerId) === String(item.player.id));
+    const faabRemaining = Math.max(0, readFaabStateForLeague(item.league).budget - readFaabStateForLeague(item.league).claims.reduce((sum, claim) => sum + Math.max(0, Number(claim.bid) || 0), 0));
+    const waiverLabel = item.waiverPriority ? `Waiver #${item.waiverPriority}` : "Waiver priority unavailable";
+    return `<article class="portfolio-claim-group"><div class="portfolio-claim-group-heading"><strong>${draftEscapeHtml(item.league.name)} · ${draftEscapeHtml(item.roster.name)}</strong><span>${draftEscapeHtml(waiverLabel)} · $${faabRemaining} FAAB · ${draftEscapeHtml(item.need.label)}</span></div><div class="portfolio-claim-row"><div><strong>${draftEscapeHtml(item.player.name)} · ${draftEscapeHtml(item.player.position)}</strong><small>${Number(item.player.projectedPoints || 0).toFixed(1)} projected · +${Number(item.player.vorpScore || 0).toFixed(1)} VORP</small></div><span class="portfolio-claim-drop">${item.drop ? `Drop candidate: ${draftEscapeHtml(item.drop.name)} (${Number(item.drop.projectedPoints || 0).toFixed(1)} projected)` : "No unlocked bench drop candidate"}</span><button type="button" class="btn-builder-action" data-portfolio-claim="${draftEscapeHtml(item.player.id)}" data-portfolio-league="${item.leagueIndex}" data-portfolio-drop="${draftEscapeHtml(item.drop?.id || "")}" data-portfolio-bid="${item.bid}" ${queued ? "disabled" : ""}>${queued ? "Already queued" : `Queue $${item.bid}`}</button></div></article>`;
+  }).join("") : `<div class="draft-empty">No available players currently match tracked roster gaps or depth needs.</div>`;
+}
+
+function queuePortfolioFaabClaim(button) {
+  const league = state.leagues[parseInt(button.dataset.portfolioLeague, 10)];
+  const player = state.players[button.dataset.portfolioClaim];
+  if (!league || !player) return;
+  const key = getFaabStorageKeyForLeague(league);
+  const saved = readFaabStateForLeague(league);
+  if (saved.claims.some(claim => String(claim.playerId) === String(player.id))) return;
+  saved.claims.push({
+    playerId: player.id, playerName: player.name, position: player.position,
+    bid: Math.min(Math.max(0, Number(button.dataset.portfolioBid) || 0), Math.max(0, saved.budget - saved.claims.reduce((sum, claim) => sum + Math.max(0, Number(claim.bid) || 0), 0))),
+    dropPlayerId: button.dataset.portfolioDrop || "", dropPlayerName: state.players[button.dataset.portfolioDrop]?.name || "",
+    dropProjection: Number(state.players[button.dataset.portfolioDrop]?.projectedPoints) || 0,
+    dropChoiceSet: true, status: "queued", queuedWeek: state.week
+  });
+  try { localStorage.setItem(key, JSON.stringify(saved)); } catch {}
+  if (getFaabStorageKeyForLeague() === key) {
+    faabState.loadedKey = "";
+    loadFaabState();
+    renderFaabPlanner();
+  }
+  void renderPortfolioClaimPlan();
 }
 
 function populateHistorySeasonOptions() {
@@ -3756,22 +4034,78 @@ function getNewsletterArchive() {
   } catch { return {}; }
 }
 
+function getNewsletterStandingsMovement(league, standings) {
+  const archive = getNewsletterArchive()[getNewsletterLeagueKey(league)] || {};
+  const previous = Object.values(archive).filter(issue => String(issue.season) === String(league.season) && Number(issue.week) < Number(state.week))
+    .sort((a, b) => Number(b.week) - Number(a.week))[0];
+  if (!previous?.standings?.length) return { previousWeek: null, movers: [], text: "Standings movement starts after a prior weekly issue is saved." };
+  const previousRanks = new Map(previous.standings.map((team, index) => [team.teamName, index + 1]));
+  const movers = standings.map((team, index) => ({ teamName: team.teamName, movement: (previousRanks.get(team.teamName) || index + 1) - (index + 1) }))
+    .filter(team => team.movement !== 0).sort((a, b) => b.movement - a.movement).slice(0, 3);
+  return {
+    previousWeek: Number(previous.week), movers,
+    text: movers.length ? movers.map(team => `${team.teamName} ${team.movement > 0 ? `up ${team.movement}` : `down ${Math.abs(team.movement)}`} spot${Math.abs(team.movement) === 1 ? "" : "s"}`).join(" · ") : `No rank changes since Week ${previous.week}.`
+  };
+}
+
+function buildNewsletterNextWeekWatch(manager) {
+  const nextWeek = Number(state.week) + 1;
+  if (!manager || nextWeek > 18) return ["No regular-season week remains to preview."];
+  const roster = (manager.players || []).map(id => state.players[id]).filter(Boolean);
+  const watch = [];
+  roster.forEach(player => {
+    if (player.byeWeek === nextWeek) watch.push({ priority: 100, text: `${player.name} is on bye in Week ${nextWeek}.` });
+    else if (["Out", "IR", "PUP", "Suspended", "Doubtful", "Questionable"].includes(player.injuryStatus)) watch.push({ priority: 90, text: `${player.name} is ${player.injuryStatus}; recheck before Week ${nextWeek}.` });
+  });
+  const schedules = roster.map(player => {
+    const team = normalizeTeamCode(player.team);
+    const game = CURRENT_NFL_SCHEDULE[team]?.[nextWeek];
+    if (!game) return null;
+    const position = ["QB", "RB", "WR", "TE", "DEF"].includes(player.position) ? player.position : "WR";
+    const rank = CURRENT_DVP_RANKS[position]?.[game.opp];
+    return { player, opponent: game.opp, rank: Number(rank) || 0 };
+  }).filter(Boolean).sort((a, b) => b.rank - a.rank).slice(0, 2);
+  schedules.forEach(({ player, opponent, rank }) => watch.push({ priority: 35 + rank, text: `${player.name} faces ${opponent} in Week ${nextWeek}${rank ? ` · matchup rank ${rank}` : ""}.` }));
+  return watch.sort((a, b) => b.priority - a.priority).slice(0, 4).map(item => item.text).length
+    ? watch.sort((a, b) => b.priority - a.priority).slice(0, 4).map(item => item.text)
+    : [`Check ${manager.teamName}'s Week ${nextWeek} byes and injury status before setting the lineup.`];
+}
+
 function buildLeagueNewsletterIssue() {
   const league = state.activeLeague;
   if (!league || !state.managers.length) return null;
   const leader = [...state.managers].sort((a, b) => (b.wins - a.wins) || (b.pf - a.pf))[0];
   const games = getNormalizedCurrentMatchups();
-  const scores = games.flatMap(game => [{ name: game.homeName, score: game.homeScore }, { name: game.awayName, score: game.awayScore }]).sort((a, b) => b.score - a.score);
   const closest = [...games].filter(game => game.homeScore > 0 || game.awayScore > 0).sort((a, b) => Math.abs(a.homeScore - a.awayScore) - Math.abs(b.homeScore - b.awayScore))[0];
   const actions = buildWeeklyRecommendations().slice(0, 5).map(item => ({ title: item.title, detail: item.detail, value: item.value, type: item.type }));
   const standings = [...state.managers].sort((a, b) => (b.wins - a.wins) || (b.pf - a.pf)).slice(0, 12).map(manager => ({
     teamName: manager.teamName, record: `${manager.wins}-${manager.losses}${manager.ties ? `-${manager.ties}` : ""}`,
     pointsFor: Number(manager.pf) || 0, pointsAgainst: Number(manager.pa) || 0
   }));
-  const topScore = scores.find(item => item.score > 0);
+  const managerOfWeek = [...games].filter(game => game.homeScore > 0 || game.awayScore > 0)
+    .flatMap(game => [{ name: game.homeName, score: game.homeScore }, { name: game.awayName, score: game.awayScore }]).sort((a, b) => b.score - a.score)[0] || null;
+  const playerOfWeek = [...getOptimizerActualPoints().entries()].map(([playerId, points]) => ({ player: state.players[playerId], points }))
+    .filter(item => item.player && item.points > 0).sort((a, b) => b.points - a.points)[0] || null;
+  const projectedUnderdogs = games.map(game => {
+    const homeManager = state.managers.find(manager => String(manager.rosterId) === String(game.homeId));
+    const awayManager = state.managers.find(manager => String(manager.rosterId) === String(game.awayId));
+    if (!homeManager || !awayManager || (game.homeScore <= 0 && game.awayScore <= 0)) return null;
+    const homeProjection = calcOptimalLineup(homeManager.players, false, getLineupLockConstraints(homeManager)).total;
+    const awayProjection = calcOptimalLineup(awayManager.players, false, getLineupLockConstraints(awayManager)).total;
+    const underdog = homeProjection < awayProjection
+      ? { manager: homeManager, projection: homeProjection, favoriteProjection: awayProjection, actual: game.homeScore, favoriteActual: game.awayScore }
+      : { manager: awayManager, projection: awayProjection, favoriteProjection: homeProjection, actual: game.awayScore, favoriteActual: game.homeScore };
+    return underdog.actual > underdog.favoriteActual && underdog.projection < underdog.favoriteProjection ? underdog : null;
+  }).filter(Boolean).sort((a, b) => (b.favoriteProjection - b.projection) - (a.favoriteProjection - a.projection))[0] || null;
+  const standingsMovement = getNewsletterStandingsMovement(league, standings);
+  const selectedManager = state.managers[parseInt(document.getElementById("teamSelect")?.value || "0", 10)] || state.managers[0];
+  const nextWeekWatch = buildNewsletterNextWeekWatch(selectedManager);
   const summary = [
     leader ? `${leader.teamName} leads the standings at ${leader.wins}-${leader.losses} with ${Number(leader.pf || 0).toFixed(1)} points for.` : "Standings are not available yet.",
-    topScore ? `${topScore.name} owns the top score so far at ${topScore.score.toFixed(1)} points.` : "Matchup scoring is not available yet.",
+    managerOfWeek ? `${managerOfWeek.name} is the weekly manager leader so far at ${managerOfWeek.score.toFixed(1)} points.` : "Manager of the week is pending matchup scores.",
+    playerOfWeek ? `${playerOfWeek.player.name} leads player scoring with ${playerOfWeek.points.toFixed(1)} points.` : "Player of the week is pending player scores.",
+    projectedUnderdogs ? `Upset watch: ${projectedUnderdogs.manager.teamName} is leading despite a lower projected score.` : "No projected underdog is currently ahead.",
+    `Standings movement: ${standingsMovement.text}`,
     closest ? `The closest game is ${closest.homeName} vs ${closest.awayName}, separated by ${Math.abs(closest.homeScore - closest.awayScore).toFixed(1)} points.` : "No close matchup is available to highlight yet.",
     `${actions.length} front-office move${actions.length === 1 ? "" : "s"} to review this week.`
   ];
@@ -3779,7 +4113,8 @@ function buildLeagueNewsletterIssue() {
     id: `${league.season}-week-${state.week}`, leagueKey: getNewsletterLeagueKey(league),
     leagueName: league.name, season: String(league.season), week: state.week,
     title: `${league.name} · Week ${state.week}`, generatedAt: new Date().toISOString(),
-    summary, games, standings, actions
+    summary, games, standings, actions, nextWeekWatch,
+    standingsMovement: { previousWeek: standingsMovement.previousWeek, movers: standingsMovement.movers }
   };
 }
 
@@ -3790,6 +4125,7 @@ function newsletterIssueText(issue) {
     "", "MATCHUP BOARD", ...(issue.games.length ? issue.games.map(game => `${game.homeName} ${game.homeScore.toFixed(1)} — ${game.awayScore.toFixed(1)} ${game.awayName}`) : ["No matchup scores available."]),
     "", "STANDINGS", ...issue.standings.map((team, index) => `${index + 1}. ${team.teamName} · ${team.record} · ${team.pointsFor.toFixed(1)} PF`),
     "", "FRONT OFFICE WATCH", ...(issue.actions.length ? issue.actions.map(action => `${action.title} — ${action.detail} (${action.value})`) : ["No recommended actions right now."]),
+    "", "NEXT WEEK WATCH", ...(issue.nextWeekWatch || ["No upcoming watch items available."]),
     "", "Fantasy Front Office"
   ].join("\n");
 }
@@ -3804,7 +4140,8 @@ function renderNewsletterIssue(issue, isSaved = false) {
   }).join("") : `<li class="newsletter-empty">Matchups are not available for this week.</li>`;
   const standings = issue.standings.map((team, index) => `<tr><td>${index + 1}</td><td>${draftEscapeHtml(team.teamName)}</td><td>${draftEscapeHtml(team.record)}</td><td>${team.pointsFor.toFixed(1)}</td><td>${team.pointsAgainst.toFixed(1)}</td></tr>`).join("");
   const actions = issue.actions.length ? issue.actions.map(action => `<li><span class="newsletter-action-type">${draftEscapeHtml(action.type)}</span><div><strong>${draftEscapeHtml(action.title)}</strong><small>${draftEscapeHtml(action.detail)} · ${draftEscapeHtml(action.value)}</small></div></li>`).join("") : `<li class="newsletter-empty">No front-office actions to highlight.</li>`;
-  content.innerHTML = `<header class="newsletter-masthead"><div><span>FANTASY FRONT OFFICE · ${draftEscapeHtml(issue.season)} SEASON</span><h1>${draftEscapeHtml(issue.title)}</h1></div><time>${draftEscapeHtml(new Date(issue.generatedAt).toLocaleString())}${isSaved ? " · archived" : ""}</time></header><section class="newsletter-brief"><h3>THE WEEK IN BRIEF</h3><ul>${issue.summary.map(line => `<li>${draftEscapeHtml(line)}</li>`).join("")}</ul></section><section class="newsletter-section"><h3>Matchup Board</h3><ol class="newsletter-games">${games}</ol></section><section class="newsletter-section"><h3>Standings</h3><div class="table-wrap"><table class="newsletter-standings"><thead><tr><th>#</th><th>Team</th><th>Record</th><th>PF</th><th>PA</th></tr></thead><tbody>${standings}</tbody></table></div></section><section class="newsletter-section"><h3>Front Office Watch</h3><ol class="newsletter-actions">${actions}</ol></section><footer class="newsletter-footer">Generated for ${draftEscapeHtml(issue.leagueName)} by Fantasy Front Office.</footer>`;
+  const nextWeekWatch = (issue.nextWeekWatch || []).map(line => `<li>${draftEscapeHtml(line)}</li>`).join("") || `<li class="newsletter-empty">No next-week watch items saved.</li>`;
+  content.innerHTML = `<header class="newsletter-masthead"><div><span>FANTASY FRONT OFFICE · ${draftEscapeHtml(issue.season)} SEASON</span><h1>${draftEscapeHtml(issue.title)}</h1></div><time>${draftEscapeHtml(new Date(issue.generatedAt).toLocaleString())}${isSaved ? " · archived" : ""}</time></header><section class="newsletter-brief"><h3>THE WEEK IN BRIEF</h3><ul>${issue.summary.map(line => `<li>${draftEscapeHtml(line)}</li>`).join("")}</ul></section><section class="newsletter-section"><h3>Matchup Board</h3><ol class="newsletter-games">${games}</ol></section><section class="newsletter-section"><h3>Standings</h3><div class="table-wrap"><table class="newsletter-standings"><thead><tr><th>#</th><th>Team</th><th>Record</th><th>PF</th><th>PA</th></tr></thead><tbody>${standings}</tbody></table></div></section><section class="newsletter-section"><h3>Front Office Watch</h3><ol class="newsletter-actions">${actions}</ol></section><section class="newsletter-section"><h3>Next Week Watch</h3><ul>${nextWeekWatch}</ul></section><footer class="newsletter-footer">Generated for ${draftEscapeHtml(issue.leagueName)} by Fantasy Front Office.</footer>`;
   if (status) status.textContent = isSaved ? `Viewing archived Week ${issue.week} · ${issue.season}.` : `Previewing the current Week ${issue.week} issue. Save it to keep this edition in the league archive.`;
 }
 
@@ -3877,7 +4214,7 @@ async function copyNewsletterIssue() {
 function downloadNewsletterIssue() {
   const issue = getSelectedNewsletterIssue();
   if (!issue) return;
-  const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${draftEscapeHtml(issue.title)}</title><style>body{font:16px Georgia,serif;max-width:820px;margin:40px auto;padding:0 20px;color:#18221e}h1{font:700 34px Georgia,serif}h2,h3{font:700 15px Arial,sans-serif;text-transform:uppercase;letter-spacing:1px;margin-top:30px}li{line-height:1.6;margin:8px 0}table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:9px;border-bottom:1px solid #d8e0dc}footer{margin-top:35px;color:#63716a;font:12px Arial,sans-serif}</style></head><body><p>FANTASY FRONT OFFICE · ${draftEscapeHtml(issue.season)} SEASON</p><h1>${draftEscapeHtml(issue.title)}</h1><h2>The week in brief</h2><ul>${issue.summary.map(line => `<li>${draftEscapeHtml(line)}</li>`).join("")}</ul><h2>Matchups</h2><ul>${issue.games.map(game => `<li>${draftEscapeHtml(game.homeName)} ${game.homeScore.toFixed(1)} — ${game.awayScore.toFixed(1)} ${draftEscapeHtml(game.awayName)}</li>`).join("")}</ul><h2>Standings</h2><table><thead><tr><th>#</th><th>Team</th><th>Record</th><th>PF</th><th>PA</th></tr></thead><tbody>${issue.standings.map((team, index) => `<tr><td>${index + 1}</td><td>${draftEscapeHtml(team.teamName)}</td><td>${draftEscapeHtml(team.record)}</td><td>${team.pointsFor.toFixed(1)}</td><td>${team.pointsAgainst.toFixed(1)}</td></tr>`).join("")}</tbody></table><h2>Front office watch</h2><ul>${issue.actions.map(action => `<li><strong>${draftEscapeHtml(action.title)}</strong> — ${draftEscapeHtml(action.detail)} · ${draftEscapeHtml(action.value)}</li>`).join("")}</ul><footer>Generated for ${draftEscapeHtml(issue.leagueName)} by Fantasy Front Office.</footer></body></html>`;
+  const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${draftEscapeHtml(issue.title)}</title><style>body{font:16px Georgia,serif;max-width:820px;margin:40px auto;padding:0 20px;color:#18221e}h1{font:700 34px Georgia,serif}h2,h3{font:700 15px Arial,sans-serif;text-transform:uppercase;letter-spacing:1px;margin-top:30px}li{line-height:1.6;margin:8px 0}table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:9px;border-bottom:1px solid #d8e0dc}footer{margin-top:35px;color:#63716a;font:12px Arial,sans-serif}</style></head><body><p>FANTASY FRONT OFFICE · ${draftEscapeHtml(issue.season)} SEASON</p><h1>${draftEscapeHtml(issue.title)}</h1><h2>The week in brief</h2><ul>${issue.summary.map(line => `<li>${draftEscapeHtml(line)}</li>`).join("")}</ul><h2>Matchups</h2><ul>${issue.games.map(game => `<li>${draftEscapeHtml(game.homeName)} ${game.homeScore.toFixed(1)} — ${game.awayScore.toFixed(1)} ${draftEscapeHtml(game.awayName)}</li>`).join("")}</ul><h2>Standings</h2><table><thead><tr><th>#</th><th>Team</th><th>Record</th><th>PF</th><th>PA</th></tr></thead><tbody>${issue.standings.map((team, index) => `<tr><td>${index + 1}</td><td>${draftEscapeHtml(team.teamName)}</td><td>${draftEscapeHtml(team.record)}</td><td>${team.pointsFor.toFixed(1)}</td><td>${team.pointsAgainst.toFixed(1)}</td></tr>`).join("")}</tbody></table><h2>Front office watch</h2><ul>${issue.actions.map(action => `<li><strong>${draftEscapeHtml(action.title)}</strong> — ${draftEscapeHtml(action.detail)} · ${draftEscapeHtml(action.value)}</li>`).join("")}</ul><h2>Next week watch</h2><ul>${(issue.nextWeekWatch || []).map(line => `<li>${draftEscapeHtml(line)}</li>`).join("")}</ul><footer>Generated for ${draftEscapeHtml(issue.leagueName)} by Fantasy Front Office.</footer></body></html>`;
   const url = URL.createObjectURL(new Blob([html], { type: "text/html" }));
   const link = document.createElement("a");
   link.href = url; link.download = `${issue.leagueName.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}-week-${issue.week}-newsletter.html`;
@@ -4215,7 +4552,7 @@ function buildWeeklyRecommendations() {
   const manager = state.managers[managerIndex];
   if (!manager) return [];
   const recommendations = [];
-  const optimal = calcOptimalLineup(manager.players, false);
+  const optimal = calcOptimalLineup(manager.players, false, getLineupLockConstraints(manager));
   optimal.slots.forEach((slot, index) => {
     const current = state.players[manager.starters[index]];
     const best = optimal.filled[index];
@@ -4393,6 +4730,45 @@ async function fetchSleeperActualPoints(league, week, forceRefresh = false) {
   return points;
 }
 
+function buildWaiverOutcomeRecord(claim, points, week) {
+  if (!points?.has(String(claim.playerId))) return null;
+  const hasActualAlternative = Boolean(claim.dropPlayerId && points.has(String(claim.dropPlayerId)));
+  const hasProjectionAlternative = Boolean(claim.dropPlayerId && claim.dropProjection !== undefined && claim.dropProjection !== null && String(claim.dropProjection).trim() !== "" && Number.isFinite(Number(claim.dropProjection)));
+  const comparisonType = hasActualAlternative ? "actual" : hasProjectionAlternative ? "projection" : "none";
+  const comparisonPoints = hasActualAlternative ? points.get(String(claim.dropPlayerId)) : hasProjectionAlternative ? Number(claim.dropProjection) : null;
+  const addedPoints = points.get(String(claim.playerId));
+  return {
+    week, addedPoints, comparisonPoints, comparisonType,
+    edge: comparisonPoints === null ? null : addedPoints - comparisonPoints, evaluatedAt: Date.now()
+  };
+}
+
+async function reconcileWaiverClaimOutcomes() {
+  const league = state.activeLeague;
+  if (!league || league.provider !== "sleeper" || faabState.loadedKey !== getFaabStorageKey()) return;
+  const pending = faabState.claims.filter(claim => claim.status === "acquired" && !claim.outcome && Number.isFinite(Number(claim.claimedWeek)));
+  if (!pending.length) return;
+  let nflState;
+  try { nflState = await fetchSleeperNflState(); } catch { return; }
+  state.currentNflWeek = Number(nflState.week || nflState.display_week || state.currentNflWeek);
+  let changed = false;
+  for (const claim of pending) {
+    const claimWeek = Number(claim.claimedWeek);
+    if (claimWeek >= state.currentNflWeek) continue;
+    try {
+      const points = await fetchSleeperActualPoints(league, claimWeek);
+      const outcome = buildWaiverOutcomeRecord(claim, points, claimWeek);
+      if (!outcome) continue;
+      claim.outcome = outcome;
+      changed = true;
+    } catch {}
+  }
+  if (changed) {
+    saveFaabState();
+    renderFaabPlanner();
+  }
+}
+
 async function reconcileGmAdviceOutcomes(nflState, forceRefresh = false) {
   const snapshots = readGmAdviceSnapshots();
   if (!nflState) return snapshots;
@@ -4499,6 +4875,7 @@ async function renderGMInbox(forceRefresh = false) {
     sleeperNflStateCache = { data: null, checkedAt: 0 };
   }
   await Promise.all(state.leagues.map(league => getPortfolioLeagueRosters(league).catch(() => [])));
+  await refreshGameDaySchedule();
   const pressure = buildPortfolioPressureRecommendations();
   const weeklyRecommendations = buildWeeklyRecommendations();
   let nflState = null;
@@ -5651,6 +6028,7 @@ async function refreshLiveMatchups() {
       state.currentNflWeek = Number(data.status?.currentScoringPeriod) || state.currentNflWeek;
       state.currentMatchups = (data.schedule || []).filter(matchup => Number(matchup.matchupPeriodId) === Number(state.week));
     }
+    await refreshGameDaySchedule(true);
     markDataSource("matchups");
     renderMatchupSim();
     renderOptimizerTab(parseInt(document.getElementById("teamSelect")?.value || "0", 10));
@@ -5793,19 +6171,49 @@ function bindControlEvents() {
   });
   document.getElementById("faabClaims")?.addEventListener("change", e => {
     const input = e.target.closest("[data-faab-bid]");
-    if (!input) return;
-    const claim = faabState.claims[parseInt(input.dataset.faabBid, 10)];
+    const drop = e.target.closest("[data-faab-drop]");
+    if (!input && !drop) return;
+    const index = parseInt((input || drop).dataset.faabBid ?? (input || drop).dataset.faabDrop, 10);
+    const claim = faabState.claims[index];
     if (!claim) return;
-    claim.bid = Math.min(faabState.budget, Math.max(0, Number(input.value) || 0));
+    if (input) claim.bid = Math.min(faabState.budget, Math.max(0, Number(input.value) || 0));
+    if (drop) {
+      claim.dropPlayerId = drop.value;
+      const dropPlayer = state.players[drop.value];
+      claim.dropPlayerName = dropPlayer?.name || "";
+      claim.dropProjection = Number(dropPlayer?.projectedPoints) || 0;
+      claim.dropChoiceSet = true;
+    }
     saveFaabState();
     renderWaiversTab();
   });
   document.getElementById("faabClaims")?.addEventListener("click", e => {
+    const acquiredButton = e.target.closest("[data-faab-acquired]");
+    if (acquiredButton) {
+      const claim = faabState.claims[parseInt(acquiredButton.dataset.faabAcquired, 10)];
+      if (!claim) return;
+      if (claim.status === "acquired") {
+        claim.status = "queued";
+        delete claim.claimedWeek;
+        delete claim.outcome;
+      } else {
+        claim.status = "acquired";
+        claim.claimedWeek = state.week;
+        claim.claimedAt = Date.now();
+      }
+      saveFaabState();
+      renderWaiversTab();
+      return;
+    }
     const button = e.target.closest("[data-remove-faab]");
     if (!button) return;
     faabState.claims.splice(parseInt(button.dataset.removeFaab, 10), 1);
     saveFaabState();
     renderWaiversTab();
+  });
+  document.getElementById("portfolioClaimPlan")?.addEventListener("click", event => {
+    const button = event.target.closest("[data-portfolio-claim]");
+    if (button) queuePortfolioFaabClaim(button);
   });
 
   document.getElementById("syncBtn")?.addEventListener("click", syncUserAccount);
@@ -5887,6 +6295,10 @@ function bindControlEvents() {
     syncLiveEspnSchedule();
     renderSosTab();
     if (state.activeLeague) await loadLeague(document.getElementById("leagueSelect").value);
+    if (document.getElementById("tab-opt")?.classList.contains("active")) {
+      await refreshGameDaySchedule(true);
+      renderOptimizerTab(parseInt(document.getElementById("teamSelect")?.value || "0", 10));
+    }
     if (document.getElementById("tab-inbox")?.classList.contains("active")) await renderGMInbox();
     if (document.getElementById("tab-newsletter")?.classList.contains("active")) renderLeagueNewsletter();
   });

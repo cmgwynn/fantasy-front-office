@@ -284,6 +284,7 @@
       <div class="optimizer-heading">
         <div id="optHeader">WEEK LINEUP COMPARISON: CURRENT VS. OPTIMAL</div>
         <div class="optimizer-heading-actions">
+          <span id="optimizerLockStatus" aria-live="polite">Checking kickoff times...</span>
           <span id="optLiveStatus" aria-live="polite">Actual points reflect the last league sync.</span>
           <button id="refreshOptimizerScoresBtn" class="btn-builder-action" type="button">Refresh points</button>
           <div id="optSubAlert"></div>
@@ -320,6 +321,11 @@
         <div id="waiverNeedList" class="waiver-need-list"></div>
         <div id="waiverNeedTargets" class="waiver-need-targets"></div>
       </section>
+      <section class="portfolio-panel portfolio-claim-panel">
+        <div class="draft-panel-heading"><div><h3>Cross-League Claim Plan</h3><span id="portfolioClaimMeta" class="draft-subtitle">Checking roster needs and player availability across connected leagues.</span></div></div>
+        <div id="portfolioClaimPlan" class="portfolio-claim-plan"></div>
+        <div class="draft-subtitle">Claims are queued locally per league; submit them with your fantasy provider.</div>
+      </section>
       <section class="faab-planner">
         <div class="faab-settings">
           <label>Budget remaining <span><input id="faabBudget" type="number" min="0" max="1000" value="100" /> <b>$</b></span></label>
@@ -335,6 +341,7 @@
         </div>
         <div class="faab-claims-heading"><h3>Queued Claims</h3><span id="faabClaimCount" class="draft-subtitle">0 claims</span></div>
         <div id="faabClaims" class="faab-claims"></div>
+        <div id="faabClaimDisclosure" class="faab-claim-disclosure">Claims are saved as a local plan; submit them in your fantasy provider.</div>
       </section>
       <canvas id="waiverCanvas" class="chart-canvas" style="height:280px;"></canvas>
       <div class="sec-hdr" style="color:var(--good);">TOP AVAILABLE WAIVER TARGETS</div>
