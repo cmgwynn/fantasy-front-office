@@ -9,6 +9,12 @@
       playoffTeams: 4,
       rosterPositions: ["QB", "RB", "RB", "WR", "WR", "TE", "FLEX", "BN", "BN", "BN"],
       scoringSettings: { rec: 1 },
+      completedMatchups: [
+        { week: 1, completed: true, homeId: "1", awayId: "2", homeScore: 132, awayScore: 118 },
+        { week: 1, completed: true, homeId: "3", awayId: "4", homeScore: 105, awayScore: 106 },
+        { week: 2, completed: true, homeId: "2", awayId: "1", homeScore: 121, awayScore: 121 },
+        { week: 2, completed: true, homeId: "4", awayId: "3", homeScore: 95, awayScore: 140 }
+      ],
       freeAgents: ["RB", "WR", "TE", "QB"].map((position, index) => ({
         playerId: `demo_free_${index}`, name: `Sample Free Agent ${position}`,
         position, nflTeam: "KC", projectedPoints: 22 - index,

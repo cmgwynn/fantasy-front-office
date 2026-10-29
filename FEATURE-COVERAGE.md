@@ -8,7 +8,7 @@ GitHub Pages publishes the root of the `main` branch in
 update that site: changes must be committed and pushed to the publishing
 repository, then its Pages build must complete.
 
-Deploy the HTML, CSS, all four JavaScript entry points, documentation, and tests
+Deploy the HTML, CSS, all JavaScript entry points, documentation, and tests
 together so script dependencies are not omitted. Run `npm test` and the browser
 regression suite before publishing. Verify the public app after deployment.
 Refreshing starts on GM Inbox; Player Compare and Team Grades are separate
@@ -110,6 +110,50 @@ grading, or live-provider draft analysis.
 Run `npm test` for local checks. Open `tests/optimizer-regression.html` for the
 browser regression suite. Live provider access is not covered by local checks.
 
+### Season records, rivalries, and fact lookup
+
+Open **Records & Rivalries**. Sleeper's **Load / refresh completed results**
+fetches prior regular-season weeks using verified NFL season/week status,
+excluding the current week and fantasy playoffs. The selected display week
+does not determine which games are complete. Requests run in batches of at
+most six; each week requires complete roster coverage and valid paired scores.
+Byes with no matchup ID are excluded. Failed weeks are explicitly listed, and
+partial coverage is shown. A failed season-status refresh retains prior data
+with a warning. Results are in-memory and must be loaded again after refresh.
+
+The view calculates highest team score, closest non-tied game, largest margin,
+and per-pair wins/losses/ties, point totals, and average signed margins. Zero
+and negative scores are supported. Equal record scores/margins display the
+first game in week/team-ID order. The fact lookup offers four fixed questions
+answered directly from loaded games with season/source context; it is not a
+free-form AI historian.
+
+Yahoo JSON roster imports may include an optional `completedMatchups` array:
+
+```json
+{
+  "week": 1,
+  "completed": true,
+  "homeId": "1",
+  "awayId": "2",
+  "homeScore": 105.5,
+  "awayScore": 104
+}
+```
+
+Each array item needs a week from 1 to 18, explicit completion, finite numeric
+scores, and different team IDs matching the 1-based positions in the imported
+`teams` array. Multiple opponents per team/week and duplicate games are
+rejected. User-supplied completion and completeness are not independently
+verified. Demo results are fictional illustrations, not reconciled historical
+standings.
+
+All records are scoped to one league and season, keyed by team IDs. They are
+not all-time records, cross-season manager identities, championships, or
+streaks. Median/multi-opponent formats, ESPN schedule-history loading,
+automatic multi-season traversal, and verified finishes remain future work.
+Standings and projections are never substituted for game scores.
+
 ## Independent FFWrapped capability inventory
 
 Source: <https://ffwrapped.com/> (public feature descriptions reviewed for this
@@ -123,8 +167,8 @@ and Premium workflows have not been independently exercised.
 | League-specific roster and player values | Partial: scoring and roster models | Audit scoring completeness and positional assumptions |
 | Playoff/championship odds and likely seeds | Partial: playoff projections and bracket | Validated schedule simulation, seed distributions, championship paths |
 | Trade comparison and mutually beneficial packages | Partial: builder and finder | Verify package constraints and both-lineup improvements |
-| All-time records, finishes, head-to-head, rivalries | Partial: season history | Cross-season manager identity, record book, rivalry views |
-| League Historian questions | Not implemented | Grounded queries over imported historical facts; no invented answers |
+| All-time records, finishes, head-to-head, rivalries | Season-scoped record book and head-to-head rivalries from completed Sleeper/imported results; season standings | Cross-season manager identity, all-time aggregation, finishes, ESPN history loader |
+| League Historian questions | Fixed fact lookup over loaded scores with source/season context | Broader grounded questions and cross-season historical coverage |
 | FAAB planner | Partial: local budget and claims | Provider balances, deadlines, claim reconciliation |
 | Rate my team and player comparison | Dedicated player comparison, roster scenarios, explained league-relative weekly team grades with starter-group breakdowns | Validated historical production, calibrated season/dynasty grades, and provider-rule completeness |
 | Weekly lineup analyzer | Partial: optimizer and kickoff locks | Provider rule verification and missing-input warnings |

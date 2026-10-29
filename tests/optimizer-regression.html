@@ -30,6 +30,7 @@
       const savedWaiverTargets = state.waiverTargets;
       const savedDbTrades = state.dbTrades;
       const savedDraftAdp = draftState.adpByName;
+      const savedRecordsCache = new Map(leagueRecordsCache);
       const savedTeamIndex = document.getElementById("teamSelect").value;
       const savedActiveTab = document.querySelector(".tab-page.active")?.id;
       const savedCompareControls = Object.fromEntries(["compareSearch", "comparePosition", "comparePlayerA", "comparePlayerB"].map(id => [id, document.getElementById(id).value]));
@@ -471,6 +472,72 @@
         if (priorClaimStorage === null) localStorage.removeItem(claimStorageKey);
         else localStorage.setItem(claimStorageKey, priorClaimStorage);
 
+        state.activeLeague = { ...claimLeague, playoffWeekStart: 10 };
+        let recordActiveRequests = 0, recordMaxRequests = 0;
+        const recordWeeks = [];
+        window.fetch = async url => {
+          if (String(url).endsWith("/state/nfl")) return { ok: true, json: async () => ({ season: "2026", season_type: "regular", week: 9 }) };
+          const week = Number(String(url).split("/").pop());
+          recordWeeks.push(week);
+          recordActiveRequests++;
+          recordMaxRequests = Math.max(recordMaxRequests, recordActiveRequests);
+          await new Promise(resolve => setTimeout(resolve, 5));
+          recordActiveRequests--;
+          if (week === 3) return { ok: false, status: 503 };
+          return { ok: true, json: async () => [
+            { matchup_id: 1, roster_id: 1, points: 90 + week },
+            { matchup_id: 1, roster_id: 2, points: 100 }
+          ] };
+        };
+        await loadLeagueRecords();
+        let loadedRecord = leagueRecordsCache.get(getLeagueRecordsKey());
+        check("Records loader fetches only completed weeks and caps concurrency",
+          recordWeeks.length === 8 && Math.max(...recordWeeks) === 8 && recordMaxRequests <= 6);
+        check("Records loader exposes failed weeks without inventing scores",
+          loadedRecord.games.length === 7 && loadedRecord.errors.length === 1 &&
+          document.getElementById("recordsStatus").textContent.includes("503") &&
+          document.getElementById("recordsStatus").textContent.includes("7 of 8"));
+        document.getElementById("recordsQuestion").value = "highest";
+        renderLeagueRecords();
+        check("League fact lookup cites the actual loaded score and source",
+          document.getElementById("recordsAnswer").textContent.includes("100.00") &&
+          document.getElementById("recordsAnswer").textContent.includes("Sleeper") &&
+          document.getElementById("recordsAnswer").textContent.includes("incomplete"));
+        window.fetch = async () => { throw new TypeError("fixture offline"); };
+        await loadLeagueRecords();
+        loadedRecord = leagueRecordsCache.get(getLeagueRecordsKey());
+        check("Records refresh failure retains prior data with an explicit stale warning",
+          loadedRecord.games.length === 7 &&
+          document.getElementById("recordsStatus").textContent.includes("Previously loaded") &&
+          document.getElementById("recordsStatus").textContent.includes("fixture offline"));
+        window.fetch = async url => String(url).endsWith("/state/nfl")
+          ? { ok: true, json: async () => ({ season: "2026", season_type: "regular", week: 2 }) }
+          : { ok: true, json: async () => [{ matchup_id: null, roster_id: 1, points: 100 }] };
+        await loadLeagueRecords();
+        check("Records reject incomplete provider roster coverage",
+          leagueRecordsCache.get(getLeagueRecordsKey()).games.length === 0 &&
+          document.getElementById("recordsStatus").textContent.includes("incomplete or unrecognized"));
+        window.fetch = async () => ({ ok: true, json: async () => ({ season: "2026", season_type: "regular", week: 1 }) });
+        await loadLeagueRecords();
+        check("Records do not use projections before any weeks are complete",
+          leagueRecordsCache.get(getLeagueRecordsKey()).games.length === 0 &&
+          document.getElementById("recordsAnswer").textContent.includes("No completed results"));
+        window.fetch = async () => ({ ok: true, json: async () => ({ season: null, season_type: "regular", week: 9 }) });
+        await loadLeagueRecords();
+        check("Records reject missing NFL season status rather than treating it as a valid empty season",
+          document.getElementById("recordsStatus").textContent.includes("completed weeks cannot be verified"));
+        state.activeLeague = { ...claimLeague, leagueId: "records-other-fixture" };
+        renderLeagueRecords();
+        check("Records do not leak across leagues",
+          document.getElementById("leagueRecordsResults").textContent === "" &&
+          document.getElementById("recordsAnswer").textContent.includes("No completed results"));
+        state.activeLeague = { ...claimLeague, provider: "espn" };
+        renderLeagueRecords();
+        check("Records explain unsupported ESPN history rather than fabricating it",
+          document.getElementById("recordsStatus").textContent.includes("not supported"));
+        state.activeLeague = claimLeague;
+        window.fetch = savedFetch;
+
         const priorNewsletter = localStorage.getItem("fantasy-front-office:newsletter:v1");
         const newsletterLeague = { provider: "sleeper", leagueId: `newsletter-regression-${Date.now()}`, season: "2026" };
         const newsletterKey = getNewsletterLeagueKey(newsletterLeague);
@@ -487,6 +554,8 @@
         if (priorNewsletter === null) localStorage.removeItem("fantasy-front-office:newsletter:v1");
         else localStorage.setItem("fantasy-front-office:newsletter:v1", priorNewsletter);
       } finally {
+        leagueRecordsCache.clear();
+        savedRecordsCache.forEach((value, key) => leagueRecordsCache.set(key, value));
         draftState.adpByName = savedDraftAdp;
         state.activeLeague = savedLeague;
         state.leagues = savedLeagues;
@@ -497,6 +566,7 @@
         Object.entries(savedCompareControls).forEach(([id, value]) => { document.getElementById(id).value = value; });
         renderPlayerComparison();
         renderTeamGrades();
+        renderLeagueRecords();
         if (savedActiveTab) activateTab(savedActiveTab);
         state.week = savedWeek;
         state.gameDayByTeam = savedGameDayByTeam;

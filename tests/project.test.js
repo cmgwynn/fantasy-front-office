@@ -9,7 +9,7 @@ const root = path.resolve(__dirname, "..");
 const read = file => fs.readFileSync(path.join(root, file), "utf8");
 
 test("browser JavaScript entry points parse", () => {
-  for (const file of ["app.js", "data-fetch.js", "demo-league.js", "monetization-config.js"]) {
+  for (const file of ["app.js", "data-fetch.js", "demo-league.js", "league-records.js", "monetization-config.js"]) {
     const result = spawnSync(process.execPath, ["--check", file], {
       cwd: root,
       encoding: "utf8"
@@ -45,11 +45,13 @@ test("HTML references existing local assets in the expected script order", () =>
   const configIndex = html.indexOf('<script src="monetization-config.js"></script>');
   const dataFetchIndex = html.indexOf('<script src="data-fetch.js"></script>');
   const demoIndex = html.indexOf('<script src="demo-league.js"></script>');
+  const recordsIndex = html.indexOf('<script src="league-records.js"></script>');
   const appIndex = html.indexOf('<script src="app.js"></script>');
   assert.ok(configIndex >= 0, "Monetization configuration script is missing.");
   assert.ok(dataFetchIndex > configIndex, "Data-fetch module must load after configuration.");
   assert.ok(demoIndex > dataFetchIndex, "Demo module must load before the app.");
-  assert.ok(appIndex > demoIndex, "App script must load after its dependencies.");
+  assert.ok(recordsIndex > demoIndex, "Records module must load after the demo module.");
+  assert.ok(appIndex > recordsIndex, "App script must load after its dependencies.");
 });
 
 test("static interface IDs, labels, and tab navigation targets are consistent", () => {

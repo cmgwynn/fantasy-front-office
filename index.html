@@ -48,6 +48,7 @@
       <option value="tab-inbox" selected>GM Inbox</option>
       <option value="tab-roster">Roster Overview</option>
       <option value="tab-grades">Team Grades</option>
+      <option value="tab-records">Records & Rivalries</option>
       <option value="tab-power">Power Rankings</option>
       <option value="tab-intel">League Intel</option>
       <option value="tab-newsletter">League Newsletter</option>
@@ -66,6 +67,7 @@
       <button class="nav-btn active" data-tab="tab-inbox" aria-current="page">GM Inbox</button>
       <button class="nav-btn" data-tab="tab-roster">Roster Overview</button>
       <button class="nav-btn" data-tab="tab-grades">Team Grades</button>
+      <button class="nav-btn" data-tab="tab-records">Records & Rivalries</button>
       <button class="nav-btn" data-tab="tab-power">Power Rankings</button>
       <button class="nav-btn" data-tab="tab-intel">League Intel</button>
       <button class="nav-btn" data-tab="tab-newsletter">League Newsletter</button>
@@ -127,6 +129,28 @@
         <p class="comparison-note">Weekly roster strength relative to your loaded league, with explained grades and starter-slot breakdowns. Choose a roster using the header above.</p>
       </div>
       <div id="teamGradeResults" aria-live="polite"></div>
+    </div>
+
+    <div id="tab-records" class="tab-page">
+      <div>
+        <div class="draft-eyebrow">LEAGUE RECORD BOOK</div>
+        <h2>Records &amp; Rivalries</h2>
+        <p class="comparison-note">Completed head-to-head results for the active league and season only. Not an all-time record book; identities are team IDs, not cross-season manager identities.</p>
+      </div>
+      <button id="loadRecordsBtn" class="btn-builder-action" type="button">Load / refresh completed results</button>
+      <p id="recordsStatus" class="comparison-note" role="status">Connect a league or Explore demo to view records.</p>
+      <div id="leagueRecordsResults"></div>
+      <section class="comparison-card">
+        <h3>League fact lookup</h3>
+        <label for="recordsQuestion">Ask about the loaded results</label>
+        <select id="recordsQuestion">
+          <option value="highest">Who posted the highest team score?</option>
+          <option value="closest">What was the closest decided matchup?</option>
+          <option value="blowout">What was the biggest margin?</option>
+          <option value="meetings">Which teams met most often?</option>
+        </select>
+        <p id="recordsAnswer" class="comparison-note" aria-live="polite">Load completed results first. Answers use those results only.</p>
+      </section>
     </div>
 
     <!-- TAB 2: POWER RANKINGS -->
@@ -836,6 +860,7 @@
 <script src="monetization-config.js"></script>
 <script src="data-fetch.js"></script>
 <script src="demo-league.js"></script>
+<script src="league-records.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

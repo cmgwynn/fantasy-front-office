@@ -38,6 +38,7 @@ document.addEventListener("click", e => {
     switch (navBtn.dataset.tab) {
       case "tab-power": drawPowerChart(); break;
       case "tab-grades": renderTeamGrades(); break;
+      case "tab-records": renderLeagueRecords(); break;
       case "tab-waiver": drawWaiverChart(); break;
       case "tab-analytics": drawSingleAnalyticsChart(); break;
       case "tab-compare":
@@ -182,6 +183,7 @@ const state = {
 };
 const portfolioState = { rostersByLeague: new Map(), loading: false };
 const gmOutcomeCache = new Map();
+const leagueRecordsCache = new Map();
 let sleeperNflStateCache = { data: null, checkedAt: 0 };
 const playerAlertState = { loaded: false, watchlist: [], events: [], snapshots: {} };
 const draftState = {
@@ -1475,6 +1477,7 @@ async function importYahooRosterFile(file, { demo = false } = {}) {
       payload = { leagueName: get(rows[1], ["leaguename"]) || file.name.replace(/\.csv$/i, ""), season: get(rows[1], ["season", "year"]) || state.season, teams: [...teams.values()] };
     }
     if (!Array.isArray(payload.teams) || !payload.teams.length) throw new Error("No teams found. JSON imports need a teams array; CSV imports need team and player rows.");
+    const completedMatchups = FFORecords.validateGames(payload.completedMatchups || []);
     const leagueName = payload.leagueName || payload.name || "Yahoo roster import";
     const leagueSeason = String(payload.season || state.season);
     const league = {
@@ -1486,6 +1489,10 @@ async function importYahooRosterFile(file, { demo = false } = {}) {
       rosterPositions: Array.isArray(payload.rosterPositions) ? payload.rosterPositions : ["QB", "RB", "RB", "WR", "WR", "TE", "FLEX", "K", "DEF"],
       scoringSettings: payload.scoringSettings || { rec: 1 }
     };
+    const importedTeamIds = new Set(payload.teams.map((team, index) => String(index + 1)));
+    if (completedMatchups.some(game => !importedTeamIds.has(game.homeId) || !importedTeamIds.has(game.awayId))) {
+      throw new Error("Completed matchup team IDs must match the imported teams' 1-based array positions.");
+    }
     state.provider = "yahoo";
     state.userId = "";
     state.livePlayerPoints = {};
@@ -1495,6 +1502,7 @@ async function importYahooRosterFile(file, { demo = false } = {}) {
       document.getElementById("weekSelect").value = String(state.week);
     }
     state.activeLeague = league;
+    leagueRecordsCache.set(getLeagueRecordsKey(league), { games: completedMatchups, source: demo ? "Fictional demo results" : "User-imported completed results", coverage: "Only explicitly supplied completedMatchups; completeness is not verified.", errors: [] });
     portfolioState.rostersByLeague.delete(`${league.provider}:${league.leagueId}`);
     document.getElementById("providerSelect").value = "yahoo";
     updateProviderControls();
@@ -6267,6 +6275,109 @@ function renderMatchupSim() {
   document.getElementById("simScoreB").textContent = `Proj Score: ${totB.toFixed(2)} pts`;
 }
 
+function getLeagueRecordsKey(league = state.activeLeague) {
+  return league ? JSON.stringify([league.provider, league.leagueId, league.season]) : "";
+}
+
+async function loadLeagueRecords() {
+  const league = state.activeLeague;
+  const button = document.getElementById("loadRecordsBtn");
+  const status = document.getElementById("recordsStatus");
+  if (!league) { renderLeagueRecords(); return; }
+  if (league.provider !== "sleeper") { renderLeagueRecords(); return; }
+  const key = getLeagueRecordsKey(league);
+  const teamIds = new Set(state.managers.map(manager => String(manager.rosterId)));
+  button.disabled = true;
+  status.textContent = "Loading completed regular-season weeks (up to 6 requests at a time)...";
+  try {
+    const nfl = await fetchJson("https://api.sleeper.app/v1/state/nfl");
+    const year = Number(league.season), currentYear = Number(nfl.season);
+    if (!/^\d{4}$/.test(String(league.season)) || !/^\d{4}$/.test(String(nfl.season))) throw new Error("NFL season status is unavailable; completed weeks cannot be verified.");
+    let completedWeek = 0;
+    if (year < currentYear) completedWeek = 18;
+    else if (year === currentYear && nfl.season_type === "regular" && Number.isInteger(nfl.week) && nfl.week >= 1 && nfl.week <= 18) completedWeek = nfl.week - 1;
+    else if (year === currentYear && nfl.season_type === "post") completedWeek = 18;
+    else if (year === currentYear && nfl.season_type !== "pre") throw new Error("NFL week status is unavailable; completed weeks cannot be verified.");
+    const regularEnd = Math.min(18, Math.max(0, (Number(league.playoffWeekStart) || 15) - 1));
+    const end = Math.min(completedWeek, regularEnd);
+    const games = [], errors = [], loadedWeeks = [];
+    for (let start = 1; start <= end; start += 6) {
+      await Promise.all(Array.from({ length: Math.min(6, end - start + 1) }, async (_, index) => {
+        const week = start + index;
+        try {
+          const rows = await fetchJson(`https://api.sleeper.app/v1/league/${league.leagueId}/matchups/${week}`);
+          if (!Array.isArray(rows) || rows.length !== teamIds.size || new Set(rows.map(row => String(row.roster_id))).size !== teamIds.size ||
+              rows.some(row => !teamIds.has(String(row.roster_id)))) throw new Error(`Week ${week}: incomplete or unrecognized roster coverage.`);
+          const normalized = FFORecords.normalizeSleeperWeek(rows, week);
+          if (normalized.some(game => !teamIds.has(game.homeId) || !teamIds.has(game.awayId))) throw new Error(`Week ${week}: unknown roster ID.`);
+          games.push(...normalized);
+          loadedWeeks.push(week);
+        } catch (error) {
+          errors.push(`Week ${week}: ${error.message}`);
+        }
+      }));
+    }
+    leagueRecordsCache.set(key, {
+      games: FFORecords.validateGames(games), source: "Sleeper completed regular-season matchup scores",
+      coverage: `${loadedWeeks.length} of ${end} eligible weeks loaded${loadedWeeks.length ? ` (weeks ${loadedWeeks.sort((a, b) => a - b).join(", ")})` : ""}. Current/future weeks and fantasy playoffs excluded. Provider score corrections may change records.`, errors
+    });
+  } catch (error) {
+    const prior = leagueRecordsCache.get(key);
+    leagueRecordsCache.set(key, { games: prior?.games || [], source: prior?.source || "Sleeper",
+      coverage: prior ? `Previously loaded results retained. ${prior.coverage}` : "No results loaded.",
+      errors: [`Refresh failed: ${error.message}`] });
+  } finally {
+    button.disabled = false;
+    renderLeagueRecords();
+  }
+}
+
+function renderLeagueRecords() {
+  const container = document.getElementById("leagueRecordsResults");
+  const status = document.getElementById("recordsStatus");
+  const answer = document.getElementById("recordsAnswer");
+  const button = document.getElementById("loadRecordsBtn");
+  if (!container || !status || !answer || !button) return;
+  const league = state.activeLeague;
+  const record = leagueRecordsCache.get(getLeagueRecordsKey());
+  button.hidden = !league || league.provider !== "sleeper";
+  if (!league || !record) {
+    status.textContent = !league ? "Connect a league or Explore demo to view records."
+      : league.provider === "sleeper" ? "Choose Load / refresh completed results. No historical matchup scores have been fetched yet."
+      : "ESPN schedule-history loading is not supported in this release. Yahoo JSON imports can supply completedMatchups; season standings alone cannot establish head-to-head records.";
+    container.innerHTML = "";
+    answer.textContent = "No completed results loaded. No record can be established.";
+    return;
+  }
+  const report = FFORecords.summarize(record.games);
+  const escape = draftEscapeHtml;
+  const name = id => state.managers.find(manager => String(manager.rosterId) === id)?.teamName || `Team ${id}`;
+  const gameLabel = game => `Week ${game.week}: ${name(game.homeId)} ${game.homeScore.toFixed(2)} - ${name(game.awayId)} ${game.awayScore.toFixed(2)}`;
+  status.textContent = `${league.name} · ${league.season} · ${record.source}. ${report.games.length} games. ${record.coverage}${record.errors.length ? ` INCOMPLETE / UNVERIFIED REFRESH: ${record.errors.join(" | ")}` : ""}`;
+  if (!report.games.length) {
+    container.innerHTML = `<p class="draft-empty">No completed head-to-head results available. Projections and standings are not substituted for game scores.</p>`;
+    answer.textContent = "No completed results loaded. No record can be established.";
+    return;
+  }
+  const high = report.highest;
+  const facts = {
+    highest: `${name(high.teamId)} scored ${high.points.toFixed(2)}. ${gameLabel(high.game)}`,
+    closest: report.closest ? `${report.closest.margin.toFixed(2)} point margin. ${gameLabel(report.closest.game)}` : "No decided games; all loaded matchups were ties.",
+    blowout: `${report.blowout.margin.toFixed(2)} point margin. ${gameLabel(report.blowout.game)}`,
+    meetings: (() => {
+      const max = report.pairs[0].games;
+      const tied = report.pairs.filter(pair => pair.games === max);
+      return `${max} meetings each: ${tied.map(pair => `${name(pair.a)} vs ${name(pair.b)}`).join("; ")}.`;
+    })()
+  };
+  const cards = [["Highest team score", facts.highest], ["Closest decided game", facts.closest], ["Largest margin", facts.blowout]]
+    .map(([label, fact]) => `<article class="comparison-card"><h3>${label}</h3><p class="comparison-note">${escape(fact)}</p></article>`).join("");
+  container.innerHTML = `<p class="comparison-note">Records within loaded results only. Equal record scores/margins display the first game by week/team-ID order. Ties are not counted as decided games. ${report.ties} tied game${report.ties === 1 ? "" : "s"}. Head-to-head records below are A wins - B wins - ties; no playoff or championship finishes are inferred.</p>
+    <div class="comparison-cards">${cards}</div>
+    <div class="table-wrap"><table class="comparison-table"><caption>Season head-to-head rivalries</caption><thead><tr><th scope="col">Team A</th><th scope="col">Team B</th><th scope="col">Meetings</th><th scope="col">A-B-T</th><th scope="col">A total pts</th><th scope="col">B total pts</th><th scope="col">Avg margin (A-B)</th></tr></thead><tbody>${report.pairs.map(pair => `<tr><th scope="row">${escape(name(pair.a))}</th><td>${escape(name(pair.b))}</td><td>${pair.games}</td><td>${pair.winsA}-${pair.winsB}-${pair.ties}</td><td>${pair.pointsA.toFixed(2)}</td><td>${pair.pointsB.toFixed(2)}</td><td>${((pair.pointsA - pair.pointsB) / pair.games).toFixed(2)}</td></tr>`).join("")}</tbody></table></div>`;
+  answer.textContent = `${facts[document.getElementById("recordsQuestion").value] || facts.highest} Source: ${record.source}; ${league.season}, loaded results only.${record.errors.length ? " Coverage is incomplete; see load errors above." : ""}`;
+}
+
 function getRelativeTeamGrade(points, leagueAverage) {
   if (!Number.isFinite(points) || !Number.isFinite(leagueAverage) || leagueAverage <= 0) return { letter: "Unrated", index: null };
   const index = points / leagueAverage * 100;
@@ -6464,6 +6575,7 @@ function renderAllViews(teamIdx) {
   renderMatchupSim(); drawSingleAnalyticsChart();
   renderPlayerComparison();
   renderTeamGrades();
+  renderLeagueRecords();
   renderSosTab(); renderPlayoffBracketTab(); renderDraftRoom();
   if (document.getElementById("tab-inbox")?.classList.contains("active")) renderGMInbox();
   if (document.getElementById("tab-newsletter")?.classList.contains("active")) renderLeagueNewsletter();
@@ -6473,6 +6585,8 @@ function renderAllViews(teamIdx) {
 function bindControlEvents() {
   ensureDynamicTradeControls();
   const weekSelect = document.getElementById("weekSelect");
+  document.getElementById("loadRecordsBtn")?.addEventListener("click", loadLeagueRecords);
+  document.getElementById("recordsQuestion")?.addEventListener("change", renderLeagueRecords);
   ["compareSearch", "comparePosition"].forEach(id => document.getElementById(id)?.addEventListener(id === "compareSearch" ? "input" : "change", () => renderPlayerComparison()));
   ["comparePlayerA", "comparePlayerB"].forEach(id => document.getElementById(id)?.addEventListener("change", () => renderPlayerComparison(false)));
 
@@ -6492,6 +6606,7 @@ function bindControlEvents() {
     updateProviderControls();
     renderPlayerComparison();
     renderTeamGrades();
+    renderLeagueRecords();
     setStatus("Provider changed. Connect a league to load its data.");
   });
   document.getElementById("yahooImportFile")?.addEventListener("change", event => importYahooRosterFile(event.target.files?.[0]));
