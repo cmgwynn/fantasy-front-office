@@ -3,14 +3,29 @@
 // ============================================================================
 
 // 1. Top-Level Tab & Sub-Tab Switcher
+function activateTab(tabId) {
+  const targetPage = document.getElementById(tabId);
+  document.querySelectorAll(".nav-btn").forEach(button => {
+    const active = button.dataset.tab === tabId;
+    button.classList.toggle("active", active);
+    if (active) button.setAttribute("aria-current", "page");
+    else button.removeAttribute("aria-current");
+  });
+  document.querySelectorAll(".tab-page").forEach(page => page.classList.toggle("active", page.id === tabId));
+  const mobileTabSelect = document.getElementById("mobileTabSelect");
+  if (mobileTabSelect) mobileTabSelect.value = tabId;
+  return targetPage;
+}
+
 document.addEventListener("click", e => {
+  const compareButton = e.target.closest("[data-compare-a]");
+  if (compareButton) {
+    openPlayerComparison(compareButton.dataset.compareA, compareButton.dataset.compareB);
+    return;
+  }
   const navBtn = e.target.closest(".nav-btn");
   if (navBtn && navBtn.dataset.tab) {
-    document.querySelectorAll(".nav-btn").forEach(b => b.classList.remove("active"));
-    document.querySelectorAll(".tab-page").forEach(p => p.classList.remove("active"));
-    navBtn.classList.add("active");
-    const targetPage = document.getElementById(navBtn.dataset.tab);
-    if (targetPage) targetPage.classList.add("active");
+    const targetPage = activateTab(navBtn.dataset.tab);
     if (navBtn.dataset.tab === "tab-draft") {
       document.querySelector(".content-stack")?.scrollTo({ top: 0, behavior: "instant" });
       targetPage?.scrollTo({ top: 0, behavior: "instant" });
@@ -20,12 +35,17 @@ document.addEventListener("click", e => {
         draftHistory.scrollTop = 0;
       }
     }
-    const mobileTabSelect = document.getElementById("mobileTabSelect");
-    if (mobileTabSelect) mobileTabSelect.value = navBtn.dataset.tab;
     switch (navBtn.dataset.tab) {
       case "tab-power": drawPowerChart(); break;
+      case "tab-grades": renderTeamGrades(); break;
       case "tab-waiver": drawWaiverChart(); break;
       case "tab-analytics": drawSingleAnalyticsChart(); break;
+      case "tab-compare":
+        renderPlayerComparison();
+        refreshGameDaySchedule().then(() => {
+          if (document.getElementById("tab-compare")?.classList.contains("active")) renderPlayerComparison(false);
+        });
+        break;
       case "tab-sos": renderSosTab(); break;
       case "tab-bracket": renderPlayoffBracketTab(); break;
       case "tab-draft": renderDraftRoom(); break;
@@ -317,32 +337,40 @@ async function syncFullSeasonNflSchedule(seasonYear, forceRefresh = false) {
   const tempSched = {};
   Object.keys(NFL_TEAM_NAMES).forEach(t => tempSched[t] = {});
   let validWeeksFetched = 0;
+  const failedWeeks = [];
+  let incompleteWeeks = 0;
 
-  await Promise.all(allWeeks.map(async wk => {
-    try {
-      const res = await fetch(`https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard?dates=${yr}&seasontype=2&week=${wk}`).then(r => r.json());
-      const events = res?.events || [];
-      if (events.length >= 10) {
-        validWeeksFetched++;
-        events.forEach(ev => {
-          const comp = ev.competitions?.[0];
-          if (!comp || !comp.competitors || comp.competitors.length < 2) return;
-          const homeObj = comp.competitors.find(c => c.homeAway === "home");
-          const awayObj = comp.competitors.find(c => c.homeAway === "away");
-          if (!homeObj || !awayObj) return;
-          let h = (homeObj.team?.abbreviation || "").toUpperCase();
-          let a = (awayObj.team?.abbreviation || "").toUpperCase();
-          if (h === "WSH") h = "WAS"; if (a === "WSH") a = "WAS";
-          if (h === "JAC") h = "JAX"; if (a === "JAC") a = "JAX";
-          if (h === "LA") h = "LAR";  if (a === "LA") a = "LAR";
-          if (tempSched[h] && tempSched[a]) {
-            tempSched[h][wk] = { opp: a, isHome: true };
-            tempSched[a][wk] = { opp: h, isHome: false };
-          }
-        });
+  const weeksPerBatch = 6;
+  for (let offset = 0; offset < allWeeks.length; offset += weeksPerBatch) {
+    const batch = allWeeks.slice(offset, offset + weeksPerBatch);
+    await Promise.all(batch.map(async wk => {
+      try {
+        const res = await fetchJson(`https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard?dates=${yr}&seasontype=2&week=${wk}`);
+        const events = res?.events || [];
+        if (events.length >= 10) {
+          validWeeksFetched++;
+          events.forEach(ev => {
+            const comp = ev.competitions?.[0];
+            if (!comp || !comp.competitors || comp.competitors.length < 2) return;
+            const homeObj = comp.competitors.find(c => c.homeAway === "home");
+            const awayObj = comp.competitors.find(c => c.homeAway === "away");
+            if (!homeObj || !awayObj) return;
+            let h = (homeObj.team?.abbreviation || "").toUpperCase();
+            let a = (awayObj.team?.abbreviation || "").toUpperCase();
+            if (h === "WSH") h = "WAS"; if (a === "WSH") a = "WAS";
+            if (h === "JAC") h = "JAX"; if (a === "JAC") a = "JAX";
+            if (h === "LA") h = "LAR";  if (a === "LA") a = "LAR";
+            if (tempSched[h] && tempSched[a]) {
+              tempSched[h][wk] = { opp: a, isHome: true };
+              tempSched[a][wk] = { opp: h, isHome: false };
+            }
+          });
+        } else incompleteWeeks++;
+      } catch (error) {
+        failedWeeks.push({ week: wk, message: error instanceof Error ? error.message : String(error) });
       }
-    } catch {}
-  }));
+    }));
+  }
 
   if (validWeeksFetched >= 12) {
     const detectedByes = {};
@@ -363,7 +391,12 @@ async function syncFullSeasonNflSchedule(seasonYear, forceRefresh = false) {
       tx.objectStore("kv").put({ ts, payload: { sched: tempSched, byes: detectedByes } }, cacheKey);
       markDataSource("schedule", null, ts);
     } catch {}
-  } else markDataSource("schedule", new Error("Schedule feed did not return enough valid weeks."));
+  } else {
+    const failureSummary = failedWeeks.length
+      ? ` ${failedWeeks.length} week requests failed; first failure: ${failedWeeks[0].message}`
+      : ` ${incompleteWeeks} weeks returned incomplete schedules.`;
+    markDataSource("schedule", new Error(`Schedule feed returned valid schedules for only ${validWeeksFetched} of ${allWeeks.length} weeks.${failureSummary}`));
+  }
 }
 
 async function syncLiveEspnSchedule() {
@@ -494,6 +527,8 @@ function setStatus(txt) {
   if (el) el.textContent = txt;
   renderDataFreshness();
 }
+
+const fetchJson = window.FFOData.fetchJson;
 
 function getSafeMonetizationUrl(value) {
   try {
@@ -681,6 +716,7 @@ function normalizeGameDaySchedule(data, now = Date.now()) {
 async function refreshGameDaySchedule(forceRefresh = false) {
   const league = state.activeLeague;
   if (!league) return false;
+  if (league.isDemo) return false;
   const key = `${league.season}:${state.week}`;
   if (!forceRefresh && state.gameDayScheduleKey === key && Date.now() - state.gameDayScheduleCheckedAt < 60000) return state.gameDayScheduleAvailable;
   state.gameDayScheduleKey = key;
@@ -692,9 +728,7 @@ async function refreshGameDaySchedule(forceRefresh = false) {
     endpoint.searchParams.set("seasontype", "2");
     endpoint.searchParams.set("week", String(state.week));
     endpoint.searchParams.set("year", String(league.season));
-    const response = await fetch(endpoint);
-    if (!response.ok) throw new Error(`Scoreboard returned ${response.status}.`);
-    const data = await response.json();
+    const data = await fetchJson(endpoint);
     state.gameDayByTeam = normalizeGameDaySchedule(data);
     state.gameDayScheduleAvailable = Object.keys(state.gameDayByTeam).length > 0;
   } catch {
@@ -714,6 +748,7 @@ function getGameDaySummary() {
 }
 
 function getPlayerGameDayStatus(player) {
+  if (player?.isDemo) return { status: "unknown", label: "Fictional player", locked: false };
   if (!player?.team || player.team === "FA") return { status: "unknown", label: "Kickoff unknown", locked: false };
   const game = state.gameDayByTeam[normalizeTeamCode(player.team)];
   if (!state.gameDayScheduleAvailable || !game) return { status: "unknown", label: "Kickoff unavailable", locked: false };
@@ -755,6 +790,7 @@ function defaultRealisticProj(m) {
 }
 
 function computeLeagueProj(m, st, rules) {
+  if (m.isDemo) return ["Out", "IR", "Suspended", "PUP"].includes(m.injuryStatus) ? 0 : Math.max(0, st?.pts_ppr || 0);
   const sleeperProjectionFeedIsAuthoritative = state.activeLeague?.provider === "sleeper"
     && Boolean(state.dataFreshness.projections)
     && !state.dataErrors.projections;
@@ -932,10 +968,7 @@ function openTradeInBuilder(aIds, bIds, teamAIdx = null, teamBIdx = null) {
 }
 
 function targetPlayerFromSos(playerId, pos) {
-  document.querySelectorAll(".nav-btn").forEach(b => b.classList.remove("active"));
-  document.querySelectorAll(".tab-page").forEach(p => p.classList.remove("active"));
-  document.querySelector('.nav-btn[data-tab="tab-trade"]')?.classList.add("active");
-  document.getElementById("tab-trade")?.classList.add("active");
+  activateTab("tab-trade");
   if (["QB","RB","WR","TE"].includes(pos)) document.getElementById("finderPos").value = pos;
   const ownerIdx = state.managers.findIndex(m => m.players.includes(playerId));
   const myIdx = parseInt(document.getElementById("tradeTeamA")?.value || "0", 10);
@@ -950,10 +983,7 @@ function openMatchupInSimulator(rosterIdA, rosterIdB) {
   document.getElementById("simTeamA").value = idxA;
   document.getElementById("simTeamB").value = idxB;
   renderMatchupSim();
-  document.querySelectorAll(".nav-btn").forEach(b => b.classList.remove("active"));
-  document.querySelectorAll(".tab-page").forEach(p => p.classList.remove("active"));
-  document.querySelector('.nav-btn[data-tab="tab-matchup"]')?.classList.add("active");
-  document.getElementById("tab-matchup")?.classList.add("active");
+  activateTab("tab-matchup");
 }
 
 function calcTradeValue(m, lg) {
@@ -1006,7 +1036,7 @@ function recalcAllPlayers() {
   for (const pid of ids) {
     const m = state.players[pid];
     if (m.isPick) continue;
-    m.byeWeek = CURRENT_BYE_WEEKS[m.team] || 0;
+    m.byeWeek = m.isDemo ? 0 : CURRENT_BYE_WEEKS[m.team] || 0;
     m.projectedPoints = computeLeagueProj(m, state.rawProj[pid], rules);
     const s = state.rawStats[pid];
     const adpValue = Number(state.rawProj[pid]?.adp_dd_ppr);
@@ -1238,7 +1268,7 @@ async function initApp(skipUrlAccountSync = false, forceRefreshSources = false) 
 
   if (state.provider === "sleeper") {
     try {
-      const stRes = await fetch("https://api.sleeper.app/v1/state/nfl").then(r => r.json());
+      const stRes = await fetchJson("https://api.sleeper.app/v1/state/nfl");
       state.week = Math.min(18, Math.max(1, stRes.display_week || stRes.week || 1));
       state.currentNflWeek = Number(stRes.display_week || stRes.week || state.week);
       if (stRes.season) state.season = String(stRes.season);
@@ -1256,12 +1286,11 @@ async function initApp(skipUrlAccountSync = false, forceRefreshSources = false) 
   if (!rawPlayers) {
     setStatus(`Downloading ${state.season} NFL player database (cached for 24h)...`);
     try {
-      const response = await fetch("https://api.sleeper.app/v1/players/nfl");
-      if (!response.ok) throw new Error(`Player feed returned ${response.status}.`);
-      rawPlayers = await response.json();
+      rawPlayers = await fetchJson("https://api.sleeper.app/v1/players/nfl");
     } catch (error) {
       markDataSource("players", error);
       setStatus("Player database unavailable. Use Retry sync to try again.");
+      document.getElementById("demoLeagueBtn").disabled = false;
       if (!Object.keys(state.players).length) return;
       rawPlayers = null;
     }
@@ -1289,9 +1318,7 @@ async function initApp(skipUrlAccountSync = false, forceRefreshSources = false) 
   rebuildPlayerTeamIndex();
 
   try {
-    const response = await fetch(`https://api.sleeper.app/v1/stats/nfl/regular/${state.season}`);
-    if (!response.ok) throw new Error(`Stats feed returned ${response.status}.`);
-    const stData = await response.json();
+    const stData = await fetchJson(`https://api.sleeper.app/v1/stats/nfl/regular/${state.season}`);
     for (const [k, v] of Object.entries(stData || {})) state.rawStats[k] = v.stats || v;
     markDataSource("stats");
   } catch (error) { markDataSource("stats", error); }
@@ -1303,6 +1330,8 @@ async function initApp(skipUrlAccountSync = false, forceRefreshSources = false) 
   renderSosTab();
   renderPlayoffBracketTab();
   setStatus(`Ready | ${state.season} NFL Season • ${Object.keys(state.players).length.toLocaleString()} profiles loaded`);
+  document.getElementById("demoLeagueBtn").disabled = false;
+  renderGMInbox();
 
   const params = new URLSearchParams(location.search);
   const providerFromLink = params.get("provider") || (params.has("user") ? "sleeper" : "");
@@ -1327,9 +1356,7 @@ async function fetchWeeklyProjections() {
   setStatus(`Syncing Week ${state.week} projections...`);
   const previousProjections = state.rawProj;
   try {
-    const response = await fetch(`https://api.sleeper.app/v1/projections/nfl/regular/${seas}/${state.week}`);
-    if (!response.ok) throw new Error(`Projection feed returned ${response.status}.`);
-    const data = await response.json();
+    const data = await fetchJson(`https://api.sleeper.app/v1/projections/nfl/regular/${seas}/${state.week}`);
     state.rawProj = {};
     if (Array.isArray(data)) {
       data.forEach(e => { if (e.player_id) state.rawProj[e.player_id] = { ...(e.stats || e), pts_ppr: e.pts_ppr ?? e.stats?.pts_ppr }; });
@@ -1355,10 +1382,10 @@ async function syncUserAccount() {
   if (!u) return;
   setStatus("Connecting account...");
   try {
-    const uObj = await fetch(`https://api.sleeper.app/v1/user/${encodeURIComponent(u)}`).then(r => r.json());
+    const uObj = await fetchJson(`https://api.sleeper.app/v1/user/${encodeURIComponent(u)}`);
     if (!uObj || !uObj.user_id) { markDataSource("account", new Error("Account not found.")); setStatus("Account not found."); return; }
     state.userId = uObj.user_id;
-    const lgs = await fetch(`https://api.sleeper.app/v1/user/${state.userId}/leagues/nfl/${state.season}`).then(r => r.json());
+    const lgs = await fetchJson(`https://api.sleeper.app/v1/user/${state.userId}/leagues/nfl/${state.season}`);
     markDataSource("account");
     state.leagues = (lgs || []).map(o => {
       const st = o.settings || {};
@@ -1398,7 +1425,7 @@ function createYahooPlayer(source, league) {
   state.players[id] = {
     id, name: source.name || "Unknown player", position, team, status: source.status || "Active",
     injuryStatus: source.injuryStatus || "Healthy", age: Math.max(0, Number(source.age) || 0), exp: Math.max(0, Number(source.experience) || 0),
-    isCurrentNfl: team !== "FA", byeWeek: CURRENT_BYE_WEEKS[team] || 0, searchRank: Number(source.playerRank) || 99999,
+    isDemo: Boolean(league.isDemo), isCurrentNfl: team !== "FA", byeWeek: league.isDemo ? 0 : CURRENT_BYE_WEEKS[team] || 0, searchRank: Number(source.playerRank) || 99999,
     projectedPoints, seasonPpg, baseValue: 200, vorpScore: Math.max(0.5, seasonPpg - replacementPpg(position) + 4),
     posRank: 999, ovrRank: 999, yahooId: String(source.playerId || "")
   };
@@ -1409,7 +1436,7 @@ function createYahooPlayer(source, league) {
   return { id, starter: source.starter === true || source.starter === "true" || source.starter === "1" || source.starter === "yes" };
 }
 
-async function importYahooRosterFile(file) {
+async function importYahooRosterFile(file, { demo = false } = {}) {
   if (!file) return;
   try {
     const text = await file.text();
@@ -1451,7 +1478,7 @@ async function importYahooRosterFile(file) {
     const leagueName = payload.leagueName || payload.name || "Yahoo roster import";
     const leagueSeason = String(payload.season || state.season);
     const league = {
-      provider: "yahoo", leagueId: `import-${normalizeDraftPlayerName(leagueName).replace(/ /g, "-")}-${leagueSeason}`, name: leagueName,
+      provider: "yahoo", isDemo: demo, leagueId: `import-${normalizeDraftPlayerName(leagueName).replace(/ /g, "-")}-${leagueSeason}`, name: leagueName,
       season: leagueSeason, totalTeams: payload.teams.length,
       leagueType: payload.leagueType === "dynasty" ? 2 : (payload.leagueType === "keeper" ? 1 : 0),
       draftRounds: Number(payload.draftRounds) || 15, playoffTeams: Number(payload.playoffTeams) || 6,
@@ -1468,6 +1495,10 @@ async function importYahooRosterFile(file) {
       document.getElementById("weekSelect").value = String(state.week);
     }
     state.activeLeague = league;
+    portfolioState.rostersByLeague.delete(`${league.provider}:${league.leagueId}`);
+    document.getElementById("providerSelect").value = "yahoo";
+    updateProviderControls();
+    if (demo) document.getElementById("providerHelp").textContent = "DEMO: fictional teams and players, illustrative projections. Real NFL schedule data does not apply to sample players. Connect a provider to leave the demo.";
     state.leagues = [league];
     state.currentMatchups = Array.isArray(payload.matchups) ? payload.matchups : [];
     state.managers = payload.teams.map((team, index) => {
@@ -1486,6 +1517,7 @@ async function importYahooRosterFile(file) {
         projL: Number(team.losses) || 0, playoffPct: 50
       };
     });
+    if (demo) (payload.freeAgents || []).forEach(player => createYahooPlayer(player, league));
     const selectorIds = ["teamSelect", "tradeTeamA", "tradeTeamB", "simTeamA", "simTeamB"];
     selectorIds.forEach(id => {
       const select = document.getElementById(id);
@@ -1505,13 +1537,17 @@ async function importYahooRosterFile(file) {
       manager.rosPpg = manager.starters.reduce((sum, playerId) => sum + (state.players[playerId]?.projectedPoints || 0), 0);
     });
     recomputeDynamicDvpRanks();
+    if (demo) {
+      state.gameDayByTeam = {};
+      state.gameDayScheduleAvailable = false;
+    }
     renderAllViews(0);
     await buildTradeDatabase();
     scanPlayerAlertChanges();
     markDataSource("account");
     populateHistorySeasonOptions();
     await loadHistoricalSeason();
-    setStatus(`Imported ${league.name} from Yahoo file • ${state.managers.length} teams`);
+    setStatus(demo ? "Demo league loaded. All sample players and results are fictional." : `Imported ${league.name} from Yahoo file • ${state.managers.length} teams`);
   } catch (error) {
     markDataSource("account", error);
     setStatus(error.message || "Could not import the Yahoo roster file.");
@@ -1549,9 +1585,12 @@ function normalizeEspnScoring(scoringSettings = {}) {
 async function fetchEspnLeague(leagueId, season) {
   const endpoint = new URL(`https://lm-api-reads.fantasy.espn.com/apis/v3/games/ffl/seasons/${encodeURIComponent(season)}/segments/0/leagues/${encodeURIComponent(leagueId)}`);
   ["mSettings", "mTeam", "mRoster", "mScoreboard", "mTransactions2", "mDraftDetail"].forEach(view => endpoint.searchParams.append("view", view));
-  const response = await fetch(endpoint, { credentials: "include" });
-  if (!response.ok) throw new Error(`ESPN returned ${response.status} for league ${leagueId}. Check the ID, season, and account access.`);
-  return response.json();
+  try {
+    return await fetchJson(endpoint, { credentials: "include" });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`ESPN league ${leagueId} could not be loaded. Check the ID, season, and account access. ${message}`);
+  }
 }
 
 async function syncEspnAccount() {
@@ -1755,6 +1794,11 @@ async function loadEspnLeague(idx) {
 async function loadLeague(idx) {
   state.activeLeague = state.leagues[idx];
   if (!state.activeLeague) return;
+  if (state.activeLeague.provider === "yahoo") {
+    renderAllViews(parseInt(document.getElementById("teamSelect")?.value || "0", 10));
+    setStatus(state.activeLeague.isDemo ? "Demo projections are a fixed Week 6 snapshot, not week-specific forecasts." : "Imported projections are a fixed snapshot. Re-import to update player data.");
+    return;
+  }
   if (state.activeLeague.provider === "espn") return loadEspnLeague(idx);
   state.livePlayerPoints = {};
   refreshSeasonDerivedState(state.activeLeague.season || state.season);
@@ -1766,7 +1810,7 @@ async function loadLeague(idx) {
 
   const lid = state.activeLeague.leagueId;
   try {
-    const lgMeta = await fetch(`https://api.sleeper.app/v1/league/${lid}`).then(r => r.json());
+    const lgMeta = await fetchJson(`https://api.sleeper.app/v1/league/${lid}`);
     if (lgMeta && lgMeta.settings) {
       const st = lgMeta.settings;
       const totTeams = lgMeta.total_rosters || state.activeLeague.totalTeams || 12;
@@ -1781,10 +1825,10 @@ async function loadLeague(idx) {
 
   await fetchWeeklyProjections();
   const [users, rosters, matchups, tradedPicks] = await Promise.all([
-    fetch(`https://api.sleeper.app/v1/league/${lid}/users`).then(r => r.json()),
-    fetch(`https://api.sleeper.app/v1/league/${lid}/rosters`).then(r => r.json()),
-    fetch(`https://api.sleeper.app/v1/league/${lid}/matchups/${state.week}`).then(r => r.json()),
-    fetch(`https://api.sleeper.app/v1/league/${lid}/traded_picks`).then(r => r.json()).catch(() => [])
+    fetchJson(`https://api.sleeper.app/v1/league/${lid}/users`),
+    fetchJson(`https://api.sleeper.app/v1/league/${lid}/rosters`),
+    fetchJson(`https://api.sleeper.app/v1/league/${lid}/matchups/${state.week}`),
+    fetchJson(`https://api.sleeper.app/v1/league/${lid}/traded_picks`).catch(() => [])
   ]);
   state.currentMatchups = matchups || [];
 
@@ -2432,7 +2476,7 @@ async function buildTradeDatabase() {
       const firstWeek = Math.max(1, lastWeek - 7);
       const reqs = [];
       for (let w = firstWeek; w <= lastWeek; w++) {
-        reqs.push(fetch(`https://api.sleeper.app/v1/league/${state.activeLeague.leagueId}/transactions/${w}`).then(r => r.json()).catch(() => []));
+        reqs.push(fetchJson(`https://api.sleeper.app/v1/league/${state.activeLeague.leagueId}/transactions/${w}`).catch(() => []));
       }
       const weeklyTx = await Promise.all(reqs);
       const tendencies = new Map();
@@ -2469,10 +2513,10 @@ async function buildTradeDatabase() {
         });
       });
       try {
-        const drafts = await fetch(`https://api.sleeper.app/v1/league/${state.activeLeague.leagueId}/drafts`).then(response => response.json());
+        const drafts = await fetchJson(`https://api.sleeper.app/v1/league/${state.activeLeague.leagueId}/drafts`);
         const selectedDraft = (drafts || []).find(draft => String(draft.season) === String(state.activeLeague.season)) || drafts?.[0];
         if (selectedDraft?.draft_id) {
-          const picks = await fetch(`https://api.sleeper.app/v1/draft/${selectedDraft.draft_id}/picks`).then(response => response.json());
+          const picks = await fetchJson(`https://api.sleeper.app/v1/draft/${selectedDraft.draft_id}/picks`);
           (picks || []).forEach(pick => {
             const player = state.players[pick.player_id];
             if (!player) return;
@@ -3283,6 +3327,7 @@ function renderWaiversTab() {
   const rosterNeeds = getWaiverRosterNeeds(selectedManager);
   const pf = document.getElementById("waiverPos")?.value || "ALL";
   state.waiverTargets = Object.values(state.players).filter(p => {
+    if (Boolean(p.isDemo) !== Boolean(state.activeLeague?.isDemo)) return false;
     if (p.isPick || rostered.has(p.id)) return false;
     if (p.position !== "DEF" && !p.isCurrentNfl) return false;
     if (pf === "ALL" && !["QB","RB","WR","TE","DEF","K"].includes(p.position)) return false;
@@ -3703,8 +3748,8 @@ async function getPortfolioLeagueRosters(league) {
       rosters = state.managers.map(manager => ({ teamId: String(manager.rosterId), ownerId: String(manager.ownerId || ""), name: manager.teamName, rosterPositions: league.rosterPositions || [], scoringSettings: league.scoringSettings || {}, waiverPriority: Number(manager.waiverPriority) || null, players: manager.players || [], starters: manager.starters || [] }));
   } else {
     const [rosterResponse, userResponse] = await Promise.all([
-      fetch(`https://api.sleeper.app/v1/league/${league.leagueId}/rosters`).then(response => response.json()),
-      fetch(`https://api.sleeper.app/v1/league/${league.leagueId}/users`).then(response => response.json())
+      fetchJson(`https://api.sleeper.app/v1/league/${league.leagueId}/rosters`),
+      fetchJson(`https://api.sleeper.app/v1/league/${league.leagueId}/users`)
     ]);
     const userNames = Object.fromEntries((userResponse || []).map(user => [user.user_id, user.metadata?.team_name || user.display_name || "Team"]));
     rosters = (rosterResponse || []).map(roster => ({
@@ -3773,7 +3818,7 @@ function buildPortfolioClaimSuggestions(entries) {
         if (counts[position] < (requirements[position] || 0) + 1) needs.push({ position, score: 25, gap: 0, label: `${position} depth` });
       });
     }
-    const available = playerPool.filter(player => !owned.has(player.id));
+    const available = playerPool.filter(player => !owned.has(player.id) && Boolean(player.isDemo) === Boolean(league.isDemo));
     needs.forEach(need => {
       const candidates = available.filter(player => need.position === "FLEX" ? ["RB", "WR", "TE"].includes(player.position) : player.position === need.position)
         .sort((a, b) => Number(b.vorpScore || 0) - Number(a.vorpScore || 0) || Number(b.projectedPoints || 0) - Number(a.projectedPoints || 0));
@@ -3881,11 +3926,11 @@ async function loadHistoricalSeason() {
   try {
     const rows = [];
     if (state.provider === "sleeper" && state.userId) {
-      const leagues = await fetch(`https://api.sleeper.app/v1/user/${state.userId}/leagues/nfl/${year}`).then(response => response.json());
+      const leagues = await fetchJson(`https://api.sleeper.app/v1/user/${state.userId}/leagues/nfl/${year}`);
       const histories = await Promise.all((leagues || []).map(async league => {
         const [rosters, users] = await Promise.all([
-          fetch(`https://api.sleeper.app/v1/league/${league.league_id}/rosters`).then(response => response.json()),
-          fetch(`https://api.sleeper.app/v1/league/${league.league_id}/users`).then(response => response.json())
+          fetchJson(`https://api.sleeper.app/v1/league/${league.league_id}/rosters`),
+          fetchJson(`https://api.sleeper.app/v1/league/${league.league_id}/users`)
         ]);
         const names = Object.fromEntries((users || []).map(user => [user.user_id, user.metadata?.team_name || user.display_name || "Manager"]));
         return (rosters || []).map(roster => {
@@ -4343,11 +4388,11 @@ async function loadHistoricalSeason() {
   try {
     const rows = [];
     if (state.provider === "sleeper" && state.userId) {
-      const leagues = await fetch(`https://api.sleeper.app/v1/user/${state.userId}/leagues/nfl/${year}`).then(response => response.json());
+      const leagues = await fetchJson(`https://api.sleeper.app/v1/user/${state.userId}/leagues/nfl/${year}`);
       const histories = await Promise.all((leagues || []).map(async league => {
         const [rosters, users] = await Promise.all([
-          fetch(`https://api.sleeper.app/v1/league/${league.league_id}/rosters`).then(response => response.json()),
-          fetch(`https://api.sleeper.app/v1/league/${league.league_id}/users`).then(response => response.json())
+          fetchJson(`https://api.sleeper.app/v1/league/${league.league_id}/rosters`),
+          fetchJson(`https://api.sleeper.app/v1/league/${league.league_id}/users`)
         ]);
         const names = Object.fromEntries((users || []).map(user => [user.user_id, user.metadata?.team_name || user.display_name || "Manager"]));
         return (rosters || []).map(roster => {
@@ -4568,7 +4613,8 @@ function buildWeeklyRecommendations() {
       type: "Start / sit", playerId: best.id, title: `Start ${best.name} over ${current.name}`,
       comparisonPlayerId: current.id, projectedGain: gain, recommendedProjection: best.projectedPoints || 0,
       comparisonProjection: current.projectedPoints || 0, lineupSlot: slot,
-      detail: `${slot} slot · estimated +${gain.toFixed(1)} points`, value: `+${gain.toFixed(1)} pts`
+      detail: `${slot} slot · ${Number(current.projectedPoints || 0).toFixed(1)} projected now → ${Number(best.projectedPoints || 0).toFixed(1)} with this move`,
+      value: `+${gain.toFixed(1)} pts`
     });
   });
 
@@ -4583,8 +4629,21 @@ function buildWeeklyRecommendations() {
     }
   });
 
-  state.waiverTargets.slice(0, 5).forEach((player, index) => {
-    recommendations.push({ priority: 55 - index, level: "normal", type: "Waiver", playerId: player.id, title: `Available: ${player.name}`, detail: `${player.position} · +${player.vorpScore.toFixed(1)} VORP`, value: `$${getSuggestedFaabBid(player)} bid`, confidence: "Low", actionKind: "waivers" });
+  const owned = new Set(state.managers.flatMap(roster => roster.players || []));
+  state.waiverTargets.filter(player => !owned.has(player.id)).slice(0, 5).forEach((player, index) => {
+    const drop = getPortfolioClaimDrop(manager, player);
+    const proposedIds = manager.players.filter(id => id !== drop?.id).concat(player.id);
+    const proposed = calcOptimalLineup(proposedIds, false, getLineupLockConstraints(manager));
+    const gain = Math.max(0, proposed.total - optimal.total);
+    const bid = getSuggestedFaabBid(player);
+    recommendations.push({
+      priority: 55 - index + Math.min(20, gain), level: gain >= 5 ? "high" : "normal",
+      type: "Waiver", playerId: player.id, title: `Evaluate ${player.name}`,
+      comparisonPlayerId: drop?.id,
+      detail: `${player.position} · optimized lineup ${optimal.total.toFixed(1)} → ${proposed.total.toFixed(1)} projected pts. ${drop ? `Drop candidate: ${drop.name}.` : "No unlocked bench drop; check roster space."} Suggested $${bid}; verify remaining FAAB before submitting.`,
+      value: gain > 0 ? `+${gain.toFixed(1)} lineup pts` : "Depth option",
+      confidence: "Low", actionKind: "waivers"
+    });
   });
 
   const managerPlayerIds = new Set(manager.players);
@@ -4594,6 +4653,18 @@ function buildWeeklyRecommendations() {
   });
   recommendations.push(...buildOpponentAwareRecommendations(manager));
   return recommendations.sort((a, b) => b.priority - a.priority).slice(0, 18);
+}
+
+function getGmRecommendationCategory(item) {
+  if (["Start / sit", "Roster risk", "Bye week"].includes(item.type)) return "lineup";
+  if (["Waiver", "Portfolio roster gap"].includes(item.type)) return "waivers";
+  if (["Trade fit", "Trade history"].includes(item.type)) return "trade";
+  if (item.type.startsWith("Portfolio")) return "portfolio";
+  return "lineup";
+}
+
+function filterGmRecommendations(items, filter) {
+  return filter === "all" ? items : items.filter(item => getGmRecommendationCategory(item) === filter);
 }
 
 function renderWeeklyRecommendations() {
@@ -4687,9 +4758,7 @@ function saveGmAdviceSnapshots(snapshots) {
 
 async function fetchSleeperNflState(forceRefresh = false) {
   if (!forceRefresh && sleeperNflStateCache.data && Date.now() - sleeperNflStateCache.checkedAt < 60000) return sleeperNflStateCache.data;
-  const response = await fetch("https://api.sleeper.app/v1/state/nfl");
-  if (!response.ok) throw new Error(`NFL state returned ${response.status}.`);
-  const data = await response.json();
+  const data = await fetchJson("https://api.sleeper.app/v1/state/nfl");
   sleeperNflStateCache = { data, checkedAt: Date.now() };
   return data;
 }
@@ -4720,9 +4789,7 @@ function captureStartSitSnapshots(recommendations, nflState) {
 async function fetchSleeperActualPoints(league, week, forceRefresh = false) {
   const cacheKey = `${league.provider}:${league.leagueId}:${league.season}:${week}`;
   if (!forceRefresh && gmOutcomeCache.has(cacheKey)) return gmOutcomeCache.get(cacheKey);
-  const response = await fetch(`https://api.sleeper.app/v1/league/${league.leagueId}/matchups/${week}`);
-  if (!response.ok) throw new Error(`Sleeper matchup scores returned ${response.status}.`);
-  const rows = await response.json();
+  const rows = await fetchJson(`https://api.sleeper.app/v1/league/${league.leagueId}/matchups/${week}`);
   const points = new Map();
   (rows || []).forEach(row => {
     (row.players || []).forEach(playerId => points.set(String(playerId), Number(row.players_points?.[playerId]) || 0));
@@ -4862,9 +4929,11 @@ async function renderGMInbox(forceRefresh = false) {
   const completedList = document.getElementById("gmInboxCompleted");
   const pressureList = document.getElementById("portfolioPressureList");
   const meta = document.getElementById("gmInboxMeta");
+  const briefing = document.getElementById("gmBriefing");
   if (!summary || !list || !pressureList) return;
   if (!state.activeLeague || !state.managers.length) {
-    summary.innerHTML = `<div><span>Active league</span><strong>Not connected</strong></div><div><span>Priority actions</span><strong>--</strong></div><div><span>Feedback record</span><strong>--</strong></div>`;
+    if (briefing) briefing.innerHTML = `<h3>Your weekly decision desk</h3><p>Connect a league or choose Explore demo to see lineup decisions, roster risks, and waiver options with projected impact.</p>`;
+    summary.innerHTML = `<div><span>Active league</span><strong>Not connected</strong></div><div><span>Selected roster</span><strong>--</strong></div><div><span>Open actions</span><strong>--</strong></div><div><span>Urgent</span><strong>--</strong></div>`;
     list.innerHTML = `<p class="draft-empty">Connect a league to build your GM Inbox.</p>`;
     if (completedList) completedList.innerHTML = "";
     pressureList.innerHTML = `<p class="draft-empty">Connect or import leagues to compare portfolio pressure.</p>`;
@@ -4894,15 +4963,25 @@ async function renderGMInbox(forceRefresh = false) {
   const leagueKey = getNewsletterLeagueKey();
   const activeRecommendations = allRecommendations.filter(item => !["done", "dismissed"].includes(feedback[getGmRecommendationKey(item)]?.status)).slice(0, 12);
   const closedRecommendations = allRecommendations.filter(item => ["done", "dismissed"].includes(feedback[getGmRecommendationKey(item)]?.status)).slice(0, 8);
+  const inboxFilter = document.getElementById("gmInboxFilter")?.value || "all";
+  const visibleRecommendations = filterGmRecommendations(activeRecommendations, inboxFilter);
+  const urgentCount = activeRecommendations.filter(item => item.level === "urgent").length;
+  const selectedManager = state.managers[parseInt(document.getElementById("teamSelect")?.value || "0", 10)];
+  if (briefing) {
+    const lineup = activeRecommendations.filter(item => item.type === "Start / sit");
+    const risks = activeRecommendations.filter(item => ["Roster risk", "Bye week"].includes(item.type));
+    const sourceNote = getProjectionSourceNote();
+    briefing.innerHTML = `<div class="draft-eyebrow">WEEK ${state.week} BRIEFING${state.activeLeague.isDemo ? " · DEMO" : ""}</div><h3>${draftEscapeHtml(selectedManager?.teamName || "Your roster")}: ${urgentCount ? `${urgentCount} urgent decision${urgentCount === 1 ? "" : "s"}` : "Plan your next move"}</h3><p>${lineup.length} projected lineup upgrade${lineup.length === 1 ? "" : "s"} · ${risks.length} injury or bye signal${risks.length === 1 ? "" : "s"}. Review recommendations before player kickoff; provider rules determine when changes lock.</p><p class="gm-briefing-source">${draftEscapeHtml(sourceNote)}</p>`;
+  }
   const leagueRecords = Object.values(feedback).filter(record => record.leagueKey === leagueKey);
   const completed = leagueRecords.filter(record => record.status === "done").length;
   const rated = leagueRecords.filter(record => typeof record.helpful === "boolean");
   const helpfulRate = rated.length ? `${Math.round(rated.filter(record => record.helpful).length / rated.length * 100)}% helpful · ${rated.length} ratings` : "No ratings yet";
   summary.innerHTML = [
-    ["Active league", state.activeLeague.name], ["Priority actions", activeRecommendations.length],
-    ["Completed", completed], ["Your feedback", helpfulRate]
+    ["Active league", state.activeLeague.name], ["Selected roster", selectedManager?.teamName || "Roster"],
+    ["Open actions", activeRecommendations.length], ["Urgent", urgentCount]
   ].map(([label, value]) => `<div><span>${draftEscapeHtml(label)}</span><strong>${draftEscapeHtml(value)}</strong></div>`).join("");
-  if (meta) meta.textContent = `${activeRecommendations.length} open recommendations · Week ${state.week} · confidence updates after 5 ratings per category`;
+  if (meta) meta.textContent = `Showing ${visibleRecommendations.length} of ${activeRecommendations.length} open actions · Week ${state.week} · ${helpfulRate} · confidence adapts after 5 ratings per category`;
   renderGmOutcomeScorecard(adviceSnapshots, feedback, leagueKey);
   if (pressure.length) {
     const injuryCount = pressure.filter(item => item.title.includes("risk is concentrated")).length;
@@ -4922,10 +5001,13 @@ async function renderGMInbox(forceRefresh = false) {
         ? `<span class="gm-action-state">Dismissed</span><button type="button" class="btn-builder-action" data-gm-state="open" data-gm-id="${draftEscapeHtml(key)}">Reopen</button>`
         : `<button type="button" class="btn-builder-action" data-gm-state="done" data-gm-type="${draftEscapeHtml(item.type)}" data-gm-id="${draftEscapeHtml(key)}">Mark done</button><button type="button" class="btn-builder-action" data-gm-state="dismissed" data-gm-type="${draftEscapeHtml(item.type)}" data-gm-id="${draftEscapeHtml(key)}">Dismiss</button>`;
     const tradeData = action === "trade" ? `data-gm-opponent="${draftEscapeHtml(item.opponentRosterId || "")}"` : "";
-    const review = `<button type="button" data-gm-open="${draftEscapeHtml(action)}" data-gm-player="${draftEscapeHtml(item.playerId || "")}" ${tradeData}>${action === "trade" ? "Build trade" : action === "waivers" ? "Review waivers" : action === "watch" ? "Watch player" : action === "portfolio" ? "Review portfolio" : "Review lineup"}</button>`;
+    const compare = item.comparisonPlayerId && item.playerId ? `<button type="button" class="btn-builder-action" data-compare-a="${draftEscapeHtml(item.comparisonPlayerId)}" data-compare-b="${draftEscapeHtml(item.playerId)}">Compare players</button>` : "";
+    const review = `<button type="button" data-gm-open="${draftEscapeHtml(action)}" data-gm-player="${draftEscapeHtml(item.playerId || "")}" ${tradeData}>${action === "trade" ? "Build trade" : action === "waivers" ? "Review waivers" : action === "watch" ? "Watch player" : action === "portfolio" ? "Review portfolio" : "Review lineup"}</button>${compare}`;
     return `<article class="gm-action-card ${item.level || "normal"}"><div class="gm-action-topline"><span class="recommendation-priority ${item.level || "normal"}">${draftEscapeHtml(item.type)}</span><span class="gm-confidence">${draftEscapeHtml(confidence)}</span><span class="gm-action-value">${draftEscapeHtml(item.value || "Review")}</span></div><h3>${draftEscapeHtml(item.title)}</h3><p>${draftEscapeHtml(item.detail)}</p><div class="gm-action-controls">${isClosed ? "" : review}${controls}</div></article>`;
   };
-  list.innerHTML = activeRecommendations.length ? activeRecommendations.map(item => renderAction(item, false)).join("") : `<p class="draft-empty">No open recommendations for this roster right now.</p>`;
+  list.innerHTML = visibleRecommendations.length
+    ? visibleRecommendations.map(item => renderAction(item, false)).join("")
+    : `<p class="draft-empty">${activeRecommendations.length ? "No open actions match this filter." : "No open recommendations for this roster right now."}</p>`;
   if (completedList) completedList.innerHTML = closedRecommendations.length ? closedRecommendations.map(item => renderAction(item, true)).join("") : `<p class="draft-empty">No completed or dismissed actions this week.</p>`;
 }
 
@@ -5637,6 +5719,12 @@ function getNextUserDraftPick(settings, picksMade = draftState.userPicks.length)
   return settings.teams * settings.rounds + 1;
 }
 
+function getDraftStarterTargets(settings) {
+  return settings.rosterFormat === "superflex"
+    ? { QB: 2, RB: 2, WR: 3, TE: 1, K: 1, DEF: 1 }
+    : { QB: 1, RB: 2, WR: 2, TE: 1, K: 1, DEF: 1 };
+}
+
 function scoreDraftPlayer(player, settings, rosterCounts, currentPick) {
   const position = player.position;
   const scoringPoints = Number(player.seasonPpg || player.projectedPoints || 0);
@@ -5654,9 +5742,7 @@ function scoreDraftPlayer(player, settings, rosterCounts, currentPick) {
   const searchRank = Number(player.searchRank || 99999);
   score += Math.max(0, 2500 - searchRank) * 0.03;
 
-  const starterCounts = settings.rosterFormat === "superflex"
-    ? { QB: 2, RB: 2, WR: 3, TE: 1, K: 1, DEF: 1 }
-    : { QB: 1, RB: 2, WR: 2, TE: 1, K: 1, DEF: 1 };
+  const starterCounts = getDraftStarterTargets(settings);
   if ((rosterCounts[position] || 0) < starterCounts[position]) score += 150;
   const skillCount = (rosterCounts.RB || 0) + (rosterCounts.WR || 0) + (rosterCounts.TE || 0);
   const flexTarget = settings.rosterFormat === "superflex" ? 8 : 6;
@@ -5685,6 +5771,7 @@ function getDraftPlayerPool(settings, rosterCounts = {}, currentPick = getNextUs
   return Object.values(state.players)
     .filter(player => {
       if (player.isPick || !eligiblePositions.has(player.position)) return false;
+      if (Boolean(player.isDemo) !== Boolean(state.activeLeague?.isDemo)) return false;
       if (["Retired", "Inactive"].includes(player.status)) return false;
       if (player.isCurrentNfl) return true;
       return settings.type === "dynasty" && player.team === "FA" && player.exp <= 1 && player.searchRank < 3000;
@@ -5914,6 +6001,91 @@ function draftPlayer(playerId) {
   renderDraftRoom();
 }
 
+function buildPersonalizedDraftPlan(settings, simulation, availablePlayers) {
+  const userPlayers = simulation.picks.filter(pick => pick.isUserPick).map(pick => pick.player);
+  const counts = userPlayers.reduce((result, player) => {
+    result[player.position] = (result[player.position] || 0) + 1;
+    return result;
+  }, {});
+  const targets = getDraftStarterTargets(settings);
+  const needs = Object.entries(targets).filter(([position, count]) => (counts[position] || 0) < count)
+    .map(([position, count]) => `${position}: ${count - (counts[position] || 0)} more`);
+  const upcoming = [];
+  for (let pick = simulation.nextPick; pick <= settings.teams * settings.rounds && upcoming.length < 3; pick++) {
+    if (getDraftTeamAtPick(pick, settings.teams) === settings.slot) upcoming.push(pick);
+  }
+  const currentPick = upcoming[0];
+  const candidates = currentPick ? availablePlayers.filter(({ player }) => !simulation.draftedIds.has(player.id))
+    .map(({ player }) => ({ player, score: scoreDraftPlayer(player, settings, counts, currentPick) }))
+    .filter(entry => Number.isFinite(entry.score)).sort((a, b) => b.score - a.score).slice(0, 3).map(({ player }) => {
+      const adp = getDraftAdp(player);
+      const need = (counts[player.position] || 0) < (targets[player.position] || 0);
+      return { player, reason: `${need ? `Addresses ${player.position} target` : "Depth / model-value option"}; ${adp.rank === null ? "ADP unavailable" : `${adp.source} ADP ${adp.rank.toFixed(1)} vs your pick #${currentPick}`}.` };
+    }) : [];
+  return { needs, upcoming, candidates, counts };
+}
+
+function renderPersonalizedDraftPlan(settings, simulation, availablePlayers) {
+  const container = document.getElementById("draftPlan");
+  if (!container) return;
+  const { needs, upcoming, candidates } = buildPersonalizedDraftPlan(settings, simulation, availablePlayers);
+  const escape = draftEscapeHtml;
+  const formatPick = pick => `R${Math.floor((pick - 1) / settings.teams) + 1} · #${pick}`;
+  container.innerHTML = `<div class="draft-eyebrow">PERSONALIZED DRAFT PLAN${state.activeLeague?.isDemo ? " · FICTIONAL DEMO" : ""}</div><h3>${simulation.complete ? "Review your completed mock" : "Plan your next turn"}</h3>
+    <p>${upcoming.length ? `Your next snake picks: ${upcoming.map(formatPick).join(" / ")}` : "No remaining picks in this configured draft."}</p>
+    <p>Unfilled model roster targets: ${escape(needs.length ? needs.join(" · ") : "All base targets met; review flexible depth.")}</p>
+    ${settings.type === "dynasty" ? "<p>Dynasty model applies age adjustments; balance immediate production against your selected value horizon.</p>" : settings.rosterFormat === "superflex" ? "<p>Superflex model targets two quarterbacks; compare QB availability before filling bench depth.</p>" : "<p>Balance starter coverage with model value. Do not treat a positional target as a requirement to reach for a player.</p>"}
+    <ul class="team-grade-priorities">${candidates.length ? candidates.map(({ player, reason }) => `<li><strong>${escape(player.name)}</strong> (${escape(player.position)}) — ${escape(reason)}</li>`).join("") : "<li>No next-pick candidates available. Review your roster and the configured draft size.</li>"}</ul>
+    <p class="comparison-note">Based on recorded mock picks and simulated opponent selections, not a connected live draft. Targets follow the Draft Room's standard/superflex model, not custom league slots; ${escape(settings.scoring)} scoring and ${escape(settings.type)} value settings apply. Rankings use estimated production, replacement baselines, roster needs, age adjustments where applicable, and ADP when available. They do not predict whether a player will reach your next pick. Keeper ledger entries are not incorporated into this plan. No picks are submitted to a provider.</p>`;
+}
+
+function getDraftAdpGrade(roundValue) {
+  if (!Number.isFinite(roundValue)) return "Unrated";
+  return roundValue >= 1 ? "A" : roundValue >= 0.5 ? "B" : roundValue >= -0.5 ? "C" : roundValue >= -1 ? "D" : "F";
+}
+
+function buildDraftGradeReport(settings, simulation, rankedPlayers) {
+  const taken = new Set();
+  const counts = {};
+  const rows = [];
+  for (const pick of simulation.picks) {
+    if (pick.isUserPick) {
+      const adp = getDraftAdp(pick.player);
+      const roundValue = adp.rank === null ? null : (pick.overallPick - adp.rank) / settings.teams;
+      const candidates = rankedPlayers.filter(({ player }) => !taken.has(player.id))
+        .map(({ player }) => ({ player, score: scoreDraftPlayer(player, settings, counts, pick.overallPick) }))
+        .filter(entry => Number.isFinite(entry.score)).sort((a, b) => b.score - a.score);
+      const best = candidates[0];
+      const selectedScore = scoreDraftPlayer(pick.player, settings, counts, pick.overallPick);
+      const target = getDraftStarterTargets(settings)[pick.player.position] || 0;
+      rows.push({
+        player: pick.player, overallPick: pick.overallPick, round: pick.round,
+        adp, roundValue, letter: roundValue === null ? "Unrated" : getDraftAdpGrade(roundValue),
+        fit: (counts[pick.player.position] || 0) < target ? "Filled a model starter target" : "Depth / surplus position",
+        alternative: best && Number.isFinite(selectedScore) && best.score > selectedScore + 0.01 ? best.player : null
+      });
+      counts[pick.player.position] = (counts[pick.player.position] || 0) + 1;
+    }
+    taken.add(pick.player.id);
+  }
+  const graded = rows.filter(row => row.roundValue !== null);
+  const mean = graded.length ? graded.reduce((sum, row) => sum + row.roundValue, 0) / graded.length : null;
+  return { rows, gradedCount: graded.length, mean, letter: mean === null ? "Unrated" : getDraftAdpGrade(mean) };
+}
+
+function renderDraftGrades(settings, simulation, rankedPlayers) {
+  const container = document.getElementById("draftGrades");
+  if (!container) return;
+  const report = buildDraftGradeReport(settings, simulation, rankedPlayers);
+  const escape = draftEscapeHtml;
+  const title = report.gradedCount === report.rows.length ? "ADP value grade" : "Partial ADP value grade";
+  const rows = report.rows.map(row => `<tr><th scope="row">R${row.round} · #${row.overallPick}</th><td>${escape(row.player.name)}<br><small>${escape(row.fit)}</small></td><td>${row.adp.rank === null ? "Unavailable" : `${row.adp.rank.toFixed(1)} (${escape(row.adp.source)})`}</td><td>${row.roundValue === null ? "Unrated" : `${row.roundValue > 0 ? "+" : ""}${row.roundValue.toFixed(2)}`}</td><td>${row.letter}</td><td>${row.alternative ? escape(row.alternative.name) : "No higher-scoring available model alternative"}</td></tr>`).join("");
+  container.innerHTML = `<h3>Mock Draft Grades</h3>${report.rows.length ? `<p class="comparison-note">${title}: <strong>${report.letter}</strong> · ${report.gradedCount} of ${report.rows.length} recorded picks have ADP.${report.mean === null ? "" : ` Mean round value: ${report.mean > 0 ? "+" : ""}${report.mean.toFixed(2)}.`} ${simulation.complete ? "Configured mock complete." : "Draft in progress; this is not a final draft assessment."}</p>
+    <div class="table-wrap"><table class="comparison-table"><caption>Recorded user picks only; opponent picks are simulated</caption><thead><tr><th scope="col">Pick</th><th scope="col">Player / roster fit</th><th scope="col">Current ADP</th><th scope="col">Round value</th><th scope="col">ADP grade</th><th scope="col">Higher model alternative at this pick</th></tr></thead><tbody>${rows}</tbody></table></div>` : `<p class="draft-empty">Make a pick to see its grade and roster-fit explanation. Import ADP CSV if your player pool has no ADP.</p>`}
+    <p class="comparison-note">Round value = (overall pick − current ADP) ÷ number of teams; positive means selecting later than ADP. A: at least +1 round; B: +0.5 to under +1; C: −0.5 to under +0.5; D: −1 to under −0.5; F: below −1. Overall grade uses the unrounded mean of rated picks only; missing ADP is Unrated, never zero. ADP grades measure price versus consensus, not player quality or future performance.</p>
+    <p class="comparison-note">Model alternatives are recalculated using earlier picks and your roster needs at that turn, excluding players already taken on this mock board. They are separate from ADP grades. Reviews use currently loaded player data and ADP, not draft-time snapshots, so they can change after updates. ADP source dates and scoring/format compatibility are not verified; confirm your CSV matches this draft. Keeper costs, custom starter slots, and live provider picks are not modeled.</p>`;
+}
+
 function renderDraftRoom() {
   restoreDraftSession();
   const settings = draftState.settings;
@@ -5930,6 +6102,8 @@ function renderDraftRoom() {
   const rankedPlayers = getDraftPlayerPool(settings, rosterCounts, getNextUserDraftPick(settings));
   const simulation = simulateDraft(rankedPlayers);
   const availablePlayers = rankedPlayers.filter(entry => !simulation.draftedIds.has(entry.player.id));
+  renderPersonalizedDraftPlan(settings, simulation, availablePlayers);
+  renderDraftGrades(settings, simulation, rankedPlayers);
   const maxPicks = settings.teams * settings.rounds;
   const pickNumber = simulation.nextPick;
   const roundNumber = Math.floor((pickNumber - 1) / settings.teams) + 1;
@@ -6021,9 +6195,7 @@ async function refreshLiveMatchups() {
   updateStatus("Refreshing matchup scores...");
   try {
     if (league.provider === "sleeper") {
-      const response = await fetch(`https://api.sleeper.app/v1/league/${league.leagueId}/matchups/${state.week}`);
-      if (!response.ok) throw new Error(`Provider returned ${response.status}.`);
-      state.currentMatchups = await response.json();
+      state.currentMatchups = await fetchJson(`https://api.sleeper.app/v1/league/${league.leagueId}/matchups/${state.week}`);
       renderSuperlatives(state.currentMatchups || []);
     } else if (league.provider === "espn") {
       const data = await fetchEspnLeague(league.leagueId, league.season);
@@ -6095,12 +6267,203 @@ function renderMatchupSim() {
   document.getElementById("simScoreB").textContent = `Proj Score: ${totB.toFixed(2)} pts`;
 }
 
+function getRelativeTeamGrade(points, leagueAverage) {
+  if (!Number.isFinite(points) || !Number.isFinite(leagueAverage) || leagueAverage <= 0) return { letter: "Unrated", index: null };
+  const index = points / leagueAverage * 100;
+  return { letter: index >= 110 ? "A" : index >= 100 ? "B" : index >= 90 ? "C" : index >= 80 ? "D" : "F", index };
+}
+
+function buildTeamGradeReport(managerIndex) {
+  if (!state.activeLeague || state.managers.length < 2) return { reason: "Connect or import a league with at least two rosters, or choose Explore demo." };
+  const manager = state.managers[managerIndex];
+  if (!manager) return { reason: "Select a roster in the header to view its grade." };
+  const slots = (state.activeLeague.rosterPositions || []).filter(slot => !["BN", "IR", "TAXI"].includes(slot));
+  if (!slots.length) return { reason: "Starter-slot settings are missing. Import league settings before grading." };
+  const rosters = state.managers.map(roster => {
+    const inactive = new Set([...(roster.reserve || []), ...(roster.taxi || [])].map(String));
+    const ids = [...new Set((roster.players || []).map(String))].filter(id => !inactive.has(id) && !state.players[id]?.isPick);
+    return { roster, ids };
+  });
+  const missing = rosters.reduce((count, { ids }) => count + ids.filter(id => {
+    const player = state.players[id];
+    return !player || Boolean(player.isDemo) !== Boolean(state.activeLeague.isDemo) ||
+      typeof player.projectedPoints !== "number" || !Number.isFinite(player.projectedPoints) || player.projectedPoints < 0;
+  }).length, 0);
+  if (missing) return { reason: `${missing} roster player projection${missing === 1 ? " is" : "s are"} missing, invalid, or from a different data pool. Refresh or re-import before grading the league.` };
+  const lineups = rosters.map(({ ids }) => calcOptimalLineup(ids, false));
+  const average = lineups.reduce((sum, lineup) => sum + lineup.total, 0) / lineups.length;
+  if (average <= 0) return { reason: "League projections total zero. No meaningful relative grade can be calculated; refresh or re-import projections." };
+  const lineup = lineups[managerIndex];
+  const grade = getRelativeTeamGrade(lineup.total, average);
+  const breakdown = [...new Set(slots)].map(slot => {
+    const slotIndices = slots.flatMap((item, index) => item === slot ? [index] : []);
+    const sumSlots = item => slotIndices.reduce((sum, index) => sum + (item.filled[index]?.projectedPoints || 0), 0);
+    const points = sumSlots(lineup);
+    const mean = lineups.reduce((sum, item) => sum + sumSlots(item), 0) / lineups.length;
+    return { slot, count: slotIndices.length, points, average: mean, gap: points - mean,
+      players: slotIndices.map(index => lineup.filled[index] || null), ...getRelativeTeamGrade(points, mean) };
+  });
+  const selectedIds = rosters[managerIndex].ids;
+  const riskPlayers = selectedIds.map(id => state.players[id]).filter(player =>
+    ["Out", "IR", "PUP", "Suspended", "Doubtful", "Questionable"].includes(player.injuryStatus) || player.byeWeek === state.week);
+  const priorities = [];
+  const unfilled = lineup.filled.filter(player => !player).length;
+  if (unfilled) priorities.push(`${unfilled} starter slot${unfilled === 1 ? "" : "s"} cannot be filled from the active roster. Review positional eligibility and available players.`);
+  breakdown.filter(item => item.gap < -0.05).sort((a, b) => a.gap - b.gap).slice(0, 3).forEach(item => {
+    priorities.push(`${item.slot}: ${Math.abs(item.gap).toFixed(1)} projected points below the league's average contribution for this starter group. Compare eligible upgrades in Player Compare or Waiver Wire.`);
+  });
+  if (riskPlayers.length) priorities.push(`${riskPlayers.length} active-roster player${riskPlayers.length === 1 ? "" : "s"} flagged for injury status or this week's bye. Check availability before setting a lineup.`);
+  if (!priorities.length) priorities.push("No below-average starter groups or availability flags detected. Review bench coverage and provider updates before kickoff.");
+  return { manager, lineup, average, grade, breakdown, priorities, riskPlayers,
+    rank: 1 + lineups.filter(item => item.total > lineup.total + 0.000001).length,
+    teamCount: rosters.length, unfilled };
+}
+
+function renderTeamGrades() {
+  const container = document.getElementById("teamGradeResults");
+  if (!container) return;
+  const report = buildTeamGradeReport(parseInt(document.getElementById("teamSelect")?.value || "0", 10));
+  const escape = draftEscapeHtml;
+  if (report.reason) {
+    container.innerHTML = `<p class="draft-empty">${escape(report.reason)}</p>`;
+    return;
+  }
+  const { manager, grade, lineup, average, breakdown, priorities } = report;
+  const rows = breakdown.map(item => `<tr><th scope="row">${escape(item.slot)} × ${item.count}</th><td>${escape(item.players.map(player => player?.name || "Open slot").join(", "))}</td><td>${item.points.toFixed(1)}</td><td>${item.average.toFixed(1)}</td><td>${item.gap > 0 ? "+" : ""}${item.gap.toFixed(1)}</td><td>${item.letter}</td></tr>`).join("");
+  container.innerHTML = `<section class="gm-briefing"><div class="draft-eyebrow">WEEK ${state.week}${state.activeLeague.isDemo ? " · FICTIONAL DEMO" : ""}</div><h3>${escape(manager.teamName)}</h3><div class="team-grade-letter">Grade ${grade.letter}</div><p>Strength index: <strong>${grade.index.toFixed(1)}</strong> (league average = 100) · Projected rank: #${report.rank} of ${report.teamCount} (ties share a rank)</p><p>Optimized lineup: <strong>${lineup.total.toFixed(1)} pts</strong> · League average: ${average.toFixed(1)} pts</p><p class="comparison-note">${escape(getProjectionSourceNote())}</p></section>
+    <section class="comparison-card"><h3>Why this grade?</h3><p class="comparison-note">Index = optimized weekly points ÷ league average × 100. A: 110 or higher; B: 100–under 110; C: 90–under 100; D: 80–under 90; F: under 80. Grades use unrounded values. This is a relative weekly projection grade, not a season result, dynasty valuation, championship probability, or draft grade.</p><p class="comparison-note">Uses each team's active roster and configured starter slots. IR and taxi players are excluded. Kickoff locks are intentionally ignored to compare roster strength, not recommend legal lineup changes. Zero projections remain zero; they can mean missing provider coverage. Slot-group grades use the same thresholds against that group's league average; a zero average is Unrated. FLEX contributions depend on the optimizer's allocation and are not independent positional depth grades.</p></section>
+    <div class="table-wrap"><table class="comparison-table"><caption>Optimized starter-group contributions</caption><thead><tr><th scope="col">Starter group</th><th scope="col">Assigned players</th><th scope="col">Your pts</th><th scope="col">League avg</th><th scope="col">Gap</th><th scope="col">Grade</th></tr></thead><tbody>${rows}</tbody></table></div>
+    <section class="comparison-card"><h3>Improvement priorities</h3><ul class="team-grade-priorities">${priorities.map(item => `<li>${escape(item)}</li>`).join("")}</ul><p class="comparison-note">A low grade does not imply a trade is necessary. Validate projections and availability first; use Player Compare for roster-specific scenarios.</p></section>`;
+}
+
+function getProjectionSourceNote() {
+  if (state.activeLeague?.isDemo) return "Fictional demo projections, fixed Week 6 snapshot; not actionable player advice.";
+  if (state.activeLeague?.provider === "yahoo") return "Imported snapshot; re-import to update projections.";
+  if (state.dataErrors.projections || !state.dataFreshness.projections) return "Projection feed unavailable or not verified; point estimates may use model fallbacks.";
+  return `Projections checked ${new Date(state.dataFreshness.projections).toLocaleString()}. Estimates are not guarantees.`;
+}
+
+function getComparisonRosterScenario(playerA, playerB, manager) {
+  if (!state.activeLeague || !manager) return { reason: "Connect a league and select a roster to compare lineup impact." };
+  if (playerA.id === playerB.id) return { reason: "Choose two different players to compare." };
+  const rosterIds = manager.players || [];
+  if ([...new Set([...rosterIds, playerA.id, playerB.id])].some(id => {
+    const player = state.players[id];
+    return !player || typeof player.projectedPoints !== "number" || !Number.isFinite(player.projectedPoints);
+  })) return { reason: "A player projection is missing or invalid. Refresh or re-import player data before modeling lineup impact." };
+  const hasA = rosterIds.includes(playerA.id), hasB = rosterIds.includes(playerB.id);
+  if (!hasA && !hasB) return { reason: "Neither player is on the selected roster. Select a rostered player to model a move." };
+  if (getPlayerGameDayStatus(playerA).locked || getPlayerGameDayStatus(playerB).locked) {
+    return { reason: "A selected player is kickoff-locked. No actionable lineup or add/drop scenario is modeled." };
+  }
+  const constraints = getLineupLockConstraints(manager);
+  if (hasA && hasB) {
+    const sharedSlot = (state.activeLeague.rosterPositions || []).some(slot =>
+      !["BN", "IR", "TAXI"].includes(slot) && isPosEligible(playerA.position, slot) && isPosEligible(playerB.position, slot));
+    if (!sharedSlot) return { reason: "Both players need a shared eligible unlocked starter slot for a direct start/sit comparison." };
+    const withPlayer = (player, other) => calcOptimalLineup(rosterIds, false, {
+      requiredPlayerIds: [...constraints.requiredPlayerIds, player.id],
+      excludedPlayerIds: [...constraints.excludedPlayerIds, other.id]
+    });
+    const a = withPlayer(playerA, playerB), b = withPlayer(playerB, playerA);
+    if (!a.filled.some(player => player?.id === playerA.id) || !b.filled.some(player => player?.id === playerB.id)) {
+      return { reason: "Both players need an eligible unlocked starter slot to model these lineup alternatives." };
+    }
+    return { label: "Start/sit alternatives", aLabel: `Start ${playerA.name}, sit ${playerB.name}`, bLabel: `Start ${playerB.name}, sit ${playerA.name}`, a: a.total, b: b.total, delta: b.total - a.total };
+  }
+  const outgoing = hasA ? playerA : playerB;
+  const incoming = hasA ? playerB : playerA;
+  if (state.managers.some(roster => roster.players?.includes(incoming.id))) {
+    return { reason: `${incoming.name} belongs to another roster. This is not a waiver option; use Trade Center to evaluate a negotiated deal.` };
+  }
+  const before = calcOptimalLineup(rosterIds, false, constraints);
+  const after = calcOptimalLineup(rosterIds.filter(id => id !== outgoing.id).concat(incoming.id), false, constraints);
+  return { label: `Hypothetical add/drop: ${manager.teamName}`, aLabel: "Current optimized roster", bLabel: `Drop ${outgoing.name}; add ${incoming.name}`, a: before.total, b: after.total, delta: after.total - before.total };
+}
+
+function openPlayerComparison(playerAId, playerBId) {
+  document.getElementById("compareSearch").value = "";
+  document.getElementById("comparePosition").value = "ALL";
+  renderPlayerComparison();
+  [playerAId, playerBId].forEach((id, index) => {
+    const player = state.players[id];
+    const select = document.getElementById(index ? "comparePlayerB" : "comparePlayerA");
+    if (player && Boolean(player.isDemo) === Boolean(state.activeLeague?.isDemo) && !player.isPick && player.isCurrentNfl) {
+      if (![...select.options].some(option => option.value === id)) {
+        select.add(new Option(`${player.name} · ${player.position} · ${player.team}`, id));
+      }
+      select.value = id;
+    } else select.value = "";
+  });
+  activateTab("tab-compare");
+  renderPlayerComparison(false);
+}
+
+function renderPlayerComparison(refreshChoices = true) {
+  const selectA = document.getElementById("comparePlayerA");
+  const selectB = document.getElementById("comparePlayerB");
+  const results = document.getElementById("compareResults");
+  if (!selectA || !selectB || !results) return;
+  const pool = Object.values(state.players).filter(player => !player.isPick &&
+    ["QB", "RB", "WR", "TE", "K", "DEF"].includes(player.position) &&
+    Boolean(player.isDemo) === Boolean(state.activeLeague?.isDemo) && player.isCurrentNfl);
+  if (refreshChoices) {
+    const query = document.getElementById("compareSearch").value.trim().toLowerCase();
+    const position = document.getElementById("comparePosition").value;
+    const matches = pool.filter(player => (position === "ALL" || player.position === position) &&
+      `${player.name} ${player.team}`.toLowerCase().includes(query))
+      .sort((a, b) => Number(b.baseValue || 0) - Number(a.baseValue || 0) || a.name.localeCompare(b.name));
+    const choices = matches.slice(0, 100);
+    // Keep an existing selection available while searching for its counterpart.
+    const pinned = [selectA.value, selectB.value].map(id => pool.find(player => player.id === id))
+      .filter(player => player && !choices.some(choice => choice.id === player.id));
+    const options = [...new Map([...pinned, ...choices].map(player => [player.id, player])).values()];
+    const oldA = selectA.value, oldB = selectB.value;
+    const html = `<option value="">Choose a player</option>` + options.map(player =>
+      `<option value="${draftEscapeHtml(player.id)}">${draftEscapeHtml(`${player.name} · ${player.position} · ${player.team}`)}</option>`).join("");
+    selectA.innerHTML = html;
+    selectB.innerHTML = html;
+    selectA.value = options.some(player => player.id === oldA) ? oldA : "";
+    selectB.value = options.some(player => player.id === oldB) ? oldB : "";
+    document.getElementById("comparePoolMeta").textContent = `${matches.length} matches; showing ${choices.length}${pinned.length ? " plus previous selections" : ""}. Search narrows choices without clearing selected players.${state.activeLeague?.isDemo ? " Fictional demo players only." : ""}`;
+  }
+  const playerA = pool.find(player => player.id === selectA.value);
+  const playerB = pool.find(player => player.id === selectB.value);
+  if (!playerA || !playerB || playerA.id === playerB.id) {
+    results.innerHTML = `<p class="draft-empty">${playerA && playerB ? "Choose two different players to compare." : "Choose Player A and Player B above. Search by name or team to find players outside the first 100."}</p>`;
+    return;
+  }
+  const manager = state.managers[parseInt(document.getElementById("teamSelect")?.value || "0", 10)];
+  const escape = draftEscapeHtml;
+  const numeric = value => typeof value === "number" && Number.isFinite(value) ? value : null;
+  const format = value => numeric(value) === null ? "Unavailable" : value.toFixed(1);
+  const ownership = player => state.managers.filter(roster => roster.players?.includes(player.id)).map(roster => roster.teamName).join(", ") || (state.activeLeague ? "Unrostered in loaded league" : "Ownership unavailable");
+  const cards = [playerA, playerB].map((player, index) => `<article class="comparison-card"><div class="draft-eyebrow">PLAYER ${index ? "B" : "A"}</div><h3>${escape(player.name)}</h3><p class="comparison-note">${escape(player.position)} · ${escape(player.team)} · ${escape(player.injuryStatus || "Health unknown")}</p><p class="comparison-note">${escape(ownership(player))}</p><p class="comparison-note">${player.byeWeek ? `Bye: Week ${player.byeWeek}${player.byeWeek === state.week ? " (this week)" : ""}` : "Bye: unavailable / not applicable"} · ${escape(getPlayerGameDayStatus(player).label)}</p></article>`).join("");
+  const rows = [
+    [`Week ${state.week} projected points`, playerA.projectedPoints, playerB.projectedPoints],
+    ["Season PPG (may be estimated)", playerA.seasonPpg, playerB.seasonPpg],
+    ["Model trade value (not market price)", playerA.baseValue, playerB.baseValue]
+  ].map(([label, a, b]) => {
+    const delta = numeric(a) !== null && numeric(b) !== null ? b - a : null;
+    return `<tr><th scope="row">${escape(label)}</th><td>${format(a)}</td><td>${format(b)}</td><td class="comparison-edge">${delta === null ? "Unavailable" : `${delta > 0 ? "+" : ""}${format(delta)}`}</td></tr>`;
+  }).join("");
+  const scenario = getComparisonRosterScenario(playerA, playerB, manager);
+  const scenarioHtml = scenario.reason ? `<p>${escape(scenario.reason)}</p>` :
+    `<h3>${escape(scenario.label)}</h3><p>${escape(scenario.aLabel)}: <strong>${format(scenario.a)} pts</strong></p><p>${escape(scenario.bLabel)}: <strong>${format(scenario.b)} pts</strong></p><p class="comparison-edge">Change: ${scenario.delta > 0 ? "+" : ""}${format(scenario.delta)} projected lineup pts</p>`;
+  results.innerHTML = `<div class="comparison-cards">${cards}</div>
+    <section class="gm-briefing"><h3>Scoring context</h3><p>${escape(state.activeLeague?.name || "No league connected")} · Week ${state.week} · Reception scoring: ${escape(String(state.activeLeague?.scoringSettings?.rec ?? 1))} pts/rec</p><p class="comparison-note">${escape(getProjectionSourceNote())} Season PPG and trade values can be model-derived, not verified historical results.</p>${playerA.position !== playerB.position ? "<p>Different positions: raw points are not a like-for-like replacement or a trade fairness verdict.</p>" : ""}</section>
+    <div class="table-wrap"><table class="comparison-table"><caption>Player metrics; positive B − A favors Player B on that metric only</caption><thead><tr><th scope="col">Metric</th><th scope="col">Player A</th><th scope="col">Player B</th><th scope="col">B − A</th></tr></thead><tbody>${rows}</tbody></table></div>
+    <section class="gm-briefing comparison-scenario">${scenarioHtml}<p class="comparison-note">Selected roster: ${escape(manager?.teamName || "none")}. Uses optimized lineups, eligible slots, and known kickoff locks. Positive point changes are estimates, not guaranteed gains. Missing schedule data means locks cannot be verified. Check provider rules, roster limits, and waivers before acting.</p></section>`;
+}
+
 function renderAllViews(teamIdx) {
   renderRosterTab(teamIdx); renderPowerTab();
   renderTradeBuilderSide(true); renderTradeBuilderSide(false);
   updateTradeEvaluation(); renderTradeFinder();
   renderOptimizerTab(teamIdx); renderWaiversTab();
   renderMatchupSim(); drawSingleAnalyticsChart();
+  renderPlayerComparison();
+  renderTeamGrades();
   renderSosTab(); renderPlayoffBracketTab(); renderDraftRoom();
   if (document.getElementById("tab-inbox")?.classList.contains("active")) renderGMInbox();
   if (document.getElementById("tab-newsletter")?.classList.contains("active")) renderLeagueNewsletter();
@@ -6110,8 +6473,11 @@ function renderAllViews(teamIdx) {
 function bindControlEvents() {
   ensureDynamicTradeControls();
   const weekSelect = document.getElementById("weekSelect");
+  ["compareSearch", "comparePosition"].forEach(id => document.getElementById(id)?.addEventListener(id === "compareSearch" ? "input" : "change", () => renderPlayerComparison()));
+  ["comparePlayerA", "comparePlayerB"].forEach(id => document.getElementById(id)?.addEventListener("change", () => renderPlayerComparison(false)));
 
   updateProviderControls();
+  renderPlayerComparison();
   document.getElementById("providerSelect")?.addEventListener("change", () => {
     state.leagues = [];
     state.activeLeague = null;
@@ -6124,6 +6490,8 @@ function bindControlEvents() {
     renderWeeklyLeagueReport();
     renderPickemChallenge();
     updateProviderControls();
+    renderPlayerComparison();
+    renderTeamGrades();
     setStatus("Provider changed. Connect a league to load its data.");
   });
   document.getElementById("yahooImportFile")?.addEventListener("change", event => importYahooRosterFile(event.target.files?.[0]));
@@ -6221,12 +6589,25 @@ function bindControlEvents() {
   });
 
   document.getElementById("syncBtn")?.addEventListener("click", syncUserAccount);
+  document.getElementById("demoLeagueBtn")?.addEventListener("click", async event => {
+    const button = event.currentTarget;
+    button.disabled = true;
+    try {
+      const payload = FFODemo.createDemoLeague();
+      await importYahooRosterFile({ name: "demo-league.json", text: async () => JSON.stringify(payload) }, { demo: true });
+      activateTab("tab-inbox");
+      await renderGMInbox();
+    } finally {
+      button.disabled = false;
+    }
+  });
   document.getElementById("retryDataBtn")?.addEventListener("click", retryDataSync);
   document.getElementById("mobileTabSelect")?.addEventListener("change", e => {
     document.querySelector(`.nav-btn[data-tab="${e.target.value}"]`)?.click();
   });
   document.getElementById("refreshIntelBtn")?.addEventListener("click", () => { portfolioState.rostersByLeague.clear(); renderLeagueIntelTab(true); });
   document.getElementById("refreshGmInboxBtn")?.addEventListener("click", () => renderGMInbox(true));
+  document.getElementById("gmInboxFilter")?.addEventListener("change", () => renderGMInbox());
   document.getElementById("gmInboxList")?.addEventListener("click", handleGMInboxClick);
   document.getElementById("gmInboxCompleted")?.addEventListener("click", handleGMInboxClick);
   document.getElementById("portfolioPressureList")?.addEventListener("click", handleGMInboxClick);
@@ -6293,6 +6674,9 @@ function bindControlEvents() {
     if (document.getElementById("tradeTeamA")) document.getElementById("tradeTeamA").value = idx;
     renderRosterTab(idx); renderOptimizerTab(idx); renderWaiversTab(); renderSosTab(); renderTradeFinder(); renderDraftKeeperLedger(); buildTradeDatabase();
     if (document.getElementById("tab-intel")?.classList.contains("active")) renderLeagueIntelTab();
+    if (document.getElementById("tab-inbox")?.classList.contains("active")) renderGMInbox();
+    if (document.getElementById("tab-compare")?.classList.contains("active")) renderPlayerComparison();
+    if (document.getElementById("tab-grades")?.classList.contains("active")) renderTeamGrades();
   });
   weekSelect?.addEventListener("change", async e => {
     state.week = parseInt(e.target.value, 10);

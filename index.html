@@ -30,6 +30,7 @@
     <input id="usernameInput" placeholder="Sleeper username..." style="width:175px;" />
     <label id="yahooImportLabel" class="yahoo-import-label" hidden>Import Yahoo roster<input id="yahooImportFile" type="file" accept=".csv,.json,text/csv,application/json" /></label>
     <button id="syncBtn">Connect</button>
+    <button id="demoLeagueBtn" type="button" class="btn-builder-action" disabled>Explore demo</button>
     <label id="leagueInputLabel" style="margin-left:6px;">LEAGUE</label>
     <select id="leagueSelect" class="grow"><option>-- Sync account first --</option></select>
     <label id="rosterInputLabel" style="margin-left:6px;">ROSTER</label>
@@ -44,8 +45,9 @@
   <div class="sidebar">
     <label class="mobile-nav-label" for="mobileTabSelect">VIEW</label>
     <select id="mobileTabSelect" class="mobile-nav-select" aria-label="Navigate to section">
-      <option value="tab-inbox">GM Inbox</option>
+      <option value="tab-inbox" selected>GM Inbox</option>
       <option value="tab-roster">Roster Overview</option>
+      <option value="tab-grades">Team Grades</option>
       <option value="tab-power">Power Rankings</option>
       <option value="tab-intel">League Intel</option>
       <option value="tab-newsletter">League Newsletter</option>
@@ -54,14 +56,16 @@
       <option value="tab-trade">Trade Center</option>
       <option value="tab-draft">Draft Room</option>
       <option value="tab-analytics">Player Analytics</option>
+      <option value="tab-compare">Player Compare</option>
       <option value="tab-sos">SOS Heat-Map</option>
       <option value="tab-bracket">Playoff Bracket</option>
       <option value="tab-matchup">Matchup Simulator</option>
     </select>
     <div class="nav-group">
       <div class="nav-group-title">Overview</div>
-      <button class="nav-btn" data-tab="tab-inbox">GM Inbox</button>
-      <button class="nav-btn active" data-tab="tab-roster">Roster Overview</button>
+      <button class="nav-btn active" data-tab="tab-inbox" aria-current="page">GM Inbox</button>
+      <button class="nav-btn" data-tab="tab-roster">Roster Overview</button>
+      <button class="nav-btn" data-tab="tab-grades">Team Grades</button>
       <button class="nav-btn" data-tab="tab-power">Power Rankings</button>
       <button class="nav-btn" data-tab="tab-intel">League Intel</button>
       <button class="nav-btn" data-tab="tab-newsletter">League Newsletter</button>
@@ -76,6 +80,7 @@
     <div class="nav-group">
       <div class="nav-group-title">Research</div>
       <button class="nav-btn" data-tab="tab-analytics">Player Analytics</button>
+      <button class="nav-btn" data-tab="tab-compare">Player Compare</button>
       <button class="nav-btn" data-tab="tab-sos">SOS Heat-Map</button>
       <button class="nav-btn" data-tab="tab-bracket">Playoff Bracket</button>
       <button class="nav-btn" data-tab="tab-matchup">Matchup Simulator</button>
@@ -84,7 +89,7 @@
 
   <div class="content-stack">
     <!-- TAB 1: ROSTER -->
-    <div id="tab-roster" class="tab-page active">
+    <div id="tab-roster" class="tab-page">
       <div class="card-banner">
         <div class="banner-inner">
           <div id="rTeamName" style="font-size:16px; font-weight:800; flex:1;">Team: --</div>
@@ -113,6 +118,15 @@
         <div class="sec-hdr" style="color:var(--warn);">TAXI SQUAD</div>
         <div class="table-wrap"><table id="taxiTbl"></table></div>
       </div>
+    </div>
+
+    <div id="tab-grades" class="tab-page">
+      <div>
+        <div class="draft-eyebrow">RATE MY TEAM</div>
+        <h2>Team Grades</h2>
+        <p class="comparison-note">Weekly roster strength relative to your loaded league, with explained grades and starter-slot breakdowns. Choose a roster using the header above.</p>
+      </div>
+      <div id="teamGradeResults" aria-live="polite"></div>
     </div>
 
     <!-- TAB 2: POWER RANKINGS -->
@@ -398,6 +412,34 @@
       <div class="table-wrap"><table id="analyticsTable"></table></div>
     </div>
 
+    <div id="tab-compare" class="tab-page">
+      <div>
+        <div class="draft-eyebrow">PLAYER DECISION DESK</div>
+        <h2>Player Compare</h2>
+        <p class="comparison-note">Compare two players using the active league's scoring and selected roster. No transactions or lineup changes are submitted.</p>
+      </div>
+      <div class="comparison-controls card-banner">
+        <label for="compareSearch">Find players by name or NFL team
+          <input id="compareSearch" type="search" placeholder="Search the loaded player pool..." />
+        </label>
+        <label for="comparePosition">Position
+          <select id="comparePosition">
+            <option value="ALL">All positions</option><option value="QB">QB</option>
+            <option value="RB">RB</option><option value="WR">WR</option>
+            <option value="TE">TE</option><option value="K">K</option><option value="DEF">DEF</option>
+          </select>
+        </label>
+        <p id="comparePoolMeta" class="comparison-note"></p>
+        <label for="comparePlayerA">Player A
+          <select id="comparePlayerA"></select>
+        </label>
+        <label for="comparePlayerB">Player B
+          <select id="comparePlayerB"></select>
+        </label>
+      </div>
+      <div id="compareResults" aria-live="polite"></div>
+    </div>
+
     <!-- TAB 7: SOS HEAT-MAP -->
     <div id="tab-sos" class="tab-page">
       <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
@@ -569,18 +611,30 @@
       </section>
     </div>
 
-    <div id="tab-inbox" class="tab-page">
+    <div id="tab-inbox" class="tab-page active">
       <div class="draft-heading">
         <div><div class="draft-eyebrow">THIS WEEK'S DECISIONS</div><h2>GM Inbox</h2></div>
         <button id="refreshGmInboxBtn" class="btn-builder-action" type="button">Refresh analysis</button>
       </div>
       <div id="gmInboxSummary" class="gm-inbox-summary"></div>
+      <section id="gmBriefing" class="gm-briefing" aria-label="Weekly GM briefing"></section>
       <section class="portfolio-panel">
         <div class="draft-panel-heading"><div><h3>Portfolio Pressure</h3><span class="draft-subtitle">Concentration, shared byes, and roster gaps across your tracked teams</span></div></div>
         <div id="portfolioPressureList" class="portfolio-pressure-list"></div>
       </section>
       <section class="portfolio-panel">
-        <div class="draft-panel-heading"><div><h3>Prioritized Actions</h3><span id="gmInboxMeta" class="draft-subtitle">League-specific advice, with confidence and your outcome feedback</span></div></div>
+        <div class="draft-panel-heading">
+          <div><h3>Prioritized Actions</h3><span id="gmInboxMeta" class="draft-subtitle">League-specific advice, with confidence and your outcome feedback</span></div>
+          <label class="gm-inbox-filter-label">Show
+            <select id="gmInboxFilter" aria-label="Filter GM Inbox actions">
+              <option value="all">All actions</option>
+              <option value="lineup">Lineup & availability</option>
+              <option value="waivers">Waiver actions</option>
+              <option value="trade">Trade actions</option>
+              <option value="portfolio">Portfolio actions</option>
+            </select>
+          </label>
+        </div>
         <div id="gmInboxList" class="gm-inbox-list"></div>
       </section>
       <section class="portfolio-panel">
@@ -704,6 +758,9 @@
         <div><span>Available</span><strong id="draftAvailableCount">0</strong></div>
       </div>
 
+      <section id="draftPlan" class="gm-briefing" aria-label="Personalized draft plan" aria-live="polite"></section>
+      <section id="draftGrades" class="comparison-card" aria-label="Mock draft grades" aria-live="polite"></section>
+
       <section class="draft-board-panel draft-board-panel-full">
         <div class="draft-panel-heading">
           <div><h3>Draft Board</h3><span id="draftTakenCount" class="draft-subtitle">No picks made</span></div>
@@ -777,6 +834,8 @@
 </footer>
 
 <script src="monetization-config.js"></script>
+<script src="data-fetch.js"></script>
+<script src="demo-league.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

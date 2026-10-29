@@ -1,0 +1,558 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Optimizer Regression Checks</title>
+  <style>
+    :root { color-scheme: light; font-family: system-ui, sans-serif; }
+    body { max-width: 760px; margin: 32px auto; padding: 0 18px; color: #17211c; }
+    h1 { font-size: 24px; }
+    #summary { padding: 12px; border: 1px solid #cbd5ce; border-radius: 6px; }
+    #results { padding-left: 22px; }
+    #results li { margin: 8px 0; }
+    .pass { color: #087443; }
+    .fail { color: #ad2f2f; }
+    #appFrame { position: absolute; width: 1px; height: 1px; left: -10000px; border: 0; }
+  </style>
+</head>
+<body>
+  <h1>Optimizer Regression Checks</h1>
+  <p id="summary" role="status">Loading the app runtime...</p>
+  <ol id="results"></ol>
+  <iframe id="appFrame" src="../index.html" title="Optimizer test runtime"></iframe>
+  <script>
+    async function runOptimizerFixtures() {
+      const results = [];
+      const savedLeague = state.activeLeague;
+      const savedLeagues = state.leagues;
+      const savedManagers = state.managers;
+      const savedWaiverTargets = state.waiverTargets;
+      const savedDbTrades = state.dbTrades;
+      const savedDraftAdp = draftState.adpByName;
+      const savedTeamIndex = document.getElementById("teamSelect").value;
+      const savedActiveTab = document.querySelector(".tab-page.active")?.id;
+      const savedCompareControls = Object.fromEntries(["compareSearch", "comparePosition", "comparePlayerA", "comparePlayerB"].map(id => [id, document.getElementById(id).value]));
+      const savedWeek = state.week;
+      const savedGameDayByTeam = state.gameDayByTeam;
+      const savedGameDayScheduleAvailable = state.gameDayScheduleAvailable;
+      const savedLivePlayerPoints = { ...state.livePlayerPoints };
+      const savedProjectionFreshness = state.dataFreshness.projections;
+      const savedProjectionError = state.dataErrors.projections;
+      const savedScheduleFreshness = state.dataFreshness.schedule;
+      const savedScheduleError = state.dataErrors.schedule;
+      const savedNewsletterArchive = localStorage.getItem("fantasy-front-office:newsletter:v1");
+      const savedPortfolioRosterSelections = { ...state.portfolioRosterSelections };
+      const savedFaabState = { budget: faabState.budget, weeksRemaining: faabState.weeksRemaining, strategy: faabState.strategy, claims: [...faabState.claims], loadedKey: faabState.loadedKey };
+      const savedFetch = window.fetch;
+      const providerSelect = document.getElementById("providerSelect");
+      const savedProvider = providerSelect.value;
+      const savedStateProvider = state.provider;
+      const savedStatus = document.getElementById("statusLabel").textContent;
+      const fixtureIds = [];
+      const originalPlayers = new Map();
+      let queuedPortfolioCacheKey = "";
+      let savedQueuedPortfolioRosters;
+      const espnId = "987654321";
+      const addPlayer = (id, name, position, score) => {
+        if (state.players[id]) originalPlayers.set(id, state.players[id]);
+        else fixtureIds.push(id);
+        state.players[id] = {
+          id, name, position, team: "FA", projectedPoints: score, seasonPpg: score,
+          isPick: false, baseValue: 100, injuryStatus: "Healthy", byeWeek: 0,
+          isCurrentNfl: true, vorpScore: score
+        };
+      };
+      const check = (name, passed, detail) => results.push({ name, passed: Boolean(passed), detail: detail || "" });
+      try {
+        check("Initial navigation and content open on GM Inbox",
+          document.querySelector(".nav-btn.active")?.dataset.tab === "tab-inbox" &&
+          document.querySelector(".tab-page.active")?.id === "tab-inbox" &&
+          document.getElementById("mobileTabSelect").value === "tab-inbox");
+        const savedTabId = document.querySelector(".nav-btn.active")?.dataset.tab || "tab-roster";
+        activateTab("tab-power");
+        const powerNav = document.querySelector('.nav-btn[data-tab="tab-power"]');
+        check("Active section is exposed to assistive technology", powerNav?.getAttribute("aria-current") === "page" && document.getElementById("mobileTabSelect").value === "tab-power");
+        activateTab(savedTabId);
+        const filterFixture = [
+          { type: "Start / sit" }, { type: "Waiver" }, { type: "Trade fit" },
+          { type: "Portfolio exposure" }, { type: "Portfolio roster gap" }
+        ];
+        check("GM Inbox action filters group recommendation types",
+          filterGmRecommendations(filterFixture, "lineup").length === 1 &&
+          filterGmRecommendations(filterFixture, "waivers").length === 2 &&
+          filterGmRecommendations(filterFixture, "trade").length === 1 &&
+          filterGmRecommendations(filterFixture, "portfolio").length === 1 &&
+          filterGmRecommendations(filterFixture, "all").length === filterFixture.length);
+
+        window.fetch = async () => ({ ok: false, status: 404 });
+        let failedRequestError = "";
+        try {
+          await FFOData.fetchJson("https://api.sleeper.app/v1/test-endpoint");
+        } catch (error) {
+          failedRequestError = error.message;
+        }
+        window.fetch = async () => { throw new TypeError("Failed to fetch"); };
+        let networkError = "";
+        try {
+          await FFOData.fetchJson("https://api.sleeper.app/v1/test-endpoint");
+        } catch (error) {
+          networkError = error.message;
+        }
+        window.fetch = async () => ({ ok: true, json: async () => { throw new SyntaxError("Unexpected token"); } });
+        let invalidJsonError = "";
+        try {
+          await FFOData.fetchJson("https://api.sleeper.app/v1/test-endpoint");
+        } catch (error) {
+          invalidJsonError = error.message;
+        }
+        window.fetch = savedFetch;
+        check("HTTP errors identify the failed endpoint", failedRequestError === "api.sleeper.app returned 404 for /v1/test-endpoint.", failedRequestError);
+        check("Network errors identify the failed endpoint", networkError.includes("Request to api.sleeper.app/v1/test-endpoint failed: Failed to fetch"), networkError);
+        check("Invalid JSON identifies the failed endpoint", invalidJsonError.includes("api.sleeper.app returned invalid JSON for /v1/test-endpoint"), invalidJsonError);
+
+        window.fetch = async () => ({ ok: false, status: 503 });
+        await syncFullSeasonNflSchedule("2099", true);
+        const scheduleError = state.dataErrors.schedule || "";
+        check("Schedule sync reports failed feed requests", scheduleError.includes("valid schedules for only 0 of 18 weeks") && scheduleError.includes("18 week requests failed") && scheduleError.includes("espn.com returned 503"), scheduleError);
+        let activeScheduleRequests = 0;
+        let maximumScheduleRequests = 0;
+        let scheduleRequestCount = 0;
+        window.fetch = async () => {
+          activeScheduleRequests++;
+          scheduleRequestCount++;
+          maximumScheduleRequests = Math.max(maximumScheduleRequests, activeScheduleRequests);
+          await new Promise(resolve => setTimeout(resolve, 5));
+          activeScheduleRequests--;
+          return { ok: true, json: async () => ({ events: [] }) };
+        };
+        await syncFullSeasonNflSchedule("2098", true);
+        check("Schedule sync bounds parallel requests", scheduleRequestCount === 18 && maximumScheduleRequests <= 6 && maximumScheduleRequests > 1, `${scheduleRequestCount} weeks fetched; max ${maximumScheduleRequests} concurrent.`);
+        window.fetch = savedFetch;
+
+        providerSelect.value = "";
+        await syncUserAccount();
+        check("Provider sync requires a selection", document.getElementById("statusLabel").textContent === "Choose a provider first.");
+        providerSelect.value = "yahoo";
+        await syncUserAccount();
+        check("Yahoo sync explains import requirements", document.getElementById("statusLabel").textContent.includes("Choose a Yahoo roster CSV or JSON file"));
+
+        addPlayer("fixture_qb1", "QB One", "QB", 30);
+        addPlayer("fixture_qb2", "QB Two", "QB", 18);
+        addPlayer("fixture_rb1", "RB One", "RB", 26);
+        addPlayer("fixture_wr1", "WR One", "WR", 24);
+        addPlayer("fixture_wr2", "WR Two", "WR", 16);
+        addPlayer("fixture_te1", "TE One", "TE", 22);
+        addPlayer("fixture_te2", "TE Two", "TE", 20);
+        addPlayer("fixture_lb", "LB One", "LB", 14);
+        addPlayer("fixture_locked_starter", "Locked Starter", "RB", 8);
+        addPlayer("fixture_locked_bench", "Locked Bench", "RB", 40);
+        addPlayer("fixture_unlocked_rb", "Unlocked RB", "RB", 24);
+        state.activeLeague = { season: "2026", rosterPositions: ["W/R", "RB", "WR"] };
+        const orderedFlex = calcOptimalLineup(["fixture_rb1", "fixture_wr1", "fixture_wr2"], false);
+        check(
+          "Flexible slot before dedicated slots",
+          orderedFlex.filled.map(player => player?.id).join(",") === "fixture_wr1,fixture_rb1,fixture_wr2" && orderedFlex.total === 66,
+          `Assigned ${orderedFlex.filled.map(player => player?.name || "open").join(" / ")} for ${orderedFlex.total} points.`
+        );
+        state.activeLeague.rosterPositions = ["SUPER_FLEX", "QB", "WR/TE", "TE", "W/T"];
+        const mixedSlots = calcOptimalLineup([
+          "fixture_qb1", "fixture_qb2", "fixture_rb1", "fixture_wr1", "fixture_wr2", "fixture_te1", "fixture_te2"
+        ], false);
+        check(
+          "Superflex preserves dedicated QB",
+          mixedSlots.filled[0]?.id === "fixture_rb1" && mixedSlots.filled[1]?.id === "fixture_qb1",
+          `Superflex: ${mixedSlots.filled[0]?.name}; QB: ${mixedSlots.filled[1]?.name}.`
+        );
+        check(
+          "Combined and W/T slots fill",
+          mixedSlots.filled[2]?.id === "fixture_wr1" && mixedSlots.filled[3]?.id === "fixture_te1" && mixedSlots.filled[4]?.id === "fixture_te2",
+          `WR/TE: ${mixedSlots.filled[2]?.name}; TE: ${mixedSlots.filled[3]?.name}; W/T: ${mixedSlots.filled[4]?.name}.`
+        );
+        state.activeLeague.rosterPositions = ["IDP_FLEX", "RB"];
+        const idp = calcOptimalLineup(["fixture_lb", "fixture_rb1"], false);
+        check("IDP flex eligibility", idp.filled[0]?.id === "fixture_lb" && idp.filled[1]?.id === "fixture_rb1", `IDP: ${idp.filled[0]?.name}; RB: ${idp.filled[1]?.name}.`);
+        const espnSlots = normalizeEspnRosterPositions({ 0: 1, 3: 1, 5: 1, 6: 1, 23: 1 });
+        check("ESPN slot normalization", espnSlots.includes("WR/TE") && espnSlots.includes("SUPER_FLEX"), espnSlots.join(", "));
+        check("ESPN reception scoring normalization", normalizeEspnScoring({ scoringItems: [{ statId: 53, points: 0.5 }] }).rec === 0.5);
+        check("WR/TE and W/T aliases", isPosEligible("TE", "WR/TE") && isPosEligible("WR", "W/T") && isPosEligible("LB", "IDP_FLEX"));
+        state.activeLeague.rosterPositions = ["SUPER_FLEX", "QB", "WR/TE", "TE", "W/T"];
+        const playoff = calcPlayoffWeekProjection([
+          "fixture_qb1", "fixture_qb2", "fixture_rb1", "fixture_wr1", "fixture_wr2", "fixture_te1", "fixture_te2"
+        ], 6);
+        check("Playoff projection uses shared assignment", Number.isFinite(playoff.total) && playoff.total > 0, `${playoff.total.toFixed(1)} projected points.`);
+        const espnData = {
+          teams: [{ roster: { entries: [{
+            lineupSlotId: 0,
+            playerPoolEntry: { player: { id: espnId, position: "QB" }, appliedStatTotal: 17.25 }
+          }] } }]
+        };
+        const espnPoints = extractEspnCurrentPoints(espnData, 6);
+        check("ESPN applied score extraction", espnPoints[`espn_${espnId}`] === 17.25, `${espnPoints[`espn_${espnId}`]} points.`);
+
+        const fixedNow = Date.parse("2026-10-18T12:00:00Z");
+        const gameDay = normalizeGameDaySchedule({ events: [
+          { id: "scheduled", date: "2026-10-18T18:00:00Z", status: { type: { state: "pre", completed: false } }, competitions: [{ competitors: [{ team: { abbreviation: "NE" } }, { team: { abbreviation: "NYJ" } }] }] },
+          { id: "live", date: "2026-10-18T11:00:00Z", status: { type: { state: "in", completed: false } }, competitions: [{ competitors: [{ team: { abbreviation: "KC" } }, { team: { abbreviation: "BUF" } }] }] },
+          { id: "final", date: "2026-10-18T08:00:00Z", status: { type: { state: "post", completed: true } }, competitions: [{ competitors: [{ team: { abbreviation: "SF" } }, { team: { abbreviation: "LAR" } }] }] }
+        ] }, fixedNow);
+        check("Kickoff normalization", gameDay.NE.status === "upcoming" && gameDay.KC.status === "live" && gameDay.SF.status === "final");
+
+        state.players.fixture_locked_starter.team = "KC";
+        state.players.fixture_locked_bench.team = "SF";
+        state.players.fixture_unlocked_rb.team = "NE";
+        state.gameDayByTeam = gameDay;
+        state.gameDayScheduleAvailable = true;
+        state.activeLeague.rosterPositions = ["RB"];
+        const lockedManager = { players: ["fixture_locked_starter", "fixture_locked_bench", "fixture_unlocked_rb"], starters: ["fixture_locked_starter"] };
+        const lockConstraints = getLineupLockConstraints(lockedManager);
+        const lockAware = calcOptimalLineup(lockedManager.players, false, lockConstraints);
+        check("Locked starter stays in lineup", lockConstraints.requiredPlayerIds.includes("fixture_locked_starter") && lockAware.filled[0]?.id === "fixture_locked_starter");
+        check("Locked bench player cannot be promoted", lockConstraints.excludedPlayerIds.includes("fixture_locked_bench") && !lockAware.filled.some(player => player?.id === "fixture_locked_bench"));
+
+        const yahooPlayer = createYahooPlayer({ playerId: "score_fixture", name: "Yahoo Scorer", position: "RB", nflTeam: "KC", projection: 15, actualPoints: 8.25 }, { scoringSettings: { rec: 1 } });
+        check("Yahoo actual score import", state.livePlayerPoints[yahooPlayer.id] === 8.25, `${state.livePlayerPoints[yahooPlayer.id]} imported points.`);
+        fixtureIds.push(yahooPlayer.id);
+        const yahooDefense = createYahooPlayer({ playerId: "def_fixture", name: "Yahoo Defense", position: "D/ST", nflTeam: "FA", projection: 7 }, { scoringSettings: { rec: 0.5 } });
+        check("Yahoo defense-position normalization", state.players[yahooDefense.id].position === "DEF");
+        fixtureIds.push(yahooDefense.id);
+
+        const projectionFixture = { ...state.players.fixture_wr1, team: "BAL", isCurrentNfl: true, searchRank: 201, injuryStatus: "Healthy", byeWeek: 0 };
+        state.activeLeague = { provider: "sleeper", season: "2026", scoringSettings: { rec: 1 }, rosterPositions: ["WR"] };
+        state.dataFreshness.projections = Date.now();
+        delete state.dataErrors.projections;
+        const authoritativeMissing = computeLeagueProj(projectionFixture, { adp_dd_ppr: 1000 }, { rec: 1 });
+        const explicitZero = computeLeagueProj(projectionFixture, { pts_ppr: 0 }, { rec: 1 });
+        state.dataFreshness.projections = 0;
+        const staleFallback = computeLeagueProj(projectionFixture, { adp_dd_ppr: 1000 }, { rec: 1 });
+        check("Missing fresh Sleeper projection is zero", authoritativeMissing === 0 && explicitZero === 0, `Missing=${authoritativeMissing}; explicit zero=${explicitZero}.`);
+        check("Stale Sleeper projection preserves fallback", staleFallback === 12, `Fallback=${staleFallback}.`);
+
+        const actualClaim = buildWaiverOutcomeRecord({ playerId: "added", dropPlayerId: "dropped" }, new Map([["added", 17], ["dropped", 11]]), 6);
+        const projectedClaim = buildWaiverOutcomeRecord({ playerId: "added", dropPlayerId: "bench", dropProjection: 10.5 }, new Map([["added", 14]]), 6);
+        const unpairedClaim = buildWaiverOutcomeRecord({ playerId: "added", dropPlayerId: "" }, new Map([["added", 14]]), 6);
+        check("Waiver actual alternative outcome", actualClaim.comparisonType === "actual" && actualClaim.edge === 6);
+        check("Waiver projected baseline outcome", projectedClaim.comparisonType === "projection" && projectedClaim.edge === 3.5);
+        check("Waiver without baseline stays unpaired", unpairedClaim.comparisonType === "none" && unpairedClaim.edge === null);
+        check("Zero FAAB budget remains zero", estimateFaabBid({ position: "RB", vorpScore: 20, posRank: 1 }, 0, 0, "balanced", 12) === 0);
+
+        addPlayer("fixture_owned_qb", "Owned QB", "QB", 10);
+        addPlayer("fixture_drop_wr", "Bench WR", "WR", 2);
+        addPlayer("fixture_claim_rb", "Available RB", "RB", 12);
+        addPlayer("fixture_owned_rb", "Already Owned RB", "RB", 14);
+        state.players.fixture_claim_rb.vorpScore = 50000;
+        state.players.fixture_owned_rb.vorpScore = 90000;
+        const claimLeague = { provider: "sleeper", leagueId: `regression-${Date.now()}`, name: "Claim fixture", season: "2026", rosterPositions: ["QB", "RB", "RB"], scoringSettings: { rec: 1 } };
+        const myRoster = { teamId: "1", ownerId: "me", name: "My roster", rosterPositions: claimLeague.rosterPositions, players: ["fixture_owned_qb", "fixture_drop_wr"], starters: ["fixture_owned_qb"] };
+        const otherRoster = { teamId: "2", ownerId: "other", name: "Other roster", rosterPositions: claimLeague.rosterPositions, players: ["fixture_owned_rb"], starters: ["fixture_owned_rb"] };
+        state.activeLeague = claimLeague;
+        state.managers = [
+          { ...myRoster, rosterId: 1, teamName: "My roster" },
+          { ...otherRoster, rosterId: 2, teamName: "Other roster" }
+        ];
+        document.getElementById("teamSelect").value = "0";
+        state.gameDayScheduleAvailable = false;
+        state.dbTrades = [];
+        state.waiverTargets = [state.players.fixture_owned_rb, state.players.fixture_claim_rb];
+        const weeklyWaivers = buildWeeklyRecommendations().filter(item => item.type === "Waiver");
+        check("Weekly waiver advice excludes opponents' players",
+          weeklyWaivers.length === 1 && weeklyWaivers[0].playerId === "fixture_claim_rb");
+        check("Weekly waiver advice measures optimized lineup gain and names a drop",
+          weeklyWaivers[0]?.value === "+12.0 lineup pts" &&
+          weeklyWaivers[0]?.detail.includes("10.0 → 22.0") &&
+          weeklyWaivers[0]?.detail.includes("Drop candidate: Bench WR."));
+        const demoProjection = { ...state.players.fixture_claim_rb, isDemo: true, byeWeek: state.week };
+        check("Demo projections ignore real NFL byes",
+          computeLeagueProj(demoProjection, { pts_ppr: 12 }, {}) === 12);
+        check("Demo players never inherit real kickoff locks",
+          !getPlayerGameDayStatus({ ...state.players.fixture_locked_bench, isDemo: true }).locked);
+        const comparison = getComparisonRosterScenario(state.players.fixture_drop_wr, state.players.fixture_claim_rb, state.managers[0]);
+        const reversedComparison = getComparisonRosterScenario(state.players.fixture_claim_rb, state.players.fixture_drop_wr, state.managers[0]);
+        check("Player comparison measures optimized add/drop impact in either selection order",
+          comparison.a === 10 && comparison.b === 22 && comparison.delta === 12 &&
+          reversedComparison.delta === 12);
+        const opponentComparison = getComparisonRosterScenario(state.players.fixture_drop_wr, state.players.fixture_owned_rb, state.managers[0]);
+        check("Player comparison does not offer opponents' players as waiver moves",
+          opponentComparison.reason?.includes("another roster"));
+        const sitManager = { teamName: "Start/sit roster", players: ["fixture_owned_rb", "fixture_claim_rb"], starters: ["fixture_owned_rb"] };
+        const startSitComparison = getComparisonRosterScenario(state.players.fixture_owned_rb, state.players.fixture_claim_rb, sitManager);
+        check("Player comparison models forced start/sit alternatives, including negative deltas",
+          startSitComparison.a === 14 && startSitComparison.b === 12 && startSitComparison.delta === -2);
+        const ineligibleComparison = getComparisonRosterScenario(state.players.fixture_drop_wr, state.players.fixture_owned_qb, state.managers[0]);
+        check("Player comparison rejects an ineligible starting slot",
+          ineligibleComparison.reason?.includes("eligible unlocked starter slot"));
+        state.activeLeague = { ...claimLeague, rosterPositions: ["QB", "WR"] };
+        check("Player comparison rejects start/sit alternatives without a shared eligible slot",
+          getComparisonRosterScenario(state.players.fixture_drop_wr, state.players.fixture_owned_qb, state.managers[0]).reason?.includes("shared eligible"));
+        state.activeLeague = { ...claimLeague, rosterPositions: ["FLEX"] };
+        const flexComparison = getComparisonRosterScenario(state.players.fixture_drop_wr, state.players.fixture_claim_rb, {
+          players: ["fixture_drop_wr", "fixture_claim_rb"], starters: ["fixture_drop_wr"]
+        });
+        check("Player comparison supports cross-position alternatives in a shared flex slot",
+          flexComparison.a === 2 && flexComparison.b === 12 && flexComparison.delta === 10);
+        state.activeLeague = claimLeague;
+        state.players.fixture_claim_rb.projectedPoints = undefined;
+        const missingComparison = getComparisonRosterScenario(state.players.fixture_drop_wr, state.players.fixture_claim_rb, state.managers[0]);
+        check("Player comparison surfaces missing projections rather than a zero-point scenario",
+          missingComparison.reason?.includes("missing or invalid"));
+        state.players.fixture_claim_rb.projectedPoints = 12;
+        state.gameDayScheduleAvailable = true;
+        const lockedComparison = getComparisonRosterScenario(state.players.fixture_locked_starter, state.players.fixture_claim_rb, { players: ["fixture_locked_starter"], starters: ["fixture_locked_starter"] });
+        check("Player comparison blocks moves involving kickoff-locked players",
+          lockedComparison.reason?.includes("kickoff-locked"));
+        state.gameDayScheduleAvailable = false;
+        openPlayerComparison("fixture_drop_wr", "fixture_claim_rb");
+        check("Comparison links select both players and synchronize navigation",
+          document.getElementById("comparePlayerA").value === "fixture_drop_wr" &&
+          document.getElementById("comparePlayerB").value === "fixture_claim_rb" &&
+          document.getElementById("mobileTabSelect").value === "tab-compare");
+        check("Comparison displays signed metric delta and scoring provenance",
+          document.querySelector(".comparison-table tbody tr td:last-child")?.textContent === "+10.0" &&
+          document.getElementById("compareResults").textContent.includes("Reception scoring: 1"));
+        document.getElementById("compareSearch").value = "no-player-matches-this-query";
+        renderPlayerComparison();
+        check("Comparison search preserves both selected players when no other players match",
+          document.getElementById("comparePlayerA").value === "fixture_drop_wr" &&
+          document.getElementById("comparePlayerB").value === "fixture_claim_rb" &&
+          document.getElementById("comparePoolMeta").textContent.startsWith("0 matches"));
+        const priorClaimName = state.players.fixture_claim_rb.name;
+        state.players.fixture_claim_rb.name = '<img src=x onerror="alert(1)">';
+        renderPlayerComparison(false);
+        check("Comparison escapes provider player names",
+          !document.querySelector("#compareResults img") &&
+          document.getElementById("compareResults").textContent.includes("<img src=x"));
+        state.players.fixture_claim_rb.name = priorClaimName;
+        document.getElementById("comparePlayerB").value = "fixture_drop_wr";
+        renderPlayerComparison(false);
+        check("Comparison handles duplicate selections explicitly",
+          document.getElementById("compareResults").textContent.includes("two different players"));
+        state.activeLeague = { ...claimLeague, isDemo: true };
+        document.getElementById("compareSearch").value = "";
+        renderPlayerComparison();
+        check("Demo comparison excludes the live player pool",
+          document.getElementById("comparePlayerA").options.length === 1 &&
+          document.getElementById("comparePlayerB").value === "");
+        state.activeLeague = claimLeague;
+        const gradeThresholds = [[110, "A"], [109.99, "B"], [100, "B"], [99.99, "C"], [90, "C"], [89.99, "D"], [80, "D"], [79.99, "F"]];
+        check("Team grades use exact documented thresholds, not rounded display values",
+          gradeThresholds.every(([points, letter]) => getRelativeTeamGrade(points, 100).letter === letter) &&
+          getRelativeTeamGrade(10, 0).letter === "Unrated");
+        const gradeReport = buildTeamGradeReport(0);
+        check("Team grades calculate league-relative optimized strength",
+          gradeReport.lineup.total === 10 && gradeReport.average === 12 &&
+          Math.abs(gradeReport.grade.index - 1000 / 12) < 0.00001 &&
+          gradeReport.grade.letter === "D" && gradeReport.rank === 2);
+        check("Team grade starter groups reconcile to the total and flag empty slots",
+          gradeReport.breakdown.reduce((sum, item) => sum + item.points, 0) === gradeReport.lineup.total &&
+          gradeReport.unfilled === 2 && gradeReport.priorities.some(item => item.includes("cannot be filled")));
+        const priorGradeManagers = state.managers;
+        state.managers = [
+          { ...priorGradeManagers[0], players: ["fixture_owned_qb", "fixture_claim_rb"], reserve: ["fixture_claim_rb"] },
+          { ...priorGradeManagers[1], players: ["fixture_owned_qb", "fixture_claim_rb"], taxi: ["fixture_claim_rb"] }
+        ];
+        const tiedGrade = buildTeamGradeReport(0);
+        check("Team grades exclude IR and taxi players and share rank for ties",
+          tiedGrade.lineup.total === 10 && tiedGrade.average === 10 &&
+          tiedGrade.grade.letter === "B" && tiedGrade.rank === 1);
+        state.players.fixture_owned_qb.projectedPoints = undefined;
+        check("Team grades refuse missing league roster projections",
+          buildTeamGradeReport(0).reason?.includes("missing, invalid"));
+        state.players.fixture_owned_qb.projectedPoints = 0;
+        check("Team grades leave a zero-projection league unrated",
+          buildTeamGradeReport(0).reason?.includes("total zero"));
+        state.players.fixture_owned_qb.projectedPoints = 10;
+        state.managers = priorGradeManagers;
+        state.activeLeague = { ...claimLeague, isDemo: true };
+        check("Team grades reject mixing real roster players into demo grades",
+          buildTeamGradeReport(0).reason?.includes("different data pool"));
+        state.activeLeague = claimLeague;
+        const gradeName = state.managers[0].teamName;
+        state.managers[0].teamName = "<img src=x onerror=alert(1)>";
+        renderTeamGrades();
+        check("Team grades escape provider names and explain their model",
+          !document.querySelector("#teamGradeResults img") &&
+          document.getElementById("teamGradeResults").textContent.includes("<img src=x") &&
+          document.getElementById("teamGradeResults").textContent.includes("Kickoff locks are intentionally ignored"));
+        state.managers[0].teamName = gradeName;
+        state.managers = [state.managers[0]];
+        check("Team grades require a league comparison baseline",
+          buildTeamGradeReport(0).reason?.includes("at least two rosters"));
+        state.managers = priorGradeManagers;
+        const planSettings = { type: "redraft", teams: 12, slot: 6, rounds: 3, scoring: "ppr", rosterFormat: "standard", dynastyYears: 3, keeperSlots: 0, keeperYears: 1 };
+        const planSimulation = { picks: [{ isUserPick: true, player: state.players.fixture_owned_qb }], draftedIds: new Set(["fixture_owned_qb", "fixture_owned_rb"]), nextPick: 6, complete: false };
+        const planPool = ["fixture_owned_qb", "fixture_owned_rb", "fixture_claim_rb", "fixture_drop_wr"].map(id => ({ player: state.players[id], score: 0 }));
+        const draftPlan = buildPersonalizedDraftPlan(planSettings, planSimulation, planPool);
+        check("Personalized draft plans calculate upcoming snake picks",
+          draftPlan.upcoming.join(",") === "6,19,30");
+        check("Personalized draft plans account for recorded roster needs and exclude taken players",
+          !draftPlan.needs.some(need => need.startsWith("QB:")) &&
+          draftPlan.candidates.length === 2 &&
+          draftPlan.candidates.every(entry => !planSimulation.draftedIds.has(entry.player.id)));
+        const superflexPlan = buildPersonalizedDraftPlan({ ...planSettings, rosterFormat: "superflex" }, planSimulation, planPool);
+        check("Personalized superflex plans target a second QB",
+          superflexPlan.needs.includes("QB: 1 more") && superflexPlan.needs.includes("WR: 3 more"));
+        const completePlan = buildPersonalizedDraftPlan(planSettings, { ...planSimulation, nextPick: 37, complete: true }, planPool);
+        check("Completed draft plans do not suggest nonexistent future picks",
+          completePlan.upcoming.length === 0 && completePlan.candidates.length === 0);
+        renderPersonalizedDraftPlan(planSettings, planSimulation, planPool);
+        check("Draft plan explains simulation and keeper limitations",
+          document.getElementById("draftPlan").textContent.includes("not a connected live draft") &&
+          document.getElementById("draftPlan").textContent.includes("Keeper ledger entries are not incorporated"));
+        state.activeLeague = { ...claimLeague, isDemo: true };
+        check("Draft player pool isolates demo players from live players",
+          getDraftPlayerPool(planSettings).length === 0);
+        state.activeLeague = claimLeague;
+        const adpGradeCases = [[1, "A"], [0.99999, "B"], [0.5, "B"], [0.49999, "C"], [-0.5, "C"], [-0.50001, "D"], [-1, "D"], [-1.00001, "F"]];
+        check("Draft ADP grades use exact round-value thresholds",
+          adpGradeCases.every(([value, letter]) => getDraftAdpGrade(value) === letter) &&
+          getDraftAdpGrade(NaN) === "Unrated");
+        draftState.adpByName = { [normalizeDraftPlayerName("Available RB")]: 7 };
+        const reviewSimulation = {
+          picks: [
+            { player: state.players.fixture_owned_rb, overallPick: 1, round: 1, isUserPick: false },
+            { player: state.players.fixture_claim_rb, overallPick: 19, round: 2, isUserPick: true },
+            { player: state.players.fixture_owned_qb, overallPick: 30, round: 3, isUserPick: true }
+          ], complete: false
+        };
+        const review = buildDraftGradeReport(planSettings, reviewSimulation, planPool);
+        check("Draft review grades recorded user picks only and excludes missing ADP from the mean",
+          review.rows.length === 2 && review.gradedCount === 1 && review.mean === 1 && review.letter === "A" &&
+          review.rows[1].letter === "Unrated");
+        check("Draft review preserves ADP source and explains positional fit",
+          review.rows[0].adp.source === "CSV" && review.rows[0].fit === "Filled a model starter target");
+        const alternativeSimulation = {
+          picks: [
+            { player: state.players.fixture_rb1, overallPick: 1, round: 1, isUserPick: false },
+            { player: state.players.fixture_owned_rb, overallPick: 2, round: 1, isUserPick: false },
+            { player: state.players.fixture_drop_wr, overallPick: 6, round: 1, isUserPick: true },
+            { player: state.players.fixture_claim_rb, overallPick: 19, round: 2, isUserPick: true }
+          ], complete: false
+        };
+        const alternatives = buildDraftGradeReport(planSettings, alternativeSimulation, [
+          ...planPool, { player: state.players.fixture_rb1 }
+        ]);
+        check("Draft review alternatives exclude earlier picks but allow players taken on later turns",
+          alternatives.rows[0].alternative?.id === "fixture_claim_rb" &&
+          alternatives.rows.every(row => row.alternative?.id !== "fixture_rb1"));
+        draftState.adpByName = { [normalizeDraftPlayerName("Available RB")]: 31 };
+        const updatedReview = buildDraftGradeReport(planSettings, reviewSimulation, planPool);
+        check("Draft review recomputes when current ADP changes",
+          updatedReview.rows[0].roundValue === -1 && updatedReview.letter === "D");
+        draftState.adpByName = {};
+        const unratedReview = buildDraftGradeReport(planSettings, reviewSimulation, planPool);
+        check("Draft review remains unrated when every ADP is missing",
+          unratedReview.gradedCount === 0 && unratedReview.mean === null && unratedReview.letter === "Unrated");
+        renderDraftGrades(planSettings, reviewSimulation, planPool);
+        check("Draft review states missing-data and draft-time snapshot limits",
+          document.getElementById("draftGrades").textContent.includes("not draft-time snapshots") &&
+          document.getElementById("draftGrades").textContent.includes("missing ADP is Unrated"));
+        renderDraftGrades(planSettings, { picks: [], complete: false }, planPool);
+        check("Draft review empty state invites a recorded pick",
+          document.getElementById("draftGrades").textContent.includes("Make a pick"));
+        draftState.adpByName = savedDraftAdp;
+        const claimSuggestions = buildPortfolioClaimSuggestions([{ league: claimLeague, roster: myRoster, rosters: [myRoster, otherRoster] }]);
+        const rbSuggestion = claimSuggestions.find(item => item.need.position === "RB");
+        check("Cross-league claim checks ownership and drop", rbSuggestion?.player.id === "fixture_claim_rb" && rbSuggestion.drop?.id === "fixture_drop_wr", `${rbSuggestion?.player.name || "no RB suggestion"} / drop ${rbSuggestion?.drop?.name || "none"}.`);
+        const claimStorageKey = getFaabStorageKeyForLeague(claimLeague);
+        const priorClaimStorage = localStorage.getItem(claimStorageKey);
+        queuedPortfolioCacheKey = `${claimLeague.provider}:${claimLeague.leagueId}`;
+        savedQueuedPortfolioRosters = portfolioState.rostersByLeague.get(queuedPortfolioCacheKey);
+        portfolioState.rostersByLeague.set(queuedPortfolioCacheKey, [myRoster, otherRoster]);
+        state.activeLeague = claimLeague;
+        state.leagues = [claimLeague];
+        const queueButton = document.createElement("button");
+        queueButton.dataset.portfolioLeague = "0";
+        queueButton.dataset.portfolioClaim = "fixture_claim_rb";
+        queueButton.dataset.portfolioDrop = "fixture_drop_wr";
+        queueButton.dataset.portfolioBid = "12";
+        queuePortfolioFaabClaim(queueButton);
+        const savedClaim = JSON.parse(localStorage.getItem(claimStorageKey) || "{}").claims?.[0];
+        check("Cross-league queue saves to target budget", savedClaim?.playerId === "fixture_claim_rb" && savedClaim?.dropPlayerId === "fixture_drop_wr" && savedClaim?.bid === 12);
+        if (priorClaimStorage === null) localStorage.removeItem(claimStorageKey);
+        else localStorage.setItem(claimStorageKey, priorClaimStorage);
+
+        const priorNewsletter = localStorage.getItem("fantasy-front-office:newsletter:v1");
+        const newsletterLeague = { provider: "sleeper", leagueId: `newsletter-regression-${Date.now()}`, season: "2026" };
+        const newsletterKey = getNewsletterLeagueKey(newsletterLeague);
+        localStorage.setItem("fantasy-front-office:newsletter:v1", JSON.stringify({ [newsletterKey]: {
+          "2026-week-4": { id: "2026-week-4", season: "2026", week: 4, standings: [{ teamName: "Faller" }, { teamName: "Mover" }] }
+        } }));
+        state.week = 5;
+        const movement = getNewsletterStandingsMovement(newsletterLeague, [{ teamName: "Mover" }, { teamName: "Faller" }]);
+        check("Newsletter standings movement uses saved issue", movement.movers.some(team => team.teamName === "Mover" && team.movement === 1));
+        state.players.fixture_next_bye = { id: "fixture_next_bye", name: "Next Week Bye", position: "WR", team: "FA", projectedPoints: 5, seasonPpg: 5, isPick: false, byeWeek: 6, injuryStatus: "Healthy" };
+        fixtureIds.push("fixture_next_bye");
+        const nextWatch = buildNewsletterNextWeekWatch({ teamName: "Watch roster", players: ["fixture_next_bye"] });
+        check("Newsletter previews next-week byes", nextWatch.some(line => line.includes("Next Week Bye") && line.includes("Week 6")));
+        if (priorNewsletter === null) localStorage.removeItem("fantasy-front-office:newsletter:v1");
+        else localStorage.setItem("fantasy-front-office:newsletter:v1", priorNewsletter);
+      } finally {
+        draftState.adpByName = savedDraftAdp;
+        state.activeLeague = savedLeague;
+        state.leagues = savedLeagues;
+        state.managers = savedManagers;
+        state.waiverTargets = savedWaiverTargets;
+        state.dbTrades = savedDbTrades;
+        document.getElementById("teamSelect").value = savedTeamIndex;
+        Object.entries(savedCompareControls).forEach(([id, value]) => { document.getElementById(id).value = value; });
+        renderPlayerComparison();
+        renderTeamGrades();
+        if (savedActiveTab) activateTab(savedActiveTab);
+        state.week = savedWeek;
+        state.gameDayByTeam = savedGameDayByTeam;
+        state.gameDayScheduleAvailable = savedGameDayScheduleAvailable;
+        state.livePlayerPoints = savedLivePlayerPoints;
+        state.dataFreshness.projections = savedProjectionFreshness;
+        if (savedProjectionError === undefined) delete state.dataErrors.projections;
+        else state.dataErrors.projections = savedProjectionError;
+        state.dataFreshness.schedule = savedScheduleFreshness;
+        if (savedScheduleError === undefined) delete state.dataErrors.schedule;
+        else state.dataErrors.schedule = savedScheduleError;
+        renderDataFreshness();
+        state.portfolioRosterSelections = savedPortfolioRosterSelections;
+        Object.assign(faabState, savedFaabState);
+        window.fetch = savedFetch;
+        if (queuedPortfolioCacheKey) {
+          if (savedQueuedPortfolioRosters === undefined) portfolioState.rostersByLeague.delete(queuedPortfolioCacheKey);
+          else portfolioState.rostersByLeague.set(queuedPortfolioCacheKey, savedQueuedPortfolioRosters);
+        }
+        providerSelect.value = savedProvider;
+        state.provider = savedStateProvider;
+        document.getElementById("statusLabel").textContent = savedStatus;
+        fixtureIds.forEach(id => { delete state.players[id]; });
+        originalPlayers.forEach((player, id) => { state.players[id] = player; });
+        if (savedNewsletterArchive === null) localStorage.removeItem("fantasy-front-office:newsletter:v1");
+        else localStorage.setItem("fantasy-front-office:newsletter:v1", savedNewsletterArchive);
+        state.players[`espn_${espnId}`] && delete state.players[`espn_${espnId}`];
+        ESPN_PLAYER_TO_INTERNAL_ID.delete(espnId);
+      }
+      return results;
+    }
+    const frame = document.getElementById("appFrame");
+    const summary = document.getElementById("summary");
+    const resultList = document.getElementById("results");
+    frame.addEventListener("load", async () => {
+      try {
+        await new Promise((resolve, reject) => {
+          const deadline = Date.now() + 30000;
+          const waitForReady = () => {
+            const status = frame.contentDocument?.getElementById("statusLabel")?.textContent || "";
+            if (status.startsWith("Ready |") || status.startsWith("Player database unavailable.")) resolve();
+            else if (Date.now() >= deadline) reject(new Error("Timed out waiting for the app to finish initializing."));
+            else setTimeout(waitForReady, 100);
+          };
+          waitForReady();
+        });
+        const results = await frame.contentWindow.eval(`(${runOptimizerFixtures.toString()})()`);
+        const failures = results.filter(result => !result.passed);
+        resultList.innerHTML = results.map(result => `<li class="${result.passed ? "pass" : "fail"}"><strong>${result.passed ? "PASS" : "FAIL"}</strong> ${result.name}${result.detail ? `: ${result.detail}` : ""}</li>`).join("");
+        summary.textContent = failures.length ? `${failures.length} of ${results.length} checks failed.` : `${results.length} checks passed.`;
+        summary.className = failures.length ? "fail" : "pass";
+      } catch (error) {
+        summary.textContent = `Harness failed: ${error.message}`;
+        summary.className = "fail";
+      }
+    }, { once: true });
+  </script>
+</body>
+</html>

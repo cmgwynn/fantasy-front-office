@@ -1,0 +1,147 @@
+# Feature coverage and rollout
+
+## Published site
+
+The public app is <https://cmgwynn.github.io/fantasy-front-office/>.
+GitHub Pages publishes the root of the `main` branch in
+`cmgwynn/fantasy-front-office`. Editing a separate local folder does not
+update that site: changes must be committed and pushed to the publishing
+repository, then its Pages build must complete.
+
+Deploy the HTML, CSS, all four JavaScript entry points, documentation, and tests
+together so script dependencies are not omitted. Run `npm test` and the browser
+regression suite before publishing. Verify the public app after deployment.
+Refreshing starts on GM Inbox; Player Compare and Team Grades are separate
+navigation items, and draft features are inside Draft Room. Loading a provider
+league is separate from loading the UI; a provider authorization failure does
+not mean the release is missing. Explore demo previews roster-based features.
+
+## Current release
+
+Use **Explore demo** to load four fictional teams and sample players. Demo data
+uses the local import pipeline, not authenticated Yahoo access. All projections
+and records in the demo are illustrative. Connect another provider to leave it.
+Demo waiver candidates are fictional too, and sample players do not inherit real
+NFL byes or kickoff locks. The demo is a fixed Week 6 snapshot; changing the week
+does not provide new projections. Other analytics may still display the loaded
+real-player database alongside sample players.
+
+GM Inbox now includes a weekly briefing, projection provenance, roster risks,
+and waiver comparisons against an optimized lineup with a bench drop candidate.
+Recommendations do not submit provider transactions.
+
+### Player comparison
+
+Open **Player Compare** in desktop or mobile navigation, or use **Compare
+players** on GM Inbox lineup and waiver recommendations. Search by name or NFL
+team and optionally filter position. Searches keep existing selections so you
+can find a counterpart without losing the first player; results show up to 100
+matches plus previous selections.
+
+The comparison shows weekly projections, season PPG, model trade values,
+ownership, injuries, byes, kickoff status, and signed metric differences.
+Season PPG may be estimated and model values are not market prices. Source and
+freshness warnings accompany the comparison.
+
+For two rostered players, it compares optimized lineups with one starting and
+the other excluded, provided they share an eligible starter slot. For a
+rostered player and an unrostered player, it models
+a one-for-one add/drop against the current optimized roster, in either
+selection order. Known kickoff locks, ineligible slots, missing projections,
+and opponents' ownership prevent inappropriate actionable scenarios. Unknown
+schedule data cannot verify locks; provider rules and eligibility still need
+confirmation. No transaction is submitted. Demo comparisons use only fictional
+players. This is not a trade-package fairness model or a verified team grade.
+
+### Explained team grades
+
+Open **Team Grades** in desktop or mobile navigation, then choose a roster in
+the header. The grade compares optimized weekly points against the mean of all
+loaded rosters in the active league. Strength index = points / league average
+* 100. Thresholds, before rounding: A >= 110, B >= 100, C >= 90, D >= 80, F < 80.
+Tied totals share a rank. The view shows starter-group contributions, assigned
+players, group averages, and priorities based on empty slots, below-average
+contributions, and injury/bye flags.
+
+This is a transparent weekly projection grade, not an independently calibrated
+season, dynasty, draft, or championship assessment. Kickoff locks are ignored
+for strength comparisons; IR and taxi players are excluded. FLEX contributions
+depend on the optimizer's allocation rather than standalone positional depth.
+Missing or invalid roster projections block grading; explicit zeros remain
+zero and may reflect missing provider coverage. Two rosters and a positive
+league projection baseline are required. Provider source warnings still apply.
+
+### Personalized mock-draft plan
+
+The **Draft Room** now includes a plan showing your next three snake picks,
+unfilled model roster targets, and up to three available candidates with
+need/ADP explanations. It recalculates from recorded mock picks and the existing
+simulated opponent board as you pick, undo, reset, or change applied settings.
+Standard and superflex starter targets share the existing draft-score model;
+superflex targets two QBs. Dynasty age adjustments remain part of that model.
+
+This is not a live-provider draft integration or a player-availability forecast.
+Custom league slots and keeper-ledger entries are not incorporated into the
+plan; the UI states these limits. No pick is submitted to a provider. Candidate
+scoring is heuristic, not a calibrated draft grade. Demo drafts now exclude
+the real player pool.
+
+### Mock draft review and grades
+
+**Mock Draft Grades** in the Draft Room reviews each recorded user pick:
+ADP/source, roster fit at that turn, ADP value grade, and a higher-scoring model
+alternative when one existed on the simulated board. Alternatives exclude
+earlier picks but may include players selected on later turns. They are scored
+again with your roster needs at that pick, independently of ADP grades.
+
+Round value = (overall pick - current ADP) / team count. Grades use unrounded
+values: A >= +1 round; B >= +0.5; C >= -0.5; D >= -1; otherwise F. The summary
+grades the mean round value of rated picks and explicitly shows coverage.
+Missing ADP is Unrated and excluded, never scored as zero. An in-progress mock
+is labeled provisional. Positive round value means a later selection than ADP,
+not proof that the player was a good pick.
+
+The review uses current data, not saved draft-time snapshots, and can change
+after an ADP import or player update. ADP date and compatibility with the chosen
+scoring/format are not verified; confirm your CSV source. This remains a
+mock-draft price/fit review, not actual-season outcome grading, keeper-cost
+grading, or live-provider draft analysis.
+
+Run `npm test` for local checks. Open `tests/optimizer-regression.html` for the
+browser regression suite. Live provider access is not covered by local checks.
+
+## Independent FFWrapped capability inventory
+
+Source: <https://ffwrapped.com/> (public feature descriptions reviewed for this
+rollout). This is a functional comparison, not a claim of full parity. Private
+and Premium workflows have not been independently exercised.
+
+| Publicly advertised capability | This project's coverage | Remaining work |
+| --- | --- | --- |
+| Power rankings, standings, scoring, expected wins | Partial: rankings and projections | Verify formulas and historical weekly trends with provider fixtures |
+| Weekly reports, awards, storylines | Partial: newsletter and weekly report | Completed-week narratives and upcoming previews with verified inputs |
+| League-specific roster and player values | Partial: scoring and roster models | Audit scoring completeness and positional assumptions |
+| Playoff/championship odds and likely seeds | Partial: playoff projections and bracket | Validated schedule simulation, seed distributions, championship paths |
+| Trade comparison and mutually beneficial packages | Partial: builder and finder | Verify package constraints and both-lineup improvements |
+| All-time records, finishes, head-to-head, rivalries | Partial: season history | Cross-season manager identity, record book, rivalry views |
+| League Historian questions | Not implemented | Grounded queries over imported historical facts; no invented answers |
+| FAAB planner | Partial: local budget and claims | Provider balances, deadlines, claim reconciliation |
+| Rate my team and player comparison | Dedicated player comparison, roster scenarios, explained league-relative weekly team grades with starter-group breakdowns | Validated historical production, calibrated season/dynasty grades, and provider-rule completeness |
+| Weekly lineup analyzer | Partial: optimizer and kickoff locks | Provider rule verification and missing-input warnings |
+| Dynasty analyzer | Partial: dynasty value/trade modes | Contract, pick, and long-term scenario validation |
+| Draft grades and personalized draft plans | Mock-draft plan; pick-by-pick ADP value grades, coverage-aware summary, roster fit and model alternatives | Actual draft imports/outcomes, draft-time data snapshots, keeper-aware/custom-slot plans and live draft integration |
+| Video recaps | Not implemented | Original shareable video generation and export |
+| Sleeper, ESPN, Yahoo connections | Sleeper API; ESPN access-dependent; Yahoo file import | Secure backend/provider-supported authentication where available |
+
+## Next releases
+
+1. Workspace restoration and versioned backup/restore with validation.
+2. Source-linked player news, timestamped recommendation explanations, and
+   explicit missing-data states. News requires a licensed or permitted feed.
+3. Visibility-aware score refresh and action deadlines. Background push
+   requires a service worker and notification delivery infrastructure.
+4. Multiweek roster planning and cross-provider outcome tracking.
+5. Historical record book, rivalries, calibrated season/dynasty grades, actual-draft reviews, and
+   validated simulation features from the inventory above.
+6. Backend authentication, optional cross-device persistence, and video
+   generation after architecture, provider permissions, and hosting approval.
