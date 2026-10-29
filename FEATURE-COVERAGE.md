@@ -11,6 +11,9 @@ repository, then its Pages build must complete.
 Deploy the HTML, CSS, all JavaScript entry points, documentation, and tests
 together so script dependencies are not omitted. Run `npm test` and the browser
 regression suite before publishing. Verify the public app after deployment.
+HTML assets and the regression iframe use a shared release query version.
+Bump those versions together whenever publishing changed assets to avoid a new
+HTML page reusing older cached scripts or styles.
 Refreshing starts on GM Inbox; Player Compare and Team Grades are separate
 navigation items, and draft features are inside Draft Room. Loading a provider
 league is separate from loading the UI; a provider authorization failure does

@@ -38,15 +38,16 @@ test("HTML references existing local assets in the expected script order", () =>
   ].map(match => match[1]).filter(asset => !/^(?:[a-z]+:)?\/\//i.test(asset));
 
   assert.ok(assets.length > 0, "Expected local CSS or JavaScript assets.");
+  assert.ok(assets.every(asset => asset.endsWith("?v=20261029-records-1")), "All local assets must use the current release version.");
   for (const asset of assets) {
-    assert.ok(fs.existsSync(path.join(root, asset)), `Missing local asset: ${asset}`);
+    assert.ok(fs.existsSync(path.join(root, asset.split("?")[0])), `Missing local asset: ${asset}`);
   }
 
-  const configIndex = html.indexOf('<script src="monetization-config.js"></script>');
-  const dataFetchIndex = html.indexOf('<script src="data-fetch.js"></script>');
-  const demoIndex = html.indexOf('<script src="demo-league.js"></script>');
-  const recordsIndex = html.indexOf('<script src="league-records.js"></script>');
-  const appIndex = html.indexOf('<script src="app.js"></script>');
+  const configIndex = html.indexOf('<script src="monetization-config.js?');
+  const dataFetchIndex = html.indexOf('<script src="data-fetch.js?');
+  const demoIndex = html.indexOf('<script src="demo-league.js?');
+  const recordsIndex = html.indexOf('<script src="league-records.js?');
+  const appIndex = html.indexOf('<script src="app.js?');
   assert.ok(configIndex >= 0, "Monetization configuration script is missing.");
   assert.ok(dataFetchIndex > configIndex, "Data-fetch module must load after configuration.");
   assert.ok(demoIndex > dataFetchIndex, "Demo module must load before the app.");
@@ -84,7 +85,7 @@ test("browser regression harness is wired to the app and includes saved-state co
   const html = read("tests/optimizer-regression.html");
   const appHtml = read("index.html");
 
-  assert.match(html, /src="\.\.\/index\.html"/, "Regression harness must load the app.");
+  assert.match(html, /src="\.\.\/index\.html\?v=20261029-records-1"/, "Regression harness must load the current app release.");
   assert.match(html, /runOptimizerFixtures/, "Regression harness must execute its fixtures.");
   assert.match(html, /Cross-league queue saves to target budget/, "Saved FAAB state should remain covered.");
   assert.match(html, /Newsletter standings movement uses saved issue/, "Saved newsletter state should remain covered.");
