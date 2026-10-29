@@ -40,6 +40,58 @@
     return validateGames(games);
   }
 
+  function normalizeEspnSchedule(data) {
+    if (!Array.isArray(data?.schedule) || !data.schedule.length) throw new Error("ESPN returned no season matchup schedule.");
+    const periods = data.settings?.scheduleSettings?.matchupPeriods;
+    const currentPeriod = data.status?.currentScoringPeriod;
+    if (!periods || typeof periods !== "object" || !Number.isInteger(currentPeriod) || currentPeriod < 1) {
+      throw new Error("ESPN scoring-period settings/status are missing; completed games cannot be verified.");
+    }
+    const games = [], errors = [];
+    let excluded = 0;
+    for (const matchup of data.schedule) {
+      const label = `Matchup ${matchup.id ?? "unknown"}`;
+      if (typeof matchup.playoffTierType !== "string") {
+        errors.push(`${label}: regular-season/playoff classification missing.`);
+        continue;
+      }
+      if (matchup.playoffTierType !== "NONE") { excluded++; continue; }
+      const weeks = periods[matchup.matchupPeriodId];
+      if (!Array.isArray(weeks) || !weeks.length || !weeks.every(week => Number.isInteger(week) && week >= 1 && week <= 18)) {
+        errors.push(`${label}: scoring-week mapping unavailable.`);
+        continue;
+      }
+      if (Math.max(...weeks) >= currentPeriod) { excluded++; continue; }
+      if (weeks.length !== 1) {
+        errors.push(`${label}: multiweek matchup totals cannot establish weekly records.`);
+        continue;
+      }
+      const home = matchup.home, away = matchup.away;
+      if (home && !away || away && !home) { excluded++; continue; }
+      if (!home || !away || !["HOME", "AWAY", "TIE"].includes(matchup.winner)) {
+        errors.push(`${label}: no explicit final result.`);
+        continue;
+      }
+      const homeScore = home.totalPoints, awayScore = away.totalPoints;
+      if (![homeScore, awayScore].every(score => typeof score === "number" && Number.isFinite(score))) {
+        errors.push(`${label}: final scores missing or nonnumeric.`);
+        continue;
+      }
+      const expectedWinner = homeScore > awayScore ? "HOME" : awayScore > homeScore ? "AWAY" : "TIE";
+      if (matchup.winner !== expectedWinner) {
+        errors.push(`${label}: winner differs from score comparison; tiebreaker/override rules are unsupported.`);
+        continue;
+      }
+      try {
+        const [game] = validateGames([{ week: weeks[0], completed: true, homeId: home.teamId, awayId: away.teamId, homeScore, awayScore }]);
+        games.push(game);
+      } catch (error) {
+        errors.push(`${label}: ${error.message}`);
+      }
+    }
+    return { games: validateGames(games), errors, excluded, supplied: data.schedule.length };
+  }
+
   function summarize(games) {
     const valid = validateGames(games);
     const pairs = new Map();
@@ -68,5 +120,23 @@
       pairs: [...pairs.values()].sort((a, b) => b.games - a.games || Math.abs(a.pointsA - a.pointsB) - Math.abs(b.pointsA - b.pointsB)) };
   }
 
-  window.FFORecords = Object.freeze({ validateGames, normalizeSleeperWeek, summarize });
+  function buildRivalryMatrix(pairs, rosterIds) {
+    const ids = [...new Set([...rosterIds.map(String), ...pairs.flatMap(pair => [pair.a, pair.b])])];
+    const lookup = new Map(pairs.map(pair => [JSON.stringify([pair.a, pair.b].sort()), pair]));
+    return ids.map(teamId => ({
+      teamId,
+      cells: ids.map(opponentId => {
+        if (teamId === opponentId) return { opponentId, kind: "self" };
+        const pair = lookup.get(JSON.stringify([teamId, opponentId].sort()));
+        if (!pair) return { opponentId, kind: "unplayed" };
+        const wins = teamId === pair.a ? pair.winsA : pair.winsB;
+        const losses = teamId === pair.a ? pair.winsB : pair.winsA;
+        const rate = (wins + pair.ties * 0.5) / pair.games;
+        return { opponentId, wins, losses, ties: pair.ties, games: pair.games, rate,
+          kind: rate >= 0.75 ? "strong-win" : rate > 0.5 ? "win" : rate === 0.5 ? "even" : rate > 0.25 ? "loss" : "strong-loss" };
+      })
+    }));
+  }
+
+  window.FFORecords = Object.freeze({ validateGames, normalizeSleeperWeek, normalizeEspnSchedule, summarize, buildRivalryMatrix });
 })();

@@ -21,6 +21,19 @@ not mean the release is missing. Explore demo previews roster-based features.
 
 ## Current release
 
+### Current week selection
+
+Startup fetches the NFL season/week status before deriving player projections
+and schedules, regardless of provider selection. A fresh page without an
+explicit week uses the current NFL display week (or valid `week` field).
+Valid `?week=1` through `?week=18` links take precedence before calculations;
+invalid week links are ignored. Manually selected weeks and explicit links
+are preserved on data retries while the current NFL week still updates.
+Failed or invalid status is reported in season-source freshness; the app does
+not mark an unverified default as a successful season sync.
+Demo/import snapshots can explicitly select their own week without changing
+the real current NFL week.
+
 Use **Explore demo** to load four fictional teams and sample players. Demo data
 uses the local import pipeline, not authenticated Yahoo access. All projections
 and records in the demo are illustrative. Connect another provider to leave it.
@@ -131,6 +144,16 @@ first game in week/team-ID order. The fact lookup offers four fixed questions
 answered directly from loaded games with season/source context; it is not a
 free-form AI historian.
 
+Head-to-head results use a heat map: read across a team's row for its W-L-T
+against each column opponent. Cells include text records, game counts, and win
+equivalent = (wins + 0.5 * ties) / games. Green indicates leading, amber
+indicates trailing, and neutral indicates 50%; the legend shows exact bands.
+No-meeting cells are labeled separately from winless records, and self cells
+are disabled visually. Sticky team headers and a keyboard-focusable scrolling
+region support wide leagues and mobile screens. Detailed points and margins
+remain in an expandable table. Small samples and incomplete loads are not
+predictions of future matchups.
+
 Yahoo JSON roster imports may include an optional `completedMatchups` array:
 
 ```json
@@ -151,9 +174,20 @@ rejected. User-supplied completion and completeness are not independently
 verified. Demo results are fictional illustrations, not reconciled historical
 standings.
 
+ESPN now offers the same load action, fetching `mMatchup` history with existing
+session credentials. Each game needs an explicit regular-season classification,
+a single scoring-week mapping ending before the provider's current scoring
+period, numeric final scores, and a final HOME/AWAY/TIE result consistent with
+those scores. Playoff/current/future games and byes are excluded; missing
+metadata, multiweek totals, and unsupported tiebreaker overrides are reported.
+The loader verifies league/season and roster IDs. A 401 or other refresh error
+is explicit and retains prior results with a warning. Available schedule
+completeness is not independently verified. Real access to private league
+1174632430 remains blocked by ESPN authorization; normalization is fixture-tested.
+
 All records are scoped to one league and season, keyed by team IDs. They are
 not all-time records, cross-season manager identities, championships, or
-streaks. Median/multi-opponent formats, ESPN schedule-history loading,
+streaks. Median/multi-opponent formats,
 automatic multi-season traversal, and verified finishes remain future work.
 Standings and projections are never substituted for game scores.
 
@@ -170,7 +204,7 @@ and Premium workflows have not been independently exercised.
 | League-specific roster and player values | Partial: scoring and roster models | Audit scoring completeness and positional assumptions |
 | Playoff/championship odds and likely seeds | Partial: playoff projections and bracket | Validated schedule simulation, seed distributions, championship paths |
 | Trade comparison and mutually beneficial packages | Partial: builder and finder | Verify package constraints and both-lineup improvements |
-| All-time records, finishes, head-to-head, rivalries | Season-scoped record book and head-to-head rivalries from completed Sleeper/imported results; season standings | Cross-season manager identity, all-time aggregation, finishes, ESPN history loader |
+| All-time records, finishes, head-to-head, rivalries | Season-scoped record book and head-to-head rivalries from completed Sleeper/ESPN/imported results; season standings | Cross-season manager identity, all-time aggregation, finishes, broader provider rule support |
 | League Historian questions | Fixed fact lookup over loaded scores with source/season context | Broader grounded questions and cross-season historical coverage |
 | FAAB planner | Partial: local budget and claims | Provider balances, deadlines, claim reconciliation |
 | Rate my team and player comparison | Dedicated player comparison, roster scenarios, explained league-relative weekly team grades with starter-group breakdowns | Validated historical production, calibrated season/dynasty grades, and provider-rule completeness |

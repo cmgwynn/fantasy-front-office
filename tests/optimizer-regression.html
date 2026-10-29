@@ -20,7 +20,7 @@
   <h1>Optimizer Regression Checks</h1>
   <p id="summary" role="status">Loading the app runtime...</p>
   <ol id="results"></ol>
-  <iframe id="appFrame" src="../index.html?v=20261029-records-1" title="Optimizer test runtime"></iframe>
+  <iframe id="appFrame" src="../index.html?v=20261029-week-espn-2" title="Optimizer test runtime"></iframe>
   <script>
     async function runOptimizerFixtures() {
       const results = [];
@@ -35,6 +35,11 @@
       const savedActiveTab = document.querySelector(".tab-page.active")?.id;
       const savedCompareControls = Object.fromEntries(["compareSearch", "comparePosition", "comparePlayerA", "comparePlayerB"].map(id => [id, document.getElementById(id).value]));
       const savedWeek = state.week;
+      const savedWeekExplicit = state.weekSelectionExplicit;
+      const savedSeason = state.season;
+      const savedCurrentNflWeek = state.currentNflWeek;
+      const savedSeasonFreshness = state.dataFreshness.season;
+      const savedSeasonError = state.dataErrors.season;
       const savedGameDayByTeam = state.gameDayByTeam;
       const savedGameDayScheduleAvailable = state.gameDayScheduleAvailable;
       const savedLivePlayerPoints = { ...state.livePlayerPoints };
@@ -75,6 +80,35 @@
         const powerNav = document.querySelector('.nav-btn[data-tab="tab-power"]');
         check("Active section is exposed to assistive technology", powerNav?.getAttribute("aria-current") === "page" && document.getElementById("mobileTabSelect").value === "tab-power");
         activateTab(savedTabId);
+        window.fetch = async () => ({ ok: true, json: async () => ({ season: "2026", display_week: 8, week: 8 }) });
+        const weekProviders = ["", "espn", "sleeper", "yahoo"];
+        let providerWeeksCorrect = true;
+        for (const provider of weekProviders) {
+          state.provider = provider;
+          state.week = 1;
+          state.weekSelectionExplicit = false;
+          await syncNflSeasonSelection();
+          providerWeeksCorrect &&= state.week === 8 && state.currentNflWeek === 8 && document.getElementById("weekSelect").value === "8";
+        }
+        check("Current NFL week sync works before provider selection and for every provider", providerWeeksCorrect);
+        state.week = 5;
+        state.weekSelectionExplicit = true;
+        await syncNflSeasonSelection();
+        check("NFL week refresh preserves an explicit selected week while updating current week",
+          state.week === 5 && state.currentNflWeek === 8 && document.getElementById("weekSelect").value === "5");
+        check("Week links accept only complete integers from 1 through 18",
+          parseNflWeek("8") === 8 && parseNflWeek("18") === 18 &&
+          ["", "0", "19", "-1", "8junk", "1.5", null, "Infinity"].every(value => parseNflWeek(value) === null));
+        window.fetch = async () => ({ ok: true, json: async () => ({ season: "2026", display_week: 99, week: 8 }) });
+        state.weekSelectionExplicit = false;
+        await syncNflSeasonSelection();
+        check("NFL week sync falls back to a valid week field if display week is invalid", state.week === 8);
+        window.fetch = async () => ({ ok: true, json: async () => ({ season: "2026", display_week: null, week: 0 }) });
+        await syncNflSeasonSelection();
+        check("Invalid NFL week status remains visible and does not replace selected data",
+          state.week === 8 && state.dataErrors.season?.includes("season/week feed is invalid"));
+        state.provider = savedStateProvider;
+        window.fetch = savedFetch;
         const filterFixture = [
           { type: "Start / sit" }, { type: "Waiver" }, { type: "Trade fit" },
           { type: "Portfolio exposure" }, { type: "Portfolio roster gap" }
@@ -503,6 +537,25 @@
           document.getElementById("recordsAnswer").textContent.includes("100.00") &&
           document.getElementById("recordsAnswer").textContent.includes("Sleeper") &&
           document.getElementById("recordsAnswer").textContent.includes("incomplete"));
+        check("Rivalry heat map has row/column headers and row-relative mirrored records",
+          document.querySelectorAll(".rivalry-heatmap thead th[scope=col]").length === 3 &&
+          document.querySelectorAll(".rivalry-heatmap tbody th[scope=row]").length === 2 &&
+          document.querySelector(".rivalry-heatmap tbody tr:first-child td.rivalry-strong-loss strong")?.textContent === "0-7-0" &&
+          document.querySelector(".rivalry-heatmap tbody tr:last-child td.rivalry-strong-win strong")?.textContent === "7-0-0");
+        check("Rivalry heat map preserves accessible records, legend, and expandable point details",
+          document.querySelector(".rivalry-scroll")?.getAttribute("tabindex") === "0" &&
+          document.querySelector(".rivalry-heatmap td[aria-label]") &&
+          document.querySelector(".rivalry-legend")?.textContent.includes("Even") &&
+          document.querySelector(".rivalry-details:not([open]) .comparison-table"));
+        const heatmapManagers = state.managers;
+        state.managers = [...heatmapManagers, { rosterId: 3, teamName: "<img src=x onerror=alert(1)>", players: [] }];
+        renderLeagueRecords();
+        check("Rivalry heat map separates no meetings from losses and escapes team names",
+          document.querySelector(".rivalry-unplayed")?.textContent === "No games" &&
+          !document.querySelector(".rivalry-heatmap img") &&
+          document.querySelector(".rivalry-heatmap").textContent.includes("<img src=x"));
+        state.managers = heatmapManagers;
+        renderLeagueRecords();
         window.fetch = async () => { throw new TypeError("fixture offline"); };
         await loadLeagueRecords();
         loadedRecord = leagueRecordsCache.get(getLeagueRecordsKey());
@@ -533,8 +586,34 @@
           document.getElementById("recordsAnswer").textContent.includes("No completed results"));
         state.activeLeague = { ...claimLeague, provider: "espn" };
         renderLeagueRecords();
-        check("Records explain unsupported ESPN history rather than fabricating it",
-          document.getElementById("recordsStatus").textContent.includes("not supported"));
+        check("ESPN records expose a load action without fabricating unloaded history",
+          !document.getElementById("loadRecordsBtn").hidden &&
+          document.getElementById("recordsAnswer").textContent.includes("No completed results"));
+        let espnHistoryUrl = "", espnHistoryCredentials = "";
+        window.fetch = async (url, options) => {
+          espnHistoryUrl = String(url);
+          espnHistoryCredentials = options?.credentials;
+          return { ok: true, json: async () => ({
+            id: claimLeague.leagueId, seasonId: 2026,
+            status: { currentScoringPeriod: 8 },
+            settings: { scheduleSettings: { matchupPeriods: { 1: [1], 8: [8] } } },
+            schedule: [
+              { id: 1, matchupPeriodId: 1, playoffTierType: "NONE", winner: "HOME", home: { teamId: 1, totalPoints: 101 }, away: { teamId: 2, totalPoints: 90 } },
+              { id: 8, matchupPeriodId: 8, playoffTierType: "NONE", winner: "UNDECIDED", home: { teamId: 1, totalPoints: 12 }, away: { teamId: 2, totalPoints: 0 } }
+            ]
+          }) };
+        };
+        await loadLeagueRecords();
+        check("ESPN records use matchup history view and preserve session credentials",
+          espnHistoryUrl.includes("view=mMatchup") && espnHistoryCredentials === "include");
+        check("ESPN records load verified completed results and exclude live games",
+          leagueRecordsCache.get(getLeagueRecordsKey()).games.length === 1 &&
+          document.getElementById("recordsStatus").textContent.includes("ESPN completed"));
+        window.fetch = async () => ({ ok: false, status: 401 });
+        await loadLeagueRecords();
+        check("ESPN record authentication errors are explicit and preserve previous results",
+          leagueRecordsCache.get(getLeagueRecordsKey()).games.length === 1 &&
+          document.getElementById("recordsStatus").textContent.includes("401"));
         state.activeLeague = claimLeague;
         window.fetch = savedFetch;
 
@@ -569,6 +648,13 @@
         renderLeagueRecords();
         if (savedActiveTab) activateTab(savedActiveTab);
         state.week = savedWeek;
+        state.weekSelectionExplicit = savedWeekExplicit;
+        state.season = savedSeason;
+        state.currentNflWeek = savedCurrentNflWeek;
+        document.getElementById("weekSelect").value = String(savedWeek);
+        state.dataFreshness.season = savedSeasonFreshness;
+        if (savedSeasonError === undefined) delete state.dataErrors.season;
+        else state.dataErrors.season = savedSeasonError;
         state.gameDayByTeam = savedGameDayByTeam;
         state.gameDayScheduleAvailable = savedGameDayScheduleAvailable;
         state.livePlayerPoints = savedLivePlayerPoints;
