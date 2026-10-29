@@ -9,7 +9,7 @@ const root = path.resolve(__dirname, "..");
 const read = file => fs.readFileSync(path.join(root, file), "utf8");
 
 test("browser JavaScript entry points parse", () => {
-  for (const file of ["app.js", "data-fetch.js", "demo-league.js", "league-records.js", "workspace-backup.js", "monetization-config.js"]) {
+  for (const file of ["app.js", "data-fetch.js", "demo-league.js", "league-records.js", "workspace-backup.js", "playoff-simulator.js", "monetization-config.js"]) {
     const result = spawnSync(process.execPath, ["--check", file], {
       cwd: root,
       encoding: "utf8"
@@ -41,7 +41,7 @@ test("HTML references existing local assets in the expected script order", () =>
   ].map(match => match[1]).filter(asset => !/^(?:[a-z]+:)?\/\//i.test(asset));
 
   assert.ok(assets.length > 0, "Expected local CSS or JavaScript assets.");
-  assert.ok(assets.every(asset => asset.endsWith("?v=20261029-history-1")), "All local assets must use the current release version.");
+  assert.ok(assets.every(asset => asset.endsWith("?v=20261029-playoffs-1")), "All local assets must use the current release version.");
   for (const asset of assets) {
     assert.ok(fs.existsSync(path.join(root, asset.split("?")[0])), `Missing local asset: ${asset}`);
   }
@@ -52,11 +52,13 @@ test("HTML references existing local assets in the expected script order", () =>
   const recordsIndex = html.indexOf('<script src="league-records.js?');
   const workspaceIndex = html.indexOf('<script src="workspace-backup.js?');
   const appIndex = html.indexOf('<script src="app.js?');
+  const playoffIndex = html.indexOf('<script src="playoff-simulator.js?');
   assert.ok(configIndex >= 0, "Monetization configuration script is missing.");
   assert.ok(dataFetchIndex > configIndex, "Data-fetch module must load after configuration.");
   assert.ok(demoIndex > dataFetchIndex, "Demo module must load before the app.");
   assert.ok(recordsIndex > demoIndex, "Records module must load after the demo module.");
   assert.ok(workspaceIndex > recordsIndex && appIndex > workspaceIndex, "Workspace must load after records and before the app.");
+  assert.ok(playoffIndex > workspaceIndex && appIndex > playoffIndex, "Playoff engine must load before the app.");
 });
 
 test("static interface IDs, labels, and tab navigation targets are consistent", () => {
@@ -95,7 +97,7 @@ test("browser regression harness is wired to the app and includes saved-state co
   const html = read("tests/optimizer-regression.html");
   const appHtml = read("index.html");
 
-  assert.match(html, /src="\.\.\/index\.html\?v=20261029-history-1&amp;resume=0"/, "Regression harness must load the current app release without resuming personal snapshots.");
+  assert.match(html, /src="\.\.\/index\.html\?v=20261029-playoffs-1&amp;resume=0"/, "Regression harness must load the current app release without resuming personal snapshots.");
   assert.doesNotMatch(appHtml, /id="loadRecordsBtn"/, "Records must load automatically without a manual refresh button.");
   assert.match(html, /runOptimizerFixtures/, "Regression harness must execute its fixtures.");
   assert.match(html, /Cross-league queue saves to target budget/, "Saved FAAB state should remain covered.");

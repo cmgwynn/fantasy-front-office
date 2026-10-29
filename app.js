@@ -1412,6 +1412,7 @@ async function fetchWeeklyProjections() {
 }
 
 async function syncUserAccount() {
+  rememberConnectionFields();
   const provider = document.getElementById("providerSelect")?.value || "";
   state.provider = provider;
   if (!provider) { setStatus("Choose a provider first."); return; }
@@ -5402,7 +5403,70 @@ async function renderLeagueIntelTab(forceRefresh = false) {
   renderPickemChallenge();
 }
 
+const playoffForecasts = new Map();
+const playoffForecastLoads = new Set();
+
+function renderPlayoffForecast() {
+  const key = getLeagueRecordsKey();
+  const status = document.getElementById("playoffForecastStatus");
+  const results = document.getElementById("playoffForecastResults");
+  const button = document.getElementById("runPlayoffForecast");
+  if (!status || !results || !button) return;
+  button.disabled = playoffForecastLoads.has(key);
+  const entry = playoffForecasts.get(key);
+  status.textContent = button.disabled ? "Loading and validating the entire regular-season schedule…" :
+    entry?.error || (entry ? `${entry.source}. ${entry.report.iterations.toLocaleString()} reproducible trials; completed Weeks 1–${entry.report.completedWeeks}, remaining Weeks ${entry.report.completedWeeks + 1}–${entry.report.regularWeeks}. ${entry.report.playoffTeams} playoff teams, ${entry.report.reseed ? "reseeding" : "fixed draw"}.` :
+      "Run a schedule-validated scenario. Supports current-season Sleeper, even team counts, 4/6/8 playoff teams, single-week rounds, no divisions/median games/byes. Requires at least two completed weeks and remaining regular-season games. Explore Demo uses fictional inputs.");
+  results.replaceChildren();
+  if (!entry?.report || entry.error) return;
+  const { report } = entry;
+  const percent = count => `${(count / report.iterations * 100).toFixed(1)}%`;
+  const names = new Map(report.teams.map(team => [team.id, team.name]));
+  const escape = draftEscapeHtml;
+  results.innerHTML = `<p class="comparison-note">Scenario estimates, not official or calibrated probabilities. Seeds use record → PF → roster ID, not provider-specific tiebreakers. The entire current week is simulated; live scores are ignored. No future lineup, injury, or NFL bye adjustments.</p>
+    <details class="rivalry-details"><summary>Model, tiebreakers &amp; limitations</summary><p class="comparison-note">Standings are reconstructed from complete weekly results through the last completed week, not live provider totals. Seeds use win equivalents (W + half T), then total PF, then stable roster ID for exact ties. No division berths or custom standings overrides. Each team's score is an independent normal draw using its completed-week mean and sample standard deviation (minimum 10 points), rounded to cents; negative scores are allowed. The same scoring distribution is used throughout the playoffs, with higher seed winning an exact playoff tie. No injury, bye, transaction, correlation, or future lineup adjustments. Small samples and model assumptions can substantially change results. Fixed seed ${report.seed}; repeated runs on identical data match. At 5,000 trials, worst-case Monte Carlo standard error is about 0.7 percentage points; model error is not measured. These results do not replace older Power Rankings estimates or follow the illustrative bracket's controls/picks. Results are not saved in workspace backups.</p></details>
+    <div class="table-wrap" role="region" aria-label="Schedule simulation estimates" tabindex="0"><table class="comparison-table"><caption>Regular-season qualification and full playoff path estimates</caption><thead><tr><th scope="col">Team</th><th scope="col">Score mean ± SD</th><th scope="col">Final win equivalents</th><th scope="col">Qualify</th><th scope="col">First-round bye</th><th scope="col">Reach final</th><th scope="col">Champion</th><th scope="col">Qualify given next win</th></tr></thead><tbody>${report.teams.map(team => {
+      const opponent = team.nextOpponentId;
+      return `<tr><th scope="row">${escape(team.name)}</th><td>${team.mean.toFixed(1)} ± ${team.deviation.toFixed(1)}</td><td>${team.expectedWinEquivalents.toFixed(2)}</td><td>${percent(team.qualified)}</td><td>${percent(team.bye)}</td><td>${percent(team.finalists)}</td><td>${percent(team.champion)}</td><td>${team.winNext ? `${(team.qualifyWithWin / team.winNext * 100).toFixed(1)}%` : "No sampled wins"}<br><small>vs ${escape(names.get(opponent))}; ${team.winNext} sampled wins</small></td></tr>`;
+    }).join("")}</tbody></table></div>
+    <p class="comparison-note">“Given next win” filters the same trials to those in which that team wins its next scheduled game; it is not a clinching guarantee or a causal estimate.</p>
+    <details class="rivalry-details"><summary>Final seed distributions</summary><div class="table-wrap" role="region" aria-label="Final seed distributions" tabindex="0"><table class="comparison-table"><caption>Every team's simulated finish, including teams outside the playoff field</caption><thead><tr><th scope="col">Team</th>${report.teams.map((_, index) => `<th scope="col">#${index + 1}</th>`).join("")}</tr></thead><tbody>${report.teams.map(team => `<tr><th scope="row">${escape(team.name)}</th>${team.seeds.map(count => `<td>${percent(count)}</td>`).join("")}</tr>`).join("")}</tbody></table></div></details>`;
+}
+
+async function runPlayoffForecast() {
+  const league = state.activeLeague;
+  const key = getLeagueRecordsKey();
+  if (playoffForecastLoads.has(key)) return;
+  playoffForecastLoads.add(key);
+  renderPlayoffForecast();
+  try {
+    let input, source;
+    if (league?.isDemo) {
+      const demo = FFODemo.createDemoLeague();
+      input = { teams: demo.teams.map((team, index) => ({ id: String(index + 1), name: team.teamName })),
+        completedWeeks: 2, regularWeeks: 4, playoffTeams: 4, reseed: false,
+        schedule: [...demo.completedMatchups,
+          { week: 3, homeId: "1", awayId: "3" }, { week: 3, homeId: "2", awayId: "4" },
+          { week: 4, homeId: "1", awayId: "4" }, { week: 4, homeId: "2", awayId: "3" }] };
+      source = "Fictional demo scenario: two supplied weeks plus a fictional two-week schedule, playoffs Weeks 5–6; not the demo standings or live league format";
+    } else {
+      if (!league || league.provider !== "sleeper" || state.workspaceSnapshot) {
+        throw new Error("Connect a live Sleeper league to run this scenario; imported/saved snapshots and other providers are not supported.");
+      }
+      input = await FFOPlayoffs.loadSleeper({ ...league }, fetchJson);
+      source = "Fresh Sleeper schedule and completed matchup scores";
+    }
+    playoffForecasts.set(key, { report: FFOPlayoffs.simulate(input), source });
+  } catch (error) {
+    playoffForecasts.set(key, { error: `Simulation unavailable: ${error.message}` });
+  } finally {
+    playoffForecastLoads.delete(key);
+    if (getLeagueRecordsKey() === key) renderPlayoffForecast();
+  }
+}
+
 function renderPlayoffBracketTab() {
+  renderPlayoffForecast();
   const grid = document.getElementById("bracketGridContainer");
   const oddsTbl = document.getElementById("bracketOddsTable");
   if (!grid || !oddsTbl) return;
@@ -7044,6 +7108,8 @@ function bindControlEvents() {
   updateProviderControls();
   renderPlayerComparison();
   document.getElementById("providerSelect")?.addEventListener("change", () => {
+    restoreConnectionInput();
+    rememberConnectionFields();
     forgetReloadWorkspace();
     leaveWorkspaceSnapshot();
     state.leagues = [];
@@ -7234,6 +7300,7 @@ function bindControlEvents() {
     renderPlayerAlerts();
   });
   document.getElementById("usernameInput")?.addEventListener("keydown", e => { if (e.key === "Enter") syncUserAccount(); });
+  document.getElementById("usernameInput")?.addEventListener("input", rememberConnectionFields);
   document.getElementById("leagueSelect")?.addEventListener("change", async e => {
     await loadLeague(parseInt(e.target.value, 10));
     if (document.getElementById("tab-inbox")?.classList.contains("active")) await renderGMInbox();
@@ -7301,6 +7368,7 @@ function bindControlEvents() {
   document.getElementById("bracketSeedMode")?.addEventListener("change", () => { state.bracketOverrides = {}; renderPlayoffBracketTab(); });
   document.getElementById("bracketReseedMode")?.addEventListener("change", () => { delete state.bracketOverrides.sf1; delete state.bracketOverrides.sf2; delete state.bracketOverrides.champ; delete state.bracketOverrides.third; renderPlayoffBracketTab(); });
   document.getElementById("resetBracketBtn")?.addEventListener("click", () => { state.bracketOverrides = {}; renderPlayoffBracketTab(); });
+  document.getElementById("runPlayoffForecast")?.addEventListener("click", runPlayoffForecast);
   document.getElementById("simTeamA")?.addEventListener("change", renderMatchupSim);
   document.getElementById("simTeamB")?.addEventListener("change", renderMatchupSim);
   document.getElementById("shareBtn")?.addEventListener("click", async () => {
@@ -7370,8 +7438,50 @@ function workspaceDatabase(action, value, key = WORKSPACE_SNAPSHOT_KEY) {
 
 const RELOAD_WORKSPACE_KEY = "last-session";
 const WORKSPACE_SELECTION_KEY = "fantasy-front-office:reload-selection:v1";
+const CONNECTION_FIELDS_KEY = "fantasy-front-office:connection-fields:v1";
 let resumingReloadWorkspace = false;
 let reloadWorkspaceWrite = Promise.resolve();
+
+function readConnectionFields() {
+  const raw = localStorage.getItem(CONNECTION_FIELDS_KEY);
+  if (!raw) return { provider: "", accounts: {} };
+  const saved = JSON.parse(raw);
+  if (!saved || !["", "sleeper", "espn", "yahoo"].includes(saved.provider) ||
+      !saved.accounts || typeof saved.accounts !== "object" || Array.isArray(saved.accounts) ||
+      Object.entries(saved.accounts).some(([provider, value]) => !["sleeper", "espn"].includes(provider) ||
+        typeof value !== "string" || value.length > 2000)) {
+    throw new Error("Saved connection fields have an invalid format.");
+  }
+  return saved;
+}
+
+function rememberConnectionFields() {
+  if (new URLSearchParams(location.search).get("resume") === "0") return;
+  try {
+    const saved = readConnectionFields();
+    const provider = document.getElementById("providerSelect").value;
+    if (provider === "sleeper" || provider === "espn") saved.accounts[provider] = document.getElementById("usernameInput").value;
+    if (Object.values(saved.accounts).some(value => value.length > 2000)) throw new Error("Account field exceeds the 2,000-character storage limit.");
+    saved.provider = provider;
+    localStorage.setItem(CONNECTION_FIELDS_KEY, JSON.stringify(saved));
+  } catch (error) {
+    reportReloadWorkspaceError(`Account fields could not be saved on this browser: ${error.message}`);
+  }
+}
+
+function restoreConnectionInput(restoreProvider = false) {
+  if (new URLSearchParams(location.search).get("resume") === "0") return;
+  try {
+    const saved = readConnectionFields();
+    const provider = document.getElementById("providerSelect");
+    if (restoreProvider) provider.value = saved.provider;
+    document.getElementById("usernameInput").value = saved.accounts[provider.value] ??
+      (provider.value === "espn" && state.activeLeague?.provider === "espn" ? state.activeLeague.leagueId : "");
+    updateProviderControls();
+  } catch (error) {
+    reportReloadWorkspaceError(`Account fields could not be restored on this browser: ${error.message}`);
+  }
+}
 
 function reportReloadWorkspaceError(message) {
   document.getElementById("workspaceStatus").textContent = message;
@@ -7425,7 +7535,9 @@ async function resumeReloadWorkspace(backup) {
       selection = JSON.parse(text);
       if (selection.leagueKey !== getLeagueRecordsKey(backup.snapshot.activeLeague)) selection = null;
     }
-    if (selection && parseNflWeek(selection.week)) backup.snapshot.week = selection.week;
+    const linkedWeek = parseNflWeek(new URLSearchParams(location.search).get("week"));
+    if (linkedWeek !== null) backup.snapshot.week = linkedWeek;
+    else if (selection && parseNflWeek(selection.week)) backup.snapshot.week = selection.week;
     const index = selection ? backup.snapshot.managers.findIndex(manager => String(manager.rosterId) === selection.rosterId) : -1;
     if (index >= 0) backup.ui.teamIndex = index;
     if (selection && /^tab-[a-z-]+$/.test(selection.tab) && document.getElementById(selection.tab)?.classList.contains("tab-page")) backup.ui.tab = selection.tab;
@@ -7530,6 +7642,7 @@ function applyWorkspaceSnapshot(backup) {
   recomputeDynamicDvpRanks();
   document.getElementById("providerSelect").value = state.provider;
   updateProviderControls();
+  restoreConnectionInput();
   document.getElementById("leagueSelect").innerHTML = `<option value="0">${draftEscapeHtml(state.activeLeague.name)}</option>`;
   ["teamSelect", "tradeTeamA", "tradeTeamB", "simTeamA", "simTeamB"].forEach(id => {
     const select = document.getElementById(id);
@@ -7644,7 +7757,11 @@ function bindWorkspaceControls() {
 
 async function bootWorkspace() {
   const params = new URLSearchParams(location.search);
-  if (params.get("resume") === "0" || params.has("user") || params.has("league") || params.has("provider") || params.has("week")) {
+  if (["sleeper", "espn", "yahoo"].includes(params.get("provider"))) {
+    document.getElementById("providerSelect").value = params.get("provider");
+    restoreConnectionInput();
+  } else if (!params.has("user") && !params.has("league")) restoreConnectionInput(true);
+  if (params.get("resume") === "0" || params.has("user") || params.has("league")) {
     await initApp();
     return;
   }
@@ -7663,7 +7780,13 @@ async function bootWorkspace() {
     banner.textContent = message; banner.hidden = false;
     return;
   }
+  if (backup && params.has("provider") && params.get("provider") !== backup.snapshot.provider) {
+    await initApp();
+    return;
+  }
   if (backup) {
+    const linkedWeek = parseNflWeek(params.get("week"));
+    if (linkedWeek !== null) backup.snapshot.week = linkedWeek;
     try {
       if (reloadBackup) await resumeReloadWorkspace(backup);
       else applyWorkspaceSnapshot(backup);

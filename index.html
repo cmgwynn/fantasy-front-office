@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Fantasy Front Office</title>
-  <link rel="stylesheet" href="styles.css?v=20261029-history-1" />
+  <link rel="stylesheet" href="styles.css?v=20261029-playoffs-1" />
 </head>
 <body>
 
@@ -126,7 +126,7 @@
   <div class="content-stack">
     <div id="workspaceSnapshotBanner" class="workspace-banner" role="status" hidden></div>
     <div id="tab-workspace" class="tab-page">
-      <div><div class="draft-eyebrow">ON YOUR DEVICE</div><h2>Workspace &amp; Backups</h2><p class="comparison-note">Your current league, roster, week, and section are remembered automatically for page refreshes. Connected leagues reload provider data where access is available; imports resume their snapshot. Manual backups provide a separate recovery copy. No account, cloud upload, or provider credentials.</p></div>
+      <div><div class="draft-eyebrow">ON YOUR DEVICE</div><h2>Workspace &amp; Backups</h2><p class="comparison-note">Your provider, account username or league IDs, current league, roster, week, and section are remembered on this browser for page refreshes. Connected leagues reload provider data where access is available; imports resume their snapshot. Account fields are stored separately from backups, without passwords, sign-ins, or cookies. Manual backups provide a separate recovery copy; no cloud upload.</p></div>
       <section class="comparison-card">
         <h3>Pick up where you left off</h3>
         <p class="comparison-note">Save the active league, roster data, current view, and multiweek scenario. Snapshots resume on this browser without fetching fresh data; local draft/FAAB/newsletter/Inbox/watchlist/pick'em saves keep their latest device changes. Downloaded backups also capture those local plans for explicit restoration. Reconnect to update your league.</p>
@@ -599,6 +599,13 @@
 
     <!-- TAB 8: PLAYOFF BRACKET SIMULATOR -->
     <div id="tab-bracket" class="tab-page">
+      <section class="card-banner" aria-labelledby="playoffForecastTitle">
+        <h2 id="playoffForecastTitle">Schedule-based playoff scenarios</h2>
+        <p class="comparison-note">Simulate the remaining regular season, seed distribution, qualification, byes, finals and championship path using complete paired schedules. Explicit record → points-for tiebreaker assumptions apply; these are not official provider odds.</p>
+        <button id="runPlayoffForecast" type="button">Run 5,000-trial scenario</button>
+        <p id="playoffForecastStatus" role="status" aria-live="polite"></p>
+        <div id="playoffForecastResults"></div>
+      </section>
       <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
         <div>
           <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
@@ -606,7 +613,7 @@
             <span id="bracketFormatBadge" class="badge badge-green">LEAGUE FORMAT: 6-TEAM PLAYOFF • STARTS WK 15</span>
           </div>
           <div style="font-size:12px; color:var(--text-muted); margin-top:2px;">
-            Uses the connected league's playoff team count, start week, and seeding rules. Click any team card to force an upset.
+            Illustrative bracket using lineup projections, not the schedule simulation above. Format defaults may be inferred. Click any team card to force an upset; this does not change scenario trials.
           </div>
         </div>
         <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
@@ -634,7 +641,7 @@
         </div>
       </div>
       <div id="bracketGridContainer" class="bracket-grid"></div>
-      <div class="sec-hdr" style="color:var(--good);">PLAYOFF FIELD & BUBBLE CHAMPIONSHIP ODDS BREAKDOWN</div>
+      <div class="sec-hdr" style="color:var(--good);">ILLUSTRATIVE FIELD & PATH APPROXIMATIONS — NOT SIMULATED ODDS</div>
       <div class="table-wrap"><table id="bracketOddsTable"></table></div>
     </div>
 
@@ -947,11 +954,12 @@
   <div id="monetizationDisclosure" class="monetization-disclosure" hidden></div>
 </footer>
 
-<script src="monetization-config.js?v=20261029-history-1"></script>
-<script src="data-fetch.js?v=20261029-history-1"></script>
-<script src="demo-league.js?v=20261029-history-1"></script>
-<script src="league-records.js?v=20261029-history-1"></script>
-<script src="workspace-backup.js?v=20261029-history-1"></script>
-<script src="app.js?v=20261029-history-1"></script>
+<script src="monetization-config.js?v=20261029-playoffs-1"></script>
+<script src="data-fetch.js?v=20261029-playoffs-1"></script>
+<script src="demo-league.js?v=20261029-playoffs-1"></script>
+<script src="league-records.js?v=20261029-playoffs-1"></script>
+<script src="workspace-backup.js?v=20261029-playoffs-1"></script>
+<script src="playoff-simulator.js?v=20261029-playoffs-1"></script>
+<script src="app.js?v=20261029-playoffs-1"></script>
 </body>
 </html>

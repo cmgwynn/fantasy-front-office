@@ -46,7 +46,19 @@ selected roster and view. Access/network failures retain an explicitly labeled
 snapshot with the provider error shown. Yahoo imports and fictional demo data
 remain snapshots and need re-importing for new data. No provider credentials
 are saved. The last league reload copy takes precedence over a manual resume
-copy; explicit connection/week links and `?resume=0` bypass both.
+copy. Explicit user/league connection links and `?resume=0` bypass both;
+a matching provider link retains the saved league and roster, and an explicit
+week overrides the saved week without discarding the workspace. A different
+provider link starts that provider's connection flow.
+
+The provider and its account text field are also saved synchronously on input,
+independently of a successful connection or IndexedDB snapshot. Sleeper
+usernames and ESPN league-ID lists are kept separately in this browser's local
+storage and restored on reload/provider changes. An intentionally emptied field
+stays empty. These values are not passwords or sign-in sessions and are not
+exported in workspace backups. Storage/validation failures are shown explicitly.
+Clearing browser storage removes these values; Stop resuming snapshot leaves
+them intact. `?resume=0` also disables account-field reads and writes for tests.
 
 Open **Home > Workspace & Backups**. **Save on this device** commits a manual
 snapshot to IndexedDB and resumes it on a later unlinked visit. It captures one
@@ -77,8 +89,8 @@ reported. The page reloads only after the snapshot transaction commits.
 **Stop resuming snapshot** removes both device resume copies and reload
 selection, not the current
 session, local plans, downloaded backups, or NFL caches. Loading/importing a
-league again enables reload retention. Explicit provider,
-league/user, or week links take precedence over snapshot resume. `?resume=0`
+league again enables reload retention. Explicit league/user links and conflicting
+provider links take precedence over snapshot resume. `?resume=0`
 also bypasses resume without deleting it; the browser test harness uses this
 to avoid loading personal snapshots. Errors preserve the saved copy and are
 shown in Workspace and the snapshot banner.
@@ -323,6 +335,50 @@ Median/multi-opponent formats,
 automatic multi-season traversal, and verified finishes remain future work.
 Standings and projections are never substituted for game scores.
 
+### Schedule-based playoff scenarios
+
+Open **League > Playoff Bracket** and select **Run 5,000-trial scenario**.
+The new scenario is separate from the existing interactive, projection-based
+bracket and its illustrative path approximations. Changing that bracket's picks
+or controls does not change scenario trials.
+
+Live inputs currently support Sleeper only: the current NFL regular season,
+even 4-32-team leagues, 4/6/8 playoff teams, single-week rounds ending by Week 18,
+no divisions/median games/byes. At least two completed weeks and at least one
+remaining regular week are required. Fresh metadata and all regular-season
+matchups are fetched (four weeks at a time); every team must have exactly one
+known opponent per week and finite completed scores. Missing data, unsupported
+rules, provider failures and inconsistent season/league IDs block output with
+an explicit error. No incomplete or stale forecast is shown as a successful run.
+
+Standings are reconstructed from completed regular-week scores, preserving ties
+and negative scores. Current/future points are ignored, including any in-progress
+week: those games are simulated in full. Seeds use win equivalents (wins plus
+half of ties), then PF, then stable roster ID for exact ties. This is an explicit
+scenario assumption, not automatic certification of provider tiebreakers or
+custom standings overrides.
+
+Each team's weekly score is an independent normal draw from its completed-week
+mean and sample standard deviation, with a minimum standard deviation of 10,
+rounded to cents. Negative scores remain possible. Future lineup changes,
+injuries, NFL byes and score correlations are not modeled. Playoffs use those
+same distributions, correct 4/6/8-team pairings and six-team first-round byes,
+fixed/reseeded semifinals from fresh settings, and higher-seed exact-tie wins.
+The fixed random seed makes identical inputs reproducible.
+
+Results include every team's final seed distribution, qualification, bye,
+finals/championship frequency, final win equivalents, and conditional
+qualification frequency among trials in which it wins its next game (with sample
+count). Conditional frequencies are not clinching guarantees or causal effects.
+At 5,000 trials the worst-case sampling standard error is about 0.7 percentage
+points; unmeasured model error can be much larger. These are uncalibrated
+scenario estimates, not official odds, and do not replace older Power Rankings
+approximations. Results are in-memory only, not workspace backup content.
+
+Explore Demo runs a separate, explicitly fictional four-team scenario: two
+supplied completed weeks, two invented remaining weeks, and playoffs in Weeks
+5-6. It is not the demo's displayed standings or live league format.
+
 ## Independent FFWrapped capability inventory
 
 Source: <https://ffwrapped.com/> (public feature descriptions reviewed for this
@@ -334,7 +390,7 @@ and Premium workflows have not been independently exercised.
 | Power rankings, standings, scoring, expected wins | Rankings/projections plus verified loaded-score all-play, weekly expected wins and scheduling luck in Records | Replace older ranking approximations and add verified historical weekly trends |
 | Weekly reports, awards, storylines | Newsletter/report plus deterministic completed-score weekly awards in Records | Wire verified awards into newsletters; grounded narratives and upcoming previews |
 | League-specific roster and player values | Partial: scoring and roster models | Audit scoring completeness and positional assumptions |
-| Playoff/championship odds and likely seeds | Partial: playoff projections and bracket | Validated schedule simulation, seed distributions, championship paths |
+| Playoff/championship odds and likely seeds | Schedule-validated Sleeper scenarios with seed distributions, full title paths and conditional next-win qualification; separate illustrative bracket | Calibrate scoring distributions; support more providers, tiebreakers, divisions, median games, byes, multiweek rounds and in-progress scoring |
 | Trade comparison and mutually beneficial packages | Partial: builder and finder | Verify package constraints and both-lineup improvements |
 | All-time records, finishes, head-to-head, rivalries | Season record book plus bounded Sleeper linked-season career records, owner-ID identity mapping and cross-season heat map | ESPN/imported career mapping, championships/finishes, streaks, disconnected seasons and broader provider rules |
 | League Historian questions | Fixed season and career fact lookup over loaded scores with source/season context | Broader grounded questions, richer narratives and additional providers |

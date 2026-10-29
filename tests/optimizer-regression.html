@@ -20,7 +20,7 @@
   <h1>Optimizer Regression Checks</h1>
   <p id="summary" role="status">Loading the app runtime...</p>
   <ol id="results"></ol>
-  <iframe id="appFrame" src="../index.html?v=20261029-history-1&amp;resume=0" title="Optimizer test runtime"></iframe>
+  <iframe id="appFrame" src="../index.html?v=20261029-playoffs-1&amp;resume=0" title="Optimizer test runtime"></iframe>
   <script>
     async function runOptimizerFixtures() {
       const results = [];
@@ -32,6 +32,7 @@
       const savedDraftAdp = draftState.adpByName;
       const savedRecordsCache = new Map(leagueRecordsCache);
       const savedCareerCache = new Map(careerHistoryCache);
+      const savedForecasts = new Map(playoffForecasts);
       const savedPlannerSchedules = new Map(plannerScheduleSources);
       const savedPlannerControls = Object.fromEntries(["plannerWeeks", "plannerSearch", "plannerAdd", "plannerDrop"].map(id => [id, document.getElementById(id).value]));
       const savedPlannerInjuryToggle = document.getElementById("plannerHoldInjuries").checked;
@@ -901,6 +902,62 @@
         state.activeLeague = claimLeague;
         window.fetch = savedFetch;
 
+        state.activeLeague = { ...claimLeague, isDemo: true };
+        await runPlayoffForecast();
+        const forecast = playoffForecasts.get(getLeagueRecordsKey()).report;
+        check("Playoff simulation runs 5000 trials with complete champion and seed distributions",
+          forecast.iterations === 5000 && forecast.teams.reduce((sum, team) => sum + team.champion, 0) === 5000 &&
+          forecast.teams.every(team => team.seeds.reduce((sum, count) => sum + count, 0) === 5000));
+        check("Playoff estimates disclose fictional schedules, conditional paths and model assumptions",
+          document.getElementById("playoffForecastStatus").textContent.includes("Fictional demo scenario") &&
+          document.getElementById("playoffForecastResults").textContent.includes("not official") &&
+          document.getElementById("playoffForecastResults").textContent.includes("Qualify given next win"));
+        state.activeLeague = { ...claimLeague, provider: "yahoo", isDemo: false };
+        await runPlayoffForecast();
+        check("Unsupported playoff forecasts show explicit errors rather than stale probabilities",
+          document.getElementById("playoffForecastStatus").textContent.includes("Simulation unavailable") &&
+          !document.getElementById("playoffForecastResults").children.length);
+        state.activeLeague = claimLeague;
+
+        const connectionCopy = localStorage.getItem(CONNECTION_FIELDS_KEY);
+        const originalUrl = location.href;
+        const providerCopy = document.getElementById("providerSelect").value;
+        const accountCopy = document.getElementById("usernameInput").value;
+        const stateProviderCopy = state.provider;
+        try {
+          history.replaceState(null, "", location.pathname);
+          localStorage.removeItem(CONNECTION_FIELDS_KEY);
+          document.getElementById("providerSelect").value = "sleeper";
+          document.getElementById("usernameInput").value = "fixture-account";
+          document.getElementById("usernameInput").dispatchEvent(new Event("input"));
+          document.getElementById("providerSelect").value = "";
+          document.getElementById("usernameInput").value = "";
+          restoreConnectionInput(true);
+          check("Account input and provider restore independently of league snapshots",
+            document.getElementById("providerSelect").value === "sleeper" &&
+            document.getElementById("usernameInput").value === "fixture-account");
+          document.getElementById("providerSelect").value = "espn";
+          document.getElementById("usernameInput").value = "123, 456";
+          rememberConnectionFields();
+          document.getElementById("providerSelect").value = "sleeper";
+          restoreConnectionInput();
+          check("Provider-specific account fields do not overwrite each other",
+            document.getElementById("usernameInput").value === "fixture-account" &&
+            readConnectionFields().accounts.espn === "123, 456");
+          document.getElementById("usernameInput").value = "";
+          rememberConnectionFields();
+          restoreConnectionInput();
+          check("Intentionally clearing a saved account field remains cleared", document.getElementById("usernameInput").value === "");
+        } finally {
+          history.replaceState(null, "", originalUrl);
+          if (connectionCopy === null) localStorage.removeItem(CONNECTION_FIELDS_KEY);
+          else localStorage.setItem(CONNECTION_FIELDS_KEY, connectionCopy);
+          document.getElementById("providerSelect").value = providerCopy;
+          document.getElementById("usernameInput").value = accountCopy;
+          updateProviderControls();
+          state.provider = stateProviderCopy;
+        }
+
         const priorNewsletter = localStorage.getItem("fantasy-front-office:newsletter:v1");
         const newsletterLeague = { provider: "sleeper", leagueId: `newsletter-regression-${Date.now()}`, season: "2026" };
         const newsletterKey = getNewsletterLeagueKey(newsletterLeague);
@@ -917,6 +974,8 @@
         if (priorNewsletter === null) localStorage.removeItem("fantasy-front-office:newsletter:v1");
         else localStorage.setItem("fantasy-front-office:newsletter:v1", priorNewsletter);
       } finally {
+        playoffForecasts.clear();
+        savedForecasts.forEach((value, key) => playoffForecasts.set(key, value));
         careerHistoryCache.clear();
         savedCareerCache.forEach((value, key) => careerHistoryCache.set(key, value));
         plannerScheduleSources.clear();
