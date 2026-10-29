@@ -38,6 +38,7 @@ document.addEventListener("click", e => {
     switch (navBtn.dataset.tab) {
       case "tab-power": drawPowerChart(); break;
       case "tab-grades": renderTeamGrades(); break;
+      case "tab-planner": renderRosterPlanner(); break;
       case "tab-records": renderLeagueRecords(); break;
       case "tab-waiver": drawWaiverChart(); break;
       case "tab-analytics": drawSingleAnalyticsChart(); break;
@@ -108,6 +109,7 @@ const DEFAULT_BYE_WEEKS = {
 };
 const SEASON_BYE_CACHE = {};
 const SEASON_SCHEDULE_CACHE = {};
+const plannerScheduleSources = new Map();
 function getSeasonKey(seasonYear) {
   return String(seasonYear || state.season || DEFAULT_SEASON || new Date().getFullYear());
 }
@@ -320,11 +322,12 @@ async function syncFullSeasonNflSchedule(seasonYear, forceRefresh = false) {
       const tx = db.transaction("kv", "readonly").objectStore("kv").get(cacheKey);
       tx.onsuccess = () => {
         const d = tx.result;
-        if (d && (Date.now() - d.ts < 43200000)) res(d.payload); else res(null);
+        if (d && (Date.now() - d.ts < 43200000)) res({ ...d.payload, ts: d.ts }); else res(null);
       };
       tx.onerror = () => res(null);
     });
     if (cached && cached.sched && cached.byes && !forceRefresh) {
+      plannerScheduleSources.set(yr, { schedule: cached.sched, timestamp: cached.ts });
       Object.keys(NFL_TEAM_NAMES).forEach(t => {
         CURRENT_NFL_SCHEDULE[t] = cached.sched[t] || {};
         CURRENT_BYE_WEEKS[t] = cached.byes[t] || 0;
@@ -375,6 +378,7 @@ async function syncFullSeasonNflSchedule(seasonYear, forceRefresh = false) {
   }
 
   if (validWeeksFetched >= 12) {
+    plannerScheduleSources.set(yr, { schedule: tempSched, timestamp: Date.now() });
     const detectedByes = {};
     Object.keys(NFL_TEAM_NAMES).forEach(t => {
       CURRENT_NFL_SCHEDULE[t] = tempSched[t];
@@ -394,6 +398,7 @@ async function syncFullSeasonNflSchedule(seasonYear, forceRefresh = false) {
       markDataSource("schedule", null, ts);
     } catch {}
   } else {
+    plannerScheduleSources.delete(yr);
     const failureSummary = failedWeeks.length
       ? ` ${failedWeeks.length} week requests failed; first failure: ${failedWeeks[0].message}`
       : ` ${incompleteWeeks} weeks returned incomplete schedules.`;
@@ -407,6 +412,7 @@ async function syncLiveEspnSchedule() {
   await syncFullSeasonNflSchedule(activeSeason);
   if (document.getElementById("tab-sos")?.classList.contains("active")) renderSosTab();
   if (document.getElementById("tab-bracket")?.classList.contains("active")) renderPlayoffBracketTab();
+  if (document.getElementById("tab-planner")?.classList.contains("active")) renderRosterPlanner();
 }
 
 function recomputeDynamicDvpRanks() {
@@ -1445,6 +1451,8 @@ function createYahooPlayer(source, league) {
     id, name: source.name || "Unknown player", position, team, status: source.status || "Active",
     injuryStatus: source.injuryStatus || "Healthy", age: Math.max(0, Number(source.age) || 0), exp: Math.max(0, Number(source.experience) || 0),
     isDemo: Boolean(league.isDemo), isCurrentNfl: team !== "FA", byeWeek: league.isDemo ? 0 : CURRENT_BYE_WEEKS[team] || 0, searchRank: Number(source.playerRank) || 99999,
+    importedPlanningBye: parseNflWeek(source.planningByeWeek),
+    importedLeagueKey: getNewsletterLeagueKey(league),
     projectedPoints, seasonPpg, baseValue: 200, vorpScore: Math.max(0.5, seasonPpg - replacementPpg(position) + 4),
     posRank: 999, ovrRank: 999, yahooId: String(source.playerId || "")
   };
@@ -1488,12 +1496,18 @@ async function importYahooRosterFile(file, { demo = false } = {}) {
           nflTeam: nflTeamIndex < 0 ? "FA" : row[nflTeamIndex], starter: get(row, ["starter", "isstarter"]).toLowerCase(),
           projectedPoints: get(row, ["projectedpoints", "projection"]), seasonPpg: get(row, ["seasonppg", "pointspergame"]),
           actualPoints: get(row, ["actualpoints", "currentweekpoints", "weekpoints"]),
-          injuryStatus: get(row, ["injurystatus", "injury"]), age: get(row, ["age"]), experience: get(row, ["experience", "yearsexp"])
+          injuryStatus: get(row, ["injurystatus", "injury"]), age: get(row, ["age"]), experience: get(row, ["experience", "yearsexp"]),
+          planningByeWeek: get(row, ["planningbyeweek"]) || undefined
         });
       });
       payload = { leagueName: get(rows[1], ["leaguename"]) || file.name.replace(/\.csv$/i, ""), season: get(rows[1], ["season", "year"]) || state.season, teams: [...teams.values()] };
     }
     if (!Array.isArray(payload.teams) || !payload.teams.length) throw new Error("No teams found. JSON imports need a teams array; CSV imports need team and player rows.");
+    for (const player of [...payload.teams.flatMap(team => team.players || []), ...(payload.freeAgents || [])]) {
+      if (player.planningByeWeek !== undefined && parseNflWeek(player.planningByeWeek) === null) {
+        throw new Error("planningByeWeek must be an integer from 1 through 18 when supplied.");
+      }
+    }
     const completedMatchups = FFORecords.validateGames(payload.completedMatchups || []);
     const leagueName = payload.leagueName || payload.name || "Yahoo roster import";
     const leagueSeason = String(payload.season || state.season);
@@ -1542,7 +1556,7 @@ async function importYahooRosterFile(file, { demo = false } = {}) {
         projL: Number(team.losses) || 0, playoffPct: 50
       };
     });
-    if (demo) (payload.freeAgents || []).forEach(player => createYahooPlayer(player, league));
+    (payload.freeAgents || []).forEach(player => createYahooPlayer(player, league));
     const selectorIds = ["teamSelect", "tradeTeamA", "tradeTeamB", "simTeamA", "simTeamB"];
     selectorIds.forEach(id => {
       const select = document.getElementById(id);
@@ -6455,6 +6469,161 @@ function getRelativeTeamGrade(points, leagueAverage) {
   return { letter: index >= 110 ? "A" : index >= 100 ? "B" : index >= 90 ? "C" : index >= 80 ? "D" : "F", index };
 }
 
+let rosterPlannerContext = "";
+
+function getPlannerPlayerIdentity(player) {
+  return `${normalizeDraftPlayerName(player.name)}:${player.position}`;
+}
+
+function getPlannerRosterIds(manager) {
+  const inactive = new Set([...(manager.reserve || []), ...(manager.taxi || [])].map(String));
+  const seen = new Set();
+  return [...new Set((manager.players || []).map(String))].filter(id => {
+    const player = state.players[id];
+    if (inactive.has(id) || player?.isPick) return false;
+    if (!player) return true;
+    const identity = getPlannerPlayerIdentity(player);
+    if (seen.has(identity)) return false;
+    seen.add(identity);
+    return true;
+  });
+}
+
+function getPlannerAvailablePlayers() {
+  const owned = state.managers.flatMap(team => (team.players || []).map(String));
+  const ownedIds = new Set(owned);
+  const ownedNames = new Set(owned.map(id => state.players[id]).filter(Boolean).map(getPlannerPlayerIdentity));
+  const seen = new Set();
+  return Object.values(state.players).filter(player => {
+    const identity = getPlannerPlayerIdentity(player);
+    if (player.isPick || !player.isCurrentNfl || Boolean(player.isDemo) !== Boolean(state.activeLeague?.isDemo) ||
+        (player.importedLeagueKey && player.importedLeagueKey !== getNewsletterLeagueKey()) ||
+        ownedIds.has(String(player.id)) || ownedNames.has(identity) || seen.has(identity)) return false;
+    seen.add(identity);
+    return true;
+  });
+}
+
+function getPlannerAvailability(player, week, holdInjuries) {
+  const heldOut = holdInjuries && ["Out", "IR", "PUP", "Suspended", "Doubtful"].includes(player.injuryStatus);
+  let label = "Schedule unknown";
+  let kind = "unknown";
+  const source = plannerScheduleSources.get(String(state.activeLeague?.season));
+  if (player.importedPlanningBye !== null && player.importedPlanningBye !== undefined) {
+    kind = player.importedPlanningBye === week ? "bye" : "game";
+    label = kind === "bye" ? "Bye (snapshot)" : "Not on snapshot bye";
+  } else if (!player.isDemo && source && Date.now() - source.timestamp < 43200000) {
+    const team = normalizeTeamCode(player.team);
+    const schedule = source.schedule[team] || {};
+    const game = schedule[week];
+    if (game && NFL_TEAM_NAMES[game.opp] && source.schedule[game.opp]?.[week]?.opp === team) {
+      kind = "game";
+      label = `${game.isHome ? "vs" : "at"} ${game.opp}`;
+    } else {
+      const weeks = Array.from({ length: 18 }, (_, i) => i + 1);
+      const missing = weeks.filter(w => !schedule[w]);
+      const reciprocal = weeks.filter(w => schedule[w]).every(w =>
+        NFL_TEAM_NAMES[schedule[w].opp] && source.schedule[schedule[w].opp]?.[w]?.opp === team);
+      if (missing.length === 1 && reciprocal) {
+        kind = "bye";
+        label = "Bye (season schedule)";
+      }
+    }
+  }
+  return { kind, heldOut, label: `${label}${heldOut ? " / assumed out" : ""}` };
+}
+
+function buildRosterPlan(manager, { weeks = 4, addId = "", dropId = "", holdInjuries = true } = {}) {
+  const league = state.activeLeague;
+  if (!league || !manager) return { reason: "Connect a league and select a roster, or Explore demo." };
+  const slots = (league.rosterPositions || []).filter(slot => !["BN", "IR", "TAXI"].includes(slot));
+  if (!slots.length) return { reason: "Starter-slot settings are missing. Import league settings before planning." };
+  if (!parseNflWeek(state.week) || ![2, 4, 6].includes(weeks)) return { reason: "Choose a valid header week and a 2, 4, or 6 week window." };
+  const ids = getPlannerRosterIds(manager);
+  const inPool = player => player && !player.isPick && Boolean(player.isDemo) === Boolean(league.isDemo);
+  if (ids.some(id => !inPool(state.players[id]))) return { reason: "The active roster contains missing players or players from a different data pool. Refresh or re-import." };
+  if (dropId && !ids.includes(dropId)) return { reason: "The drop must be a player on the selected active roster." };
+  if (dropId && !addId) return { reason: "Choose an addition before selecting a one-for-one drop." };
+  if (addId && !getPlannerAvailablePlayers().some(player => String(player.id) === addId)) {
+    return { reason: "The addition must be an unowned, active NFL player from this league's data pool; duplicate name/position aliases are excluded conservatively." };
+  }
+  const proposedIds = ids.filter(id => id !== dropId).concat(addId ? [addId] : []);
+  const window = Array.from({ length: Math.min(weeks, 19 - Number(state.week)) }, (_, i) => Number(state.week) + i);
+  const coverage = (rosterIds, week) => {
+    const candidates = rosterIds.map(id => ({ m: state.players[id], score: 1 }))
+      .filter(({ m }) => {
+        const status = getPlannerAvailability(m, week, holdInjuries);
+        return status.kind !== "bye" && !status.heldOut;
+      });
+    const assign = pool => assignLineupPlayersToSlots(slots, pool).map(item => item?.m || null);
+    const possible = assign(candidates);
+    const confirmed = assign(candidates.filter(({ m }) => getPlannerAvailability(m, week, holdInjuries).kind === "game"));
+    return { possible, confirmed, filled: possible.filter(Boolean).length, known: confirmed.filter(Boolean).length,
+      gaps: slots.filter((slot, index) => !possible[index]) };
+  };
+  return { manager, slots, ids, proposedIds, window, addId, dropId, holdInjuries,
+    rows: window.map(week => ({ week, baseline: coverage(ids, week), proposed: coverage(proposedIds, week) })) };
+}
+
+function renderRosterPlanner(refreshChoices = true) {
+  const container = document.getElementById("plannerResults");
+  if (!container) return;
+  const manager = state.managers[parseInt(document.getElementById("teamSelect")?.value || "0", 10)];
+  const context = JSON.stringify([state.activeLeague?.provider, state.activeLeague?.leagueId, state.activeLeague?.season, manager?.rosterId]);
+  const add = document.getElementById("plannerAdd");
+  const drop = document.getElementById("plannerDrop");
+  const search = document.getElementById("plannerSearch");
+  if (context !== rosterPlannerContext) {
+    add.value = ""; drop.value = ""; search.value = "";
+    rosterPlannerContext = context;
+    refreshChoices = true;
+  }
+  const escape = draftEscapeHtml;
+  if (refreshChoices) {
+    const selectedAdd = add.value;
+    const selectedDrop = drop.value;
+    const query = search.value.trim().toLowerCase();
+    const pool = getPlannerAvailablePlayers();
+    const matching = pool.filter(player => `${player.name} ${player.position}`.toLowerCase().includes(query))
+      .sort((a, b) => a.name.localeCompare(b.name)).slice(0, 100);
+    const pinned = pool.find(player => String(player.id) === selectedAdd);
+    if (pinned && !matching.includes(pinned)) matching.unshift(pinned);
+    const option = player => `<option value="${escape(String(player.id))}">${escape(player.name)} (${escape(player.position)})</option>`;
+    add.innerHTML = `<option value="">No addition (first 100 matches; search to narrow)</option>${matching.map(option).join("")}`;
+    const ids = manager ? getPlannerRosterIds(manager) : [];
+    drop.innerHTML = `<option value="">No drop (requires a free roster spot)</option>${ids.map(id => state.players[id]).filter(Boolean).map(option).join("")}`;
+    if (matching.some(player => String(player.id) === selectedAdd)) add.value = selectedAdd;
+    if (ids.includes(selectedDrop)) drop.value = selectedDrop;
+  }
+  const report = buildRosterPlan(manager, { weeks: Number(document.getElementById("plannerWeeks").value),
+    addId: add.value, dropId: drop.value, holdInjuries: document.getElementById("plannerHoldInjuries").checked });
+  if (report.reason) {
+    container.innerHTML = `<p class="draft-empty">${escape(report.reason)}</p>`;
+    return;
+  }
+  const { rows, slots, proposedIds, window: weeks } = report;
+  const formatCoverage = result => `${result.known === result.filled ? result.filled : `${result.known}-${result.filled}`} / ${slots.length}`;
+  const totalGaps = rows.reduce((sum, row) => sum + slots.length - row.proposed.filled, 0);
+  const provisional = rows.some(row => row.proposed.known !== row.proposed.filled);
+  const summary = rows.map(row => `<tr><th scope="row">Week ${row.week}</th><td>${formatCoverage(row.baseline)}</td><td>${formatCoverage(row.proposed)}</td><td>${row.proposed.filled - row.baseline.filled > 0 ? "+" : ""}${row.proposed.filled - row.baseline.filled}</td><td>${escape(row.proposed.gaps.join(", ") || "No structural gap")}</td></tr>`).join("");
+  const matrix = proposedIds.map(id => {
+    const player = state.players[id];
+    return `<tr><th scope="row">${escape(player.name)}${id === report.addId ? " (added)" : ""}<small>${escape(player.position)} / ${escape(player.injuryStatus || "Health unknown")}</small></th>${weeks.map(week => {
+      const status = getPlannerAvailability(player, week, report.holdInjuries);
+      return `<td class="planner-${status.heldOut ? "out" : status.kind}">${escape(status.label)}</td>`;
+    }).join("")}</tr>`;
+  }).join("");
+  const priorities = rows.filter(row => row.proposed.gaps.length).map(row =>
+    `Week ${row.week}: cover ${row.proposed.gaps.join(", ")} before kickoff.`);
+  if (provisional) priorities.push("Some slots depend on players with unknown schedules. Verify their game/bye before relying on that coverage.");
+  if (!priorities.length) priorities.push("The roster can structurally fill every starter slot under these assumptions. Recheck injuries and provider eligibility before acting.");
+  container.innerHTML = `<section class="gm-briefing"><div class="draft-eyebrow">${escape(manager.teamName)} / WEEKS ${weeks[0]}-${weeks.at(-1)}${state.activeLeague.isDemo ? " / FICTIONAL DEMO" : ""}</div><h3>${totalGaps} uncovered starter-slot weeks</h3><p>${provisional ? "Provisional coverage: unknown schedules can change these results." : "Coverage under the selected bye and injury assumptions."} ${report.addId ? `Scenario: add ${escape(state.players[report.addId].name)}${report.dropId ? `, drop ${escape(state.players[report.dropId].name)}` : " using a free roster spot"}.` : "Current roster; choose an addition to compare a move."}</p></section>
+    <div class="table-wrap" role="region" aria-label="Weekly coverage comparison" tabindex="0"><table class="comparison-table"><caption>Starter coverage: known scheduled / possible including unknown schedules; not points</caption><thead><tr><th scope="col">Week</th><th scope="col">Current</th><th scope="col">Scenario</th><th scope="col">Possible slot change</th><th scope="col">Uncovered slots</th></tr></thead><tbody>${summary}</tbody></table></div>
+    <section class="comparison-card"><h3>Plan of action</h3><ul class="team-grade-priorities">${priorities.map(text => `<li>${escape(text)}</li>`).join("")}</ul></section>
+    <div class="table-wrap" role="region" aria-label="Roster availability by week" tabindex="0"><table class="comparison-table planner-matrix"><caption>Scenario roster availability; current injury labels are not recovery forecasts</caption><thead><tr><th scope="col">Player / current status</th>${weeks.map(week => `<th scope="col">Week ${week}</th>`).join("")}</tr></thead><tbody>${matrix}</tbody></table></div>
+    <details class="gm-secondary"><summary>Coverage method and limitations</summary><p class="comparison-note">Each player can fill only one eligible starter slot per week, including FLEX and superflex. IR, taxi, and picks are excluded. Assignments maximize slot coverage, not player quality or points; equivalent assignments can name different gaps. Known coverage uses scheduled games or explicit imported bye snapshots. Possible coverage also allows unknown schedules. A missing game alone is never called a bye: schedule-derived byes require 17 reciprocal games across Weeks 1-18 and a successful schedule source. A partial/failed source remains unknown. Imported planningByeWeek values are user-supplied, not independently verified.</p><p class="comparison-note">The injury toggle holds Out, IR, PUP, Suspended, and Doubtful players out across the entire window, or ignores those exclusions when unchecked. Questionable players remain eligible with their status shown. No return dates, future points, kickoff locks, roster limits, waiver eligibility, FAAB cost, or transactions are modeled. This is hypothetical planning, not a legal lineup recommendation. Scenarios are not saved and reset when switching rosters/leagues. The window ends at Week 18. ${state.activeLeague.isDemo ? "Demo byes and players are fictional." : escape(state.dataErrors.schedule || "Schedule freshness is shown in the header; provider schedules can change.")}</p></details>`;
+}
+
 function buildTeamGradeReport(managerIndex) {
   if (!state.activeLeague || state.managers.length < 2) return { reason: "Connect or import a league with at least two rosters, or choose Explore demo." };
   const manager = state.managers[managerIndex];
@@ -6646,6 +6815,7 @@ function renderAllViews(teamIdx) {
   renderMatchupSim(); drawSingleAnalyticsChart();
   renderPlayerComparison();
   renderTeamGrades();
+  renderRosterPlanner();
   renderLeagueRecords();
   renderSosTab(); renderPlayoffBracketTab(); renderDraftRoom();
   if (document.getElementById("tab-inbox")?.classList.contains("active")) renderGMInbox();
@@ -6660,6 +6830,17 @@ function bindControlEvents() {
   document.getElementById("recordsQuestion")?.addEventListener("change", renderLeagueRecords);
   ["compareSearch", "comparePosition"].forEach(id => document.getElementById(id)?.addEventListener(id === "compareSearch" ? "input" : "change", () => renderPlayerComparison()));
   ["comparePlayerA", "comparePlayerB"].forEach(id => document.getElementById(id)?.addEventListener("change", () => renderPlayerComparison(false)));
+  ["plannerWeeks", "plannerHoldInjuries", "plannerAdd", "plannerDrop"].forEach(id =>
+    document.getElementById(id)?.addEventListener("change", () => renderRosterPlanner(false)));
+  document.getElementById("plannerSearch")?.addEventListener("input", () => renderRosterPlanner());
+  document.getElementById("plannerReset")?.addEventListener("click", () => {
+    document.getElementById("plannerAdd").value = "";
+    document.getElementById("plannerDrop").value = "";
+    document.getElementById("plannerSearch").value = "";
+    document.getElementById("plannerWeeks").value = "4";
+    document.getElementById("plannerHoldInjuries").checked = true;
+    renderRosterPlanner();
+  });
 
   updateProviderControls();
   renderPlayerComparison();
@@ -6677,6 +6858,7 @@ function bindControlEvents() {
     updateProviderControls();
     renderPlayerComparison();
     renderTeamGrades();
+    renderRosterPlanner();
     renderLeagueRecords();
     setStatus("Provider changed. Connect a league to load its data.");
   });
@@ -6864,6 +7046,7 @@ function bindControlEvents() {
     if (document.getElementById("tab-inbox")?.classList.contains("active")) renderGMInbox();
     if (document.getElementById("tab-compare")?.classList.contains("active")) renderPlayerComparison();
     if (document.getElementById("tab-grades")?.classList.contains("active")) renderTeamGrades();
+    if (document.getElementById("tab-planner")?.classList.contains("active")) renderRosterPlanner();
   });
   weekSelect?.addEventListener("change", async e => {
     state.weekSelectionExplicit = true;

@@ -223,6 +223,49 @@ and Premium workflows have not been independently exercised.
 | Video recaps | Not implemented | Original shareable video generation and export |
 | Sleeper, ESPN, Yahoo connections | Sleeper API; ESPN access-dependent; Yahoo file import | Secure backend/provider-supported authentication where available |
 
+## Multiweek roster planning
+
+Open **Multiweek Planner** under Manage, select a roster in the header, and
+choose a 2-, 4-, or 6-week window beginning with the selected header week.
+Windows stop at Week 18. The weekly comparison shows starter-slot coverage,
+remaining gaps, and the change from an optional unowned-player addition and
+active-roster drop. No-drop additions assume a free roster spot.
+
+The availability matrix shows byes, scheduled opponents, unknown schedules,
+and current injury labels. Coverage reuses the lineup assignment engine with
+equal player weights: one player cannot cover multiple slots, and FLEX and
+superflex eligibility are respected. It measures **coverage, not points or
+player quality**. IR, taxi, and draft picks are excluded.
+
+Ranges distinguish coverage with known schedule/bye information from possible
+coverage including unknown schedules. Missing games are not automatically
+byes: a schedule-derived bye requires 17 reciprocal games across Weeks 1–18.
+Only fetched/cached schedules for that league season, checked within 12 hours,
+are used; seeded fallback schedules do not count as verified inputs.
+Individual supplied schedule games can still be incomplete or corrected.
+
+JSON player entries (including optional `freeAgents`) or CSV player rows may
+include `planningByeWeek`, an integer from 1 through 18. This is an explicit
+user-supplied snapshot assumption, not independently verified provider data.
+It takes precedence over fetched schedules for that imported player. Demo
+players have fictional bye snapshots to illustrate clashes.
+
+The injury toggle either holds currently Out/IR/PUP/Suspended/Doubtful players
+out for the entire window or ignores those exclusions. Questionable remains
+eligible with a visible status. Neither mode predicts recovery. Planning does
+not submit transactions or model future scores, roster limits, waiver
+deadlines, FAAB cost, or kickoff locks. Use the optimizer for this week's
+lineup decisions and verify moves with your provider. Search narrows the first
+100 available-player matches while retaining the selected candidate.
+Candidates must be active NFL players, not owned on any loaded league roster.
+Duplicate normalized name/position aliases are conservatively excluded from
+ownership/candidate lists, and imported candidates from other leagues are
+excluded. This does not independently verify provider waiver availability.
+Scenarios are temporary and reset when switching rosters or leagues.
+
+This closes the initial browser-only multiweek coverage gap, not all remaining
+FFWrapped parity gaps. Backend integrations remain deferred.
+
 ## Next releases
 
 1. Workspace restoration and versioned backup/restore with validation.
@@ -230,7 +273,7 @@ and Premium workflows have not been independently exercised.
    explicit missing-data states. News requires a licensed or permitted feed.
 3. Visibility-aware score refresh and action deadlines. Background push
    requires a service worker and notification delivery infrastructure.
-4. Multiweek roster planning and cross-provider outcome tracking.
+4. Expand multiweek roster planning with cross-provider outcome tracking.
 5. Historical record book, rivalries, calibrated season/dynasty grades, actual-draft reviews, and
    validated simulation features from the inventory above.
 6. Backend authentication, optional cross-device persistence, and video

@@ -441,6 +441,15 @@ canvas.chart-canvas { width:100%; height:300px; background:var(--bg-card); borde
 .gm-secondary > summary { cursor:pointer; font-size:12px; font-weight:700; }
 .gm-secondary > summary span { color:var(--text-muted); font-weight:400; margin-left:6px; }
 .gm-secondary[open] > summary { margin-bottom:14px; }
+.planner-controls { display:flex; flex-wrap:wrap; align-items:end; gap:14px; }
+.planner-controls label { display:flex; flex-direction:column; gap:7px; flex:1 1 200px; min-width:0; }
+.planner-controls select, .planner-controls input[type="search"] { width:100%; min-width:0; }
+.planner-controls label:has(input[type="checkbox"]) { flex-direction:row; align-items:center; }
+.planner-matrix th small { display:block; font-weight:400; color:var(--text-muted); margin-top:5px; }
+.planner-matrix td { min-width:135px; }
+.planner-bye, .planner-out { background:rgba(255,69,58,0.12); color:var(--bad); }
+.planner-unknown { background:rgba(255,214,10,0.08); color:var(--warn); }
+.planner-game { background:rgba(48,209,88,0.08); color:var(--good); }
 .gm-secondary > .draft-subtitle { display:block; margin-bottom:12px; }
 #gmShowMoreBtn { align-self:center; min-height:36px; }
 .portfolio-pressure-item { display:grid; grid-template-columns:max-content minmax(0,1fr) auto; align-items:center; gap:10px; padding:9px 10px; background:var(--bg-panel); border:1px solid var(--border); border-radius:6px; }

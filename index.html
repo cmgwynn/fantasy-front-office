@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Fantasy Front Office</title>
-  <link rel="stylesheet" href="styles.css?v=20261029-inbox-3" />
+  <link rel="stylesheet" href="styles.css?v=20261029-planner-1" />
 </head>
 <body>
 
@@ -53,6 +53,7 @@
       <option value="tab-intel">League Intel</option>
       <option value="tab-newsletter">League Newsletter</option>
       <option value="tab-opt">Lineup Optimizer</option>
+      <option value="tab-planner">Multiweek Planner</option>
       <option value="tab-waiver">Waiver Wire</option>
       <option value="tab-trade">Trade Center</option>
       <option value="tab-draft">Draft Room</option>
@@ -75,6 +76,7 @@
     <div class="nav-group">
       <div class="nav-group-title">Manage</div>
       <button class="nav-btn" data-tab="tab-opt">Lineup Optimizer</button>
+      <button class="nav-btn" data-tab="tab-planner">Multiweek Planner</button>
       <button class="nav-btn" data-tab="tab-waiver">Waiver Wire</button>
       <button class="nav-btn" data-tab="tab-trade">Trade Center</button>
       <button class="nav-btn" data-tab="tab-draft">Draft Room</button>
@@ -120,6 +122,25 @@
         <div class="sec-hdr" style="color:var(--warn);">TAXI SQUAD</div>
         <div class="table-wrap"><table id="taxiTbl"></table></div>
       </div>
+    </div>
+
+    <div id="tab-planner" class="tab-page">
+      <div>
+        <div class="draft-eyebrow">PLAN AHEAD</div>
+        <h2>Multiweek Roster Planner</h2>
+        <p class="comparison-note">Find bye clashes and starter-slot gaps before they arrive. Uses the selected roster and header week; no future point forecasts or provider transactions.</p>
+      </div>
+      <section class="comparison-card planner-controls">
+        <label for="plannerWeeks">Planning window
+          <select id="plannerWeeks"><option value="2">2 weeks</option><option value="4" selected>4 weeks</option><option value="6">6 weeks</option></select>
+        </label>
+        <label for="plannerHoldInjuries"><input id="plannerHoldInjuries" type="checkbox" checked /> Assume currently unavailable players remain out</label>
+        <label for="plannerSearch">Find an available player<input id="plannerSearch" type="search" placeholder="Search name or position" /></label>
+        <label for="plannerAdd">Hypothetical add<select id="plannerAdd"><option value="">No addition</option></select></label>
+        <label for="plannerDrop">Hypothetical drop<select id="plannerDrop"><option value="">No drop</option></select></label>
+        <button id="plannerReset" class="btn-builder-action" type="button">Reset scenario</button>
+      </section>
+      <div id="plannerResults" aria-live="polite"><p class="draft-empty">Connect a league or Explore demo to plan ahead.</p></div>
     </div>
 
     <div id="tab-grades" class="tab-page">
@@ -860,10 +881,10 @@
   <div id="monetizationDisclosure" class="monetization-disclosure" hidden></div>
 </footer>
 
-<script src="monetization-config.js?v=20261029-inbox-3"></script>
-<script src="data-fetch.js?v=20261029-inbox-3"></script>
-<script src="demo-league.js?v=20261029-inbox-3"></script>
-<script src="league-records.js?v=20261029-inbox-3"></script>
-<script src="app.js?v=20261029-inbox-3"></script>
+<script src="monetization-config.js?v=20261029-planner-1"></script>
+<script src="data-fetch.js?v=20261029-planner-1"></script>
+<script src="demo-league.js?v=20261029-planner-1"></script>
+<script src="league-records.js?v=20261029-planner-1"></script>
+<script src="app.js?v=20261029-planner-1"></script>
 </body>
 </html>

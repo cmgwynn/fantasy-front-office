@@ -18,7 +18,7 @@
       freeAgents: ["RB", "WR", "TE", "QB"].map((position, index) => ({
         playerId: `demo_free_${index}`, name: `Sample Free Agent ${position}`,
         position, nflTeam: "KC", projectedPoints: 22 - index,
-        seasonPpg: 18 - index, injuryStatus: "Healthy"
+        seasonPpg: 18 - index, injuryStatus: "Healthy", planningByeWeek: 10
       })),
       teams: ["Harbor Hawks", "Summit Wolves", "Metro Owls", "Coastal Foxes"].map((teamName, teamIndex) => ({
         teamName, manager: `Sample Manager ${teamIndex + 1}`,
@@ -31,7 +31,8 @@
           projectedPoints: scores[index] + teamIndex,
           seasonPpg: scores[index] + teamIndex,
           starter: index < 7,
-          injuryStatus: teamIndex === 0 && index === 1 ? "Out" : "Healthy"
+          injuryStatus: teamIndex === 0 && index === 1 ? "Out" : "Healthy",
+          planningByeWeek: index < 3 ? 7 : (index < 6 ? 8 : 9)
         }))
       }))
     };

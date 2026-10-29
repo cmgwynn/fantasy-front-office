@@ -20,7 +20,7 @@
   <h1>Optimizer Regression Checks</h1>
   <p id="summary" role="status">Loading the app runtime...</p>
   <ol id="results"></ol>
-  <iframe id="appFrame" src="../index.html?v=20261029-inbox-3" title="Optimizer test runtime"></iframe>
+  <iframe id="appFrame" src="../index.html?v=20261029-planner-1" title="Optimizer test runtime"></iframe>
   <script>
     async function runOptimizerFixtures() {
       const results = [];
@@ -31,6 +31,9 @@
       const savedDbTrades = state.dbTrades;
       const savedDraftAdp = draftState.adpByName;
       const savedRecordsCache = new Map(leagueRecordsCache);
+      const savedPlannerSchedules = new Map(plannerScheduleSources);
+      const savedPlannerControls = Object.fromEntries(["plannerWeeks", "plannerSearch", "plannerAdd", "plannerDrop"].map(id => [id, document.getElementById(id).value]));
+      const savedPlannerInjuryToggle = document.getElementById("plannerHoldInjuries").checked;
       const savedTeamIndex = document.getElementById("teamSelect").value;
       const savedActiveTab = document.querySelector(".tab-page.active")?.id;
       const savedCompareControls = Object.fromEntries(["compareSearch", "comparePosition", "comparePlayerA", "comparePlayerB"].map(id => [id, document.getElementById(id).value]));
@@ -127,6 +130,95 @@
         check("Inbox puts the action queue ahead of collapsed secondary panels",
           document.getElementById("gmInboxList").compareDocumentPosition(document.getElementById("portfolioPressureList")) & Node.DOCUMENT_POSITION_FOLLOWING &&
           document.querySelectorAll("#tab-inbox > details.gm-secondary:not([open])").length === 3);
+
+        const beforePlannerLeague = state.activeLeague;
+        const beforePlannerManagers = state.managers;
+        const beforePlannerWeek = state.week;
+        ["QB", "RB", "WR", "TE"].forEach((position, index) => addPlayer(`fixture_plan_${position}`, `Planner ${position}`, position, 10 + index));
+        const planManager = { rosterId: "planner-test", teamName: "Planner fixture", players: ["fixture_plan_QB", "fixture_plan_RB", "fixture_plan_WR"], reserve: [], taxi: [] };
+        state.activeLeague = { provider: "yahoo", leagueId: "planner-test", season: "2099", rosterPositions: ["QB", "RB", "FLEX", "BN"] };
+        state.managers = [planManager];
+        state.week = 8;
+        let plan = buildRosterPlan(planManager);
+        check("Multiweek planner marks missing schedules provisional rather than calling them byes",
+          plan.rows[0].baseline.known === 0 && plan.rows[0].baseline.filled === 3 &&
+          getPlannerAvailability(state.players.fixture_plan_QB, 8, true).kind === "unknown");
+        state.activeLeague.rosterPositions = ["RB", "FLEX"];
+        plan = buildRosterPlan({ ...planManager, players: ["fixture_plan_RB"] });
+        check("Multiweek planner never counts one player in two starter slots", plan.rows[0].baseline.filled === 1 && plan.rows[0].baseline.gaps.length === 1);
+        state.activeLeague.rosterPositions = ["QB", "RB", "FLEX"];
+        state.players.fixture_plan_RB.importedPlanningBye = 9;
+        plan = buildRosterPlan(planManager);
+        check("Multiweek planner removes bye players only in the matching week",
+          plan.rows[0].baseline.filled === 3 && plan.rows[1].baseline.filled === 2);
+        state.activeLeague.rosterPositions = ["QB", "FLEX", "FLEX"];
+        plan = buildRosterPlan(planManager, { addId: "fixture_plan_TE", dropId: "fixture_plan_QB" });
+        check("Multiweek add-drop can repair a FLEX gap while exposing a QB gap",
+          plan.rows[0].proposed.gaps.includes("QB") && plan.rows[1].proposed.filled === 2 &&
+          !plan.rows[1].proposed.gaps.includes("FLEX"));
+        plan = buildRosterPlan(planManager, { addId: "fixture_plan_TE" });
+        check("Multiweek free-slot addition improves only affected weeks",
+          plan.rows[0].proposed.filled === 3 && plan.rows[1].baseline.filled === 2 && plan.rows[1].proposed.filled === 3);
+        state.players.fixture_plan_QB.injuryStatus = "Out";
+        const heldPlan = buildRosterPlan(planManager);
+        const healthyPlan = buildRosterPlan(planManager, { holdInjuries: false });
+        check("Multiweek injury exclusions are explicit and reversible",
+          heldPlan.rows[0].baseline.filled === 2 && healthyPlan.rows[0].baseline.filled === 3);
+        state.players.fixture_plan_QB.injuryStatus = "Questionable";
+        check("Questionable players remain eligible with their current status visible", buildRosterPlan(planManager).rows[0].baseline.filled === 3);
+        plan = buildRosterPlan({ ...planManager, reserve: ["fixture_plan_RB"], taxi: ["fixture_plan_WR"] });
+        check("Multiweek planner excludes reserve and taxi players", plan.ids.length === 1 && plan.rows[0].baseline.filled === 1);
+        check("Multiweek planner rejects missing players, invalid drops and drop-only scenarios",
+          Boolean(buildRosterPlan({ ...planManager, players: ["missing_plan_player"] }).reason) &&
+          Boolean(buildRosterPlan(planManager, { dropId: "fixture_plan_TE", addId: "fixture_plan_TE" }).reason) &&
+          Boolean(buildRosterPlan(planManager, { dropId: "fixture_plan_QB" }).reason));
+        state.managers.push({ players: ["fixture_plan_TE"] });
+        check("Multiweek planner blocks additions owned by any league roster", Boolean(buildRosterPlan(planManager, { addId: "fixture_plan_TE" }).reason));
+        state.managers.pop();
+        state.players.fixture_plan_TE.isCurrentNfl = false;
+        check("Multiweek planner excludes inactive NFL additions", Boolean(buildRosterPlan(planManager, { addId: "fixture_plan_TE" }).reason));
+        state.players.fixture_plan_TE.isCurrentNfl = true;
+        addPlayer("fixture_plan_alias", "Planner RB", "RB", 10);
+        check("Multiweek planner blocks an owned player's duplicate provider alias", Boolean(buildRosterPlan(planManager, { addId: "fixture_plan_alias" }).reason));
+        check("Multiweek planner deduplicates roster aliases before counting coverage",
+          buildRosterPlan({ ...planManager, players: ["fixture_plan_RB", "fixture_plan_alias"] }).rows[0].baseline.filled === 1);
+        state.players.fixture_plan_TE.importedLeagueKey = "yahoo:another-league:2099";
+        check("Multiweek planner excludes stale imports from other leagues", Boolean(buildRosterPlan(planManager, { addId: "fixture_plan_TE" }).reason));
+        delete state.players.fixture_plan_TE.importedLeagueKey;
+        state.players.fixture_plan_TE.isDemo = true;
+        check("Multiweek planner isolates fictional and real player pools", Boolean(buildRosterPlan(planManager, { addId: "fixture_plan_TE" }).reason));
+        state.players.fixture_plan_TE.isDemo = false;
+        state.week = 18;
+        check("Multiweek windows stop at Week 18", buildRosterPlan(planManager, { weeks: 6 }).rows.length === 1);
+        check("Multiweek planner rejects invalid windows", Boolean(buildRosterPlan(planManager, { weeks: 3 }).reason));
+        state.week = 8;
+        state.players.fixture_plan_QB.team = "KC";
+        const plannerSchedule = { KC: {}, BUF: {} };
+        for (let week = 1; week <= 18; week++) {
+          if (week === 9) continue;
+          plannerSchedule.KC[week] = { opp: "BUF", isHome: true };
+          plannerSchedule.BUF[week] = { opp: "KC", isHome: false };
+        }
+        plannerScheduleSources.set("2099", { schedule: plannerSchedule, timestamp: Date.now() });
+        check("Multiweek planner uses season-specific fetched schedules and reciprocal full-season byes",
+          getPlannerAvailability(state.players.fixture_plan_QB, 8, true).kind === "game" &&
+          getPlannerAvailability(state.players.fixture_plan_QB, 9, true).kind === "bye");
+        delete plannerSchedule.KC[10];
+        check("Partial schedules never infer a bye from a missing game", getPlannerAvailability(state.players.fixture_plan_QB, 9, true).kind === "unknown");
+        plannerScheduleSources.get("2099").timestamp = Date.now() - 43200001;
+        check("Expired schedule sources do not masquerade as confirmed planner coverage", getPlannerAvailability(state.players.fixture_plan_QB, 8, true).kind === "unknown");
+        const plannerTeamOptions = document.getElementById("teamSelect").innerHTML;
+        const plannerTeamValue = document.getElementById("teamSelect").value;
+        document.getElementById("teamSelect").innerHTML = '<option value="0">Planner fixture</option>';
+        renderRosterPlanner();
+        check("Planner UI renders coverage and explicit hypothetical limitations", document.querySelectorAll("#plannerResults tbody tr").length === 7 &&
+          document.getElementById("plannerResults").textContent.includes("Scenarios are not saved"));
+        document.getElementById("teamSelect").innerHTML = plannerTeamOptions;
+        document.getElementById("teamSelect").value = plannerTeamValue;
+        state.activeLeague = beforePlannerLeague;
+        state.managers = beforePlannerManagers;
+        state.week = beforePlannerWeek;
+        renderRosterPlanner();
 
         window.fetch = async () => ({ ok: false, status: 404 });
         let failedRequestError = "";
@@ -641,6 +733,8 @@
         if (priorNewsletter === null) localStorage.removeItem("fantasy-front-office:newsletter:v1");
         else localStorage.setItem("fantasy-front-office:newsletter:v1", priorNewsletter);
       } finally {
+        plannerScheduleSources.clear();
+        savedPlannerSchedules.forEach((value, key) => plannerScheduleSources.set(key, value));
         leagueRecordsCache.clear();
         savedRecordsCache.forEach((value, key) => leagueRecordsCache.set(key, value));
         draftState.adpByName = savedDraftAdp;
@@ -654,6 +748,9 @@
         renderPlayerComparison();
         renderTeamGrades();
         renderLeagueRecords();
+        renderRosterPlanner();
+        Object.entries(savedPlannerControls).forEach(([id, value]) => { document.getElementById(id).value = value; });
+        document.getElementById("plannerHoldInjuries").checked = savedPlannerInjuryToggle;
         if (savedActiveTab) activateTab(savedActiveTab);
         state.week = savedWeek;
         state.weekSelectionExplicit = savedWeekExplicit;

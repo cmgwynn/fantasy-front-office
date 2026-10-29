@@ -38,7 +38,7 @@ test("HTML references existing local assets in the expected script order", () =>
   ].map(match => match[1]).filter(asset => !/^(?:[a-z]+:)?\/\//i.test(asset));
 
   assert.ok(assets.length > 0, "Expected local CSS or JavaScript assets.");
-  assert.ok(assets.every(asset => asset.endsWith("?v=20261029-inbox-3")), "All local assets must use the current release version.");
+  assert.ok(assets.every(asset => asset.endsWith("?v=20261029-planner-1")), "All local assets must use the current release version.");
   for (const asset of assets) {
     assert.ok(fs.existsSync(path.join(root, asset.split("?")[0])), `Missing local asset: ${asset}`);
   }
@@ -85,7 +85,7 @@ test("browser regression harness is wired to the app and includes saved-state co
   const html = read("tests/optimizer-regression.html");
   const appHtml = read("index.html");
 
-  assert.match(html, /src="\.\.\/index\.html\?v=20261029-inbox-3"/, "Regression harness must load the current app release.");
+  assert.match(html, /src="\.\.\/index\.html\?v=20261029-planner-1"/, "Regression harness must load the current app release.");
   assert.match(html, /runOptimizerFixtures/, "Regression harness must execute its fixtures.");
   assert.match(html, /Cross-league queue saves to target budget/, "Saved FAAB state should remain covered.");
   assert.match(html, /Newsletter standings movement uses saved issue/, "Saved newsletter state should remain covered.");
@@ -97,6 +97,8 @@ test("browser regression harness is wired to the app and includes saved-state co
   assert.match(html, /Team grades use exact documented thresholds/, "Team grade thresholds must retain regression coverage.");
   assert.match(appHtml, /id="draftGrades"/, "Draft review must be available in the Draft Room.");
   assert.match(html, /Draft ADP grades use exact round-value thresholds/, "Draft grade boundaries must remain covered.");
+  assert.match(appHtml, /id="tab-planner"/, "Multiweek planning must remain accessible.");
+  assert.match(html, /Multiweek planner never counts one player in two starter slots/, "Multiweek slot coverage must remain covered.");
 });
 
 test("shared fetch helper reports network, HTTP, JSON, and successful responses", async () => {
