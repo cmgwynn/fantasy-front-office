@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Fantasy Front Office</title>
-  <link rel="stylesheet" href="styles.css?v=20261029-week-espn-2" />
+  <link rel="stylesheet" href="styles.css?v=20261029-inbox-3" />
 </head>
 <body>
 
@@ -642,13 +642,9 @@
       </div>
       <div id="gmInboxSummary" class="gm-inbox-summary"></div>
       <section id="gmBriefing" class="gm-briefing" aria-label="Weekly GM briefing"></section>
-      <section class="portfolio-panel">
-        <div class="draft-panel-heading"><div><h3>Portfolio Pressure</h3><span class="draft-subtitle">Concentration, shared byes, and roster gaps across your tracked teams</span></div></div>
-        <div id="portfolioPressureList" class="portfolio-pressure-list"></div>
-      </section>
-      <section class="portfolio-panel">
+      <section class="portfolio-panel gm-queue">
         <div class="draft-panel-heading">
-          <div><h3>Prioritized Actions</h3><span id="gmInboxMeta" class="draft-subtitle">League-specific advice, with confidence and your outcome feedback</span></div>
+          <div><h3>Your action queue</h3><span id="gmInboxMeta" class="draft-subtitle">Highest-priority decisions first</span></div>
           <label class="gm-inbox-filter-label">Show
             <select id="gmInboxFilter" aria-label="Filter GM Inbox actions">
               <option value="all">All actions</option>
@@ -660,16 +656,23 @@
           </label>
         </div>
         <div id="gmInboxList" class="gm-inbox-list"></div>
+        <button id="gmShowMoreBtn" class="btn-builder-action" type="button" aria-expanded="false" aria-controls="gmInboxList" hidden>Show more actions</button>
       </section>
-      <section class="portfolio-panel">
-        <div class="draft-panel-heading"><div><h3>Advice Scorecard</h3><span id="gmOutcomeMeta" class="draft-subtitle">Actual player points are reconciled after the NFL week closes.</span></div></div>
+      <details class="gm-secondary">
+        <summary>Across your leagues <span id="gmPortfolioCount"></span></summary>
+        <div id="portfolioPressureList" class="portfolio-pressure-list"></div>
+      </details>
+      <details class="gm-secondary">
+        <summary>Advice performance</summary>
+        <p id="gmOutcomeMeta" class="draft-subtitle">Actual player points are reconciled after the NFL week closes.</p>
         <div id="gmOutcomeSummary" class="gm-outcome-summary"></div>
         <div class="table-wrap"><table id="gmOutcomeTable"></table></div>
-      </section>
-      <section class="portfolio-panel">
-        <div class="draft-panel-heading"><div><h3>Closed This Week</h3><span class="draft-subtitle">Completed advice can still be rated; dismissed items can be reopened.</span></div></div>
+      </details>
+      <details class="gm-secondary">
+        <summary>Closed this week <span id="gmClosedCount"></span></summary>
+        <p class="draft-subtitle">Rate completed advice or reopen dismissed actions.</p>
         <div id="gmInboxCompleted" class="gm-inbox-list"></div>
-      </section>
+      </details>
     </div>
 
     <div id="tab-newsletter" class="tab-page">
@@ -857,10 +860,10 @@
   <div id="monetizationDisclosure" class="monetization-disclosure" hidden></div>
 </footer>
 
-<script src="monetization-config.js?v=20261029-week-espn-2"></script>
-<script src="data-fetch.js?v=20261029-week-espn-2"></script>
-<script src="demo-league.js?v=20261029-week-espn-2"></script>
-<script src="league-records.js?v=20261029-week-espn-2"></script>
-<script src="app.js?v=20261029-week-espn-2"></script>
+<script src="monetization-config.js?v=20261029-inbox-3"></script>
+<script src="data-fetch.js?v=20261029-inbox-3"></script>
+<script src="demo-league.js?v=20261029-inbox-3"></script>
+<script src="league-records.js?v=20261029-inbox-3"></script>
+<script src="app.js?v=20261029-inbox-3"></script>
 </body>
 </html>

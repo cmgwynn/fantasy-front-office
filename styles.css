@@ -419,6 +419,30 @@ canvas.chart-canvas { width:100%; height:300px; background:var(--bg-card); borde
 .gm-confidence { padding:3px 6px; border:1px solid var(--border); border-radius:5px; color:var(--text-muted); font-size:9px; }
 .gm-action-controls button { min-height:30px; padding:6px 9px; font-size:10px; }
 .gm-action-state { color:var(--good); font-size:10px; font-weight:800; }
+#tab-inbox { gap:14px; }
+#tab-inbox #gmBriefing { padding:14px 16px; border-color:var(--border); border-left:3px solid var(--accent); background:var(--bg-card); gap:6px; }
+#tab-inbox #gmBriefing h3 { font-size:17px; }
+#tab-inbox .gm-inbox-summary > div { padding:9px 12px; }
+#tab-inbox .gm-inbox-summary strong { font-size:12px; }
+.gm-queue { gap:14px; }
+.gm-queue .draft-panel-heading { flex-wrap:wrap; gap:12px; }
+.gm-queue .gm-inbox-list { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
+#tab-inbox .gm-action-card { padding:14px; gap:10px; background:var(--bg-card); border-left-width:3px; }
+#tab-inbox .gm-action-card h3 { font-size:14px; line-height:1.45; }
+#tab-inbox .gm-action-card .gm-action-controls:empty { display:none; }
+#tab-inbox .gm-action-card > .gm-action-controls { margin-top:auto; }
+#tab-inbox .gm-action-card > .gm-action-controls button { min-height:34px; }
+.gm-action-details { border-top:1px solid var(--border); padding-top:9px; }
+.gm-action-details summary { cursor:pointer; font-size:10px; color:var(--text-muted); }
+.gm-action-details[open] { display:flex; flex-direction:column; gap:10px; }
+.gm-action-details p { margin:10px 0; }
+.gm-action-details .gm-action-controls { margin-top:10px; }
+.gm-secondary { min-width:0; border:1px solid var(--border); border-radius:8px; padding:12px 14px; background:var(--bg-card); }
+.gm-secondary > summary { cursor:pointer; font-size:12px; font-weight:700; }
+.gm-secondary > summary span { color:var(--text-muted); font-weight:400; margin-left:6px; }
+.gm-secondary[open] > summary { margin-bottom:14px; }
+.gm-secondary > .draft-subtitle { display:block; margin-bottom:12px; }
+#gmShowMoreBtn { align-self:center; min-height:36px; }
 .portfolio-pressure-item { display:grid; grid-template-columns:max-content minmax(0,1fr) auto; align-items:center; gap:10px; padding:9px 10px; background:var(--bg-panel); border:1px solid var(--border); border-radius:6px; }
 .portfolio-pressure-item > div { display:flex; flex-direction:column; gap:3px; min-width:0; }
 .portfolio-pressure-item button { min-height:30px; padding:6px 9px; font-size:10px; }
@@ -545,6 +569,7 @@ button:disabled { cursor:not-allowed; opacity:0.45; }
   .weekly-report-actions { align-items:stretch; }
   .portfolio-summary { grid-template-columns:1fr; }
   .gm-inbox-summary { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .gm-queue .gm-inbox-list { grid-template-columns:minmax(0,1fr); }
   .comparison-controls, .comparison-cards { grid-template-columns:minmax(0,1fr); }
   .rivalry-panel { padding:10px; }
   .rivalry-heatmap th, .rivalry-heatmap td { min-width:94px; padding:12px 8px; }

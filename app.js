@@ -4948,13 +4948,24 @@ function getConfidenceLabel(item, feedback, leagueKey, snapshots) {
   return `${item.confidence || "Low"} signal`;
 }
 
+let gmInboxExpanded = false;
+let gmInboxRenderVersion = 0;
+let gmInboxContext = "";
+
+function selectGmInboxActions(items, filter, expanded) {
+  const matching = filterGmRecommendations(items, filter);
+  return { matching, visible: expanded ? matching : matching.slice(0, 6) };
+}
+
 async function renderGMInbox(forceRefresh = false) {
+  const version = ++gmInboxRenderVersion;
   const summary = document.getElementById("gmInboxSummary");
   const list = document.getElementById("gmInboxList");
   const completedList = document.getElementById("gmInboxCompleted");
   const pressureList = document.getElementById("portfolioPressureList");
   const meta = document.getElementById("gmInboxMeta");
   const briefing = document.getElementById("gmBriefing");
+  const moreButton = document.getElementById("gmShowMoreBtn");
   if (!summary || !list || !pressureList) return;
   if (!state.activeLeague || !state.managers.length) {
     if (briefing) briefing.innerHTML = `<h3>Your weekly decision desk</h3><p>Connect a league or choose Explore demo to see lineup decisions, roster risks, and waiver options with projected impact.</p>`;
@@ -4965,15 +4976,23 @@ async function renderGMInbox(forceRefresh = false) {
     document.getElementById("gmOutcomeSummary").innerHTML = "";
     document.getElementById("gmOutcomeTable").innerHTML = `<tbody><tr><td class="draft-empty">Connect a league to track recommendation outcomes.</td></tr></tbody>`;
     document.getElementById("gmOutcomeMeta").textContent = "Actual player points are reconciled after the NFL week closes.";
+    document.getElementById("gmClosedCount").textContent = "";
+    document.getElementById("gmPortfolioCount").textContent = "";
+    if (meta) meta.textContent = "Connect a league or explore the demo to get started.";
+    if (moreButton) moreButton.hidden = true;
     return;
   }
+  const context = `${getNewsletterLeagueKey()}:${state.week}:${document.getElementById("teamSelect")?.value}`;
+  if (gmInboxContext !== context) { gmInboxExpanded = false; gmInboxContext = context; }
   if (forceRefresh) {
     portfolioState.rostersByLeague.clear();
     gmOutcomeCache.clear();
     sleeperNflStateCache = { data: null, checkedAt: 0 };
   }
   await Promise.all(state.leagues.map(league => getPortfolioLeagueRosters(league).catch(() => [])));
+  if (version !== gmInboxRenderVersion) return;
   await refreshGameDaySchedule();
+  if (version !== gmInboxRenderVersion) return;
   const pressure = buildPortfolioPressureRecommendations();
   const weeklyRecommendations = buildWeeklyRecommendations();
   let nflState = null;
@@ -4982,31 +5001,37 @@ async function renderGMInbox(forceRefresh = false) {
   }
   captureStartSitSnapshots(weeklyRecommendations, nflState);
   await reconcileGmAdviceOutcomes(nflState, forceRefresh);
+  if (version !== gmInboxRenderVersion) return;
   const adviceSnapshots = readGmAdviceSnapshots();
   const allRecommendations = [...weeklyRecommendations, ...pressure].sort((a, b) => b.priority - a.priority);
   const feedback = readGmFeedback();
   const leagueKey = getNewsletterLeagueKey();
-  const activeRecommendations = allRecommendations.filter(item => !["done", "dismissed"].includes(feedback[getGmRecommendationKey(item)]?.status)).slice(0, 12);
-  const closedRecommendations = allRecommendations.filter(item => ["done", "dismissed"].includes(feedback[getGmRecommendationKey(item)]?.status)).slice(0, 8);
+  const activeRecommendations = allRecommendations.filter(item => !["done", "dismissed"].includes(feedback[getGmRecommendationKey(item)]?.status));
+  const closedRecommendations = allRecommendations.filter(item => ["done", "dismissed"].includes(feedback[getGmRecommendationKey(item)]?.status));
   const inboxFilter = document.getElementById("gmInboxFilter")?.value || "all";
-  const visibleRecommendations = filterGmRecommendations(activeRecommendations, inboxFilter);
+  const { matching, visible: visibleRecommendations } = selectGmInboxActions(activeRecommendations, inboxFilter, gmInboxExpanded);
   const urgentCount = activeRecommendations.filter(item => item.level === "urgent").length;
   const selectedManager = state.managers[parseInt(document.getElementById("teamSelect")?.value || "0", 10)];
   if (briefing) {
-    const lineup = activeRecommendations.filter(item => item.type === "Start / sit");
-    const risks = activeRecommendations.filter(item => ["Roster risk", "Bye week"].includes(item.type));
     const sourceNote = getProjectionSourceNote();
-    briefing.innerHTML = `<div class="draft-eyebrow">WEEK ${state.week} BRIEFING${state.activeLeague.isDemo ? " · DEMO" : ""}</div><h3>${draftEscapeHtml(selectedManager?.teamName || "Your roster")}: ${urgentCount ? `${urgentCount} urgent decision${urgentCount === 1 ? "" : "s"}` : "Plan your next move"}</h3><p>${lineup.length} projected lineup upgrade${lineup.length === 1 ? "" : "s"} · ${risks.length} injury or bye signal${risks.length === 1 ? "" : "s"}. Review recommendations before player kickoff; provider rules determine when changes lock.</p><p class="gm-briefing-source">${draftEscapeHtml(sourceNote)}</p>`;
+    briefing.innerHTML = `<div class="draft-eyebrow">WEEK ${state.week}${state.activeLeague.isDemo ? " · DEMO" : ""} · DECISION BRIEF</div><h3>${urgentCount ? `${urgentCount} urgent decision${urgentCount === 1 ? "" : "s"} to review` : activeRecommendations.length ? "Your next moves, in priority order" : "You're caught up"}</h3><p class="gm-briefing-source">${draftEscapeHtml(sourceNote)} Review lineup decisions before kickoff.</p>`;
   }
   const leagueRecords = Object.values(feedback).filter(record => record.leagueKey === leagueKey);
-  const completed = leagueRecords.filter(record => record.status === "done").length;
   const rated = leagueRecords.filter(record => typeof record.helpful === "boolean");
   const helpfulRate = rated.length ? `${Math.round(rated.filter(record => record.helpful).length / rated.length * 100)}% helpful · ${rated.length} ratings` : "No ratings yet";
   summary.innerHTML = [
     ["Active league", state.activeLeague.name], ["Selected roster", selectedManager?.teamName || "Roster"],
     ["Open actions", activeRecommendations.length], ["Urgent", urgentCount]
   ].map(([label, value]) => `<div><span>${draftEscapeHtml(label)}</span><strong>${draftEscapeHtml(value)}</strong></div>`).join("");
-  if (meta) meta.textContent = `Showing ${visibleRecommendations.length} of ${activeRecommendations.length} open actions · Week ${state.week} · ${helpfulRate} · confidence adapts after 5 ratings per category`;
+  if (meta) meta.textContent = `${matching.length} ${inboxFilter === "all" ? "open" : "matching"} action${matching.length === 1 ? "" : "s"}${matching.length > visibleRecommendations.length ? ` · showing top ${visibleRecommendations.length}` : ""}`;
+  if (moreButton) {
+    moreButton.hidden = matching.length <= 6;
+    moreButton.textContent = gmInboxExpanded ? "Show fewer actions" : `Show all ${matching.length} actions`;
+    moreButton.setAttribute("aria-expanded", String(gmInboxExpanded));
+  }
+  document.getElementById("gmClosedCount").textContent = `(${closedRecommendations.length})`;
+  document.getElementById("gmPortfolioCount").textContent = pressure.length ? `(${pressure.length} signals)` : "(no flags)";
+  document.getElementById("gmOutcomeMeta").textContent = `Actual player points are reconciled after the NFL week closes. ${helpfulRate}. Confidence adapts after 5 ratings per category.`;
   renderGmOutcomeScorecard(adviceSnapshots, feedback, leagueKey);
   if (pressure.length) {
     const injuryCount = pressure.filter(item => item.title.includes("risk is concentrated")).length;
@@ -5028,7 +5053,7 @@ async function renderGMInbox(forceRefresh = false) {
     const tradeData = action === "trade" ? `data-gm-opponent="${draftEscapeHtml(item.opponentRosterId || "")}"` : "";
     const compare = item.comparisonPlayerId && item.playerId ? `<button type="button" class="btn-builder-action" data-compare-a="${draftEscapeHtml(item.comparisonPlayerId)}" data-compare-b="${draftEscapeHtml(item.playerId)}">Compare players</button>` : "";
     const review = `<button type="button" data-gm-open="${draftEscapeHtml(action)}" data-gm-player="${draftEscapeHtml(item.playerId || "")}" ${tradeData}>${action === "trade" ? "Build trade" : action === "waivers" ? "Review waivers" : action === "watch" ? "Watch player" : action === "portfolio" ? "Review portfolio" : "Review lineup"}</button>${compare}`;
-    return `<article class="gm-action-card ${item.level || "normal"}"><div class="gm-action-topline"><span class="recommendation-priority ${item.level || "normal"}">${draftEscapeHtml(item.type)}</span><span class="gm-confidence">${draftEscapeHtml(confidence)}</span><span class="gm-action-value">${draftEscapeHtml(item.value || "Review")}</span></div><h3>${draftEscapeHtml(item.title)}</h3><p>${draftEscapeHtml(item.detail)}</p><div class="gm-action-controls">${isClosed ? "" : review}${controls}</div></article>`;
+    return `<article class="gm-action-card ${item.level || "normal"}"><div class="gm-action-topline"><span class="recommendation-priority ${item.level || "normal"}">${item.level === "urgent" ? "Urgent · " : ""}${draftEscapeHtml(item.type)}</span><span class="gm-action-value">${draftEscapeHtml(item.value || "Review")}</span></div><h3>${draftEscapeHtml(item.title)}</h3><div class="gm-action-controls">${isClosed ? "" : review}</div><details class="gm-action-details"><summary>Why this suggestion &amp; options</summary><p>${draftEscapeHtml(item.detail)}</p><span class="gm-confidence">${draftEscapeHtml(confidence)}</span><div class="gm-action-controls">${controls}</div></details></article>`;
   };
   list.innerHTML = visibleRecommendations.length
     ? visibleRecommendations.map(item => renderAction(item, false)).join("")
@@ -6768,7 +6793,8 @@ function bindControlEvents() {
   });
   document.getElementById("refreshIntelBtn")?.addEventListener("click", () => { portfolioState.rostersByLeague.clear(); renderLeagueIntelTab(true); });
   document.getElementById("refreshGmInboxBtn")?.addEventListener("click", () => renderGMInbox(true));
-  document.getElementById("gmInboxFilter")?.addEventListener("change", () => renderGMInbox());
+  document.getElementById("gmInboxFilter")?.addEventListener("change", () => { gmInboxExpanded = false; renderGMInbox(); });
+  document.getElementById("gmShowMoreBtn")?.addEventListener("click", () => { gmInboxExpanded = !gmInboxExpanded; renderGMInbox(); });
   document.getElementById("gmInboxList")?.addEventListener("click", handleGMInboxClick);
   document.getElementById("gmInboxCompleted")?.addEventListener("click", handleGMInboxClick);
   document.getElementById("portfolioPressureList")?.addEventListener("click", handleGMInboxClick);

@@ -46,6 +46,15 @@ GM Inbox now includes a weekly briefing, projection provenance, roster risks,
 and waiver comparisons against an optimized lineup with a bench drop candidate.
 Recommendations do not submit provider transactions.
 
+The Inbox emphasizes its action queue ahead of secondary panels. It shows the
+top six matching actions, with a Show all / Show fewer control; category filters
+run before the display limit so lower-ranked categories remain reachable.
+Cards keep the recommendation, impact, and review/compare shortcuts visible.
+Reasons, confidence, and done/dismiss/feedback controls live under each card's
+native disclosure. Portfolio signals, outcome performance, and closed actions
+are collapsed by default, with counts where applicable. Desktop uses a two-column
+queue; mobile uses one column. Changing roster/week/league resets expansion.
+
 ### Player comparison
 
 Open **Player Compare** in desktop or mobile navigation, or use **Compare

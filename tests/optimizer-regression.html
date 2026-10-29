@@ -20,7 +20,7 @@
   <h1>Optimizer Regression Checks</h1>
   <p id="summary" role="status">Loading the app runtime...</p>
   <ol id="results"></ol>
-  <iframe id="appFrame" src="../index.html?v=20261029-week-espn-2" title="Optimizer test runtime"></iframe>
+  <iframe id="appFrame" src="../index.html?v=20261029-inbox-3" title="Optimizer test runtime"></iframe>
   <script>
     async function runOptimizerFixtures() {
       const results = [];
@@ -119,6 +119,14 @@
           filterGmRecommendations(filterFixture, "trade").length === 1 &&
           filterGmRecommendations(filterFixture, "portfolio").length === 1 &&
           filterGmRecommendations(filterFixture, "all").length === filterFixture.length);
+        const crowdedInbox = [...Array.from({ length: 14 }, () => ({ type: "Start / sit" })), { type: "Waiver" }];
+        check("Inbox filters before limiting cards so lower-priority categories remain reachable",
+          selectGmInboxActions(crowdedInbox, "waivers", false).visible.length === 1 &&
+          selectGmInboxActions(crowdedInbox, "all", false).visible.length === 6 &&
+          selectGmInboxActions(crowdedInbox, "all", true).visible.length === 15);
+        check("Inbox puts the action queue ahead of collapsed secondary panels",
+          document.getElementById("gmInboxList").compareDocumentPosition(document.getElementById("portfolioPressureList")) & Node.DOCUMENT_POSITION_FOLLOWING &&
+          document.querySelectorAll("#tab-inbox > details.gm-secondary:not([open])").length === 3);
 
         window.fetch = async () => ({ ok: false, status: 404 });
         let failedRequestError = "";
