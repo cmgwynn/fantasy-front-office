@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Fantasy Front Office</title>
-  <link rel="stylesheet" href="styles.css?v=20261029-workspace-1" />
+  <link rel="stylesheet" href="styles.css?v=20261029-records-2" />
 </head>
 <body>
 
@@ -126,7 +126,7 @@
   <div class="content-stack">
     <div id="workspaceSnapshotBanner" class="workspace-banner" role="status" hidden></div>
     <div id="tab-workspace" class="tab-page">
-      <div><div class="draft-eyebrow">ON YOUR DEVICE</div><h2>Workspace &amp; Backups</h2><p class="comparison-note">Keep a league snapshot and your saved local plans. No account, cloud upload, or provider credentials.</p></div>
+      <div><div class="draft-eyebrow">ON YOUR DEVICE</div><h2>Workspace &amp; Backups</h2><p class="comparison-note">Your current league, roster, week, and section are remembered automatically for page refreshes. Connected leagues reload provider data where access is available; imports resume their snapshot. Manual backups provide a separate recovery copy. No account, cloud upload, or provider credentials.</p></div>
       <section class="comparison-card">
         <h3>Pick up where you left off</h3>
         <p class="comparison-note">Save the active league, roster data, current view, and multiweek scenario. Snapshots resume on this browser without fetching fresh data; local draft/FAAB/newsletter/Inbox/watchlist/pick'em saves keep their latest device changes. Downloaded backups also capture those local plans for explicit restoration. Reconnect to update your league.</p>
@@ -210,7 +210,6 @@
         <h2>Records &amp; Rivalries</h2>
         <p class="comparison-note">Completed head-to-head results for the active league and season only. Not an all-time record book; identities are team IDs, not cross-season manager identities.</p>
       </div>
-      <button id="loadRecordsBtn" class="btn-builder-action" type="button">Load / refresh completed results</button>
       <p id="recordsStatus" class="comparison-note" role="status">Connect a league or Explore demo to view records.</p>
       <div id="leagueRecordsResults"></div>
       <section class="comparison-card">
@@ -933,11 +932,11 @@
   <div id="monetizationDisclosure" class="monetization-disclosure" hidden></div>
 </footer>
 
-<script src="monetization-config.js?v=20261029-workspace-1"></script>
-<script src="data-fetch.js?v=20261029-workspace-1"></script>
-<script src="demo-league.js?v=20261029-workspace-1"></script>
-<script src="league-records.js?v=20261029-workspace-1"></script>
-<script src="workspace-backup.js?v=20261029-workspace-1"></script>
-<script src="app.js?v=20261029-workspace-1"></script>
+<script src="monetization-config.js?v=20261029-records-2"></script>
+<script src="data-fetch.js?v=20261029-records-2"></script>
+<script src="demo-league.js?v=20261029-records-2"></script>
+<script src="league-records.js?v=20261029-records-2"></script>
+<script src="workspace-backup.js?v=20261029-records-2"></script>
+<script src="app.js?v=20261029-records-2"></script>
 </body>
 </html>

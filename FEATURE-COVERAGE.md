@@ -14,7 +14,7 @@ regression suite before publishing. Verify the public app after deployment.
 HTML assets and the regression iframe use a shared release query version.
 Bump those versions together whenever publishing changed assets to avoid a new
 HTML page reusing older cached scripts or styles.
-Fresh visits start on GM Inbox unless a manually saved workspace resumes.
+Fresh visits start on GM Inbox unless a previous league or manually saved workspace resumes.
 Player Compare and Team Grades are separate navigation items, and draft
 features are inside Draft Room. Loading a provider
 league is separate from loading the UI; a provider authorization failure does
@@ -36,6 +36,17 @@ original line icons, and 48px group targets. At widths up to 960px, a native
 All existing tools remain accessible; no analytics were removed.
 
 ### Workspace snapshots and backups
+
+Normal refreshes automatically retain the last loaded league, selected roster
+(by provider roster ID, not array order), selected week, and current section.
+Successful league loads/imports store a separate reload snapshot in IndexedDB;
+roster and view selections are stored synchronously in local storage.
+Sleeper/ESPN reloads attempt to fetch current league data before restoring the
+selected roster and view. Access/network failures retain an explicitly labeled
+snapshot with the provider error shown. Yahoo imports and fictional demo data
+remain snapshots and need re-importing for new data. No provider credentials
+are saved. The last league reload copy takes precedence over a manual resume
+copy; explicit connection/week links and `?resume=0` bypass both.
 
 Open **Home > Workspace & Backups**. **Save on this device** commits a manual
 snapshot to IndexedDB and resumes it on a later unlinked visit. It captures one
@@ -63,8 +74,10 @@ backup, while preserving unrelated browser data. Local-plan writes roll back
 if a write or the IndexedDB commit fails; rollback failure is explicitly
 reported. The page reloads only after the snapshot transaction commits.
 
-**Stop resuming snapshot** removes only the device resume copy, not the current
-session, local plans, downloaded backups, or NFL caches. Explicit provider,
+**Stop resuming snapshot** removes both device resume copies and reload
+selection, not the current
+session, local plans, downloaded backups, or NFL caches. Loading/importing a
+league again enables reload retention. Explicit provider,
 league/user, or week links take precedence over snapshot resume. `?resume=0`
 also bypasses resume without deleting it; the browser test harness uses this
 to avoid loading personal snapshots. Errors preserve the saved copy and are
@@ -192,14 +205,23 @@ browser regression suite. Live provider access is not covered by local checks.
 
 ### Season records, rivalries, and fact lookup
 
-Open **Records & Rivalries**. Sleeper's **Load / refresh completed results**
-fetches prior regular-season weeks using verified NFL season/week status,
+Open **Records & Rivalries** to automatically load current completed results.
+There is no in-tab refresh button. Reopening the section fetches again;
+overlapping requests for the same league/season share one load. Loading state
+is visible and exposed with `aria-busy`. Switching leagues loads the active
+league without an older in-flight request replacing its display. Refreshing
+the page retains the selected league/roster and reloads connected-provider data.
+Saved manual workspaces and imports show their snapshot results instead of
+silently claiming a live refresh.
+
+Sleeper's automatic loader fetches prior regular-season weeks using verified NFL season/week status,
 excluding the current week and fantasy playoffs. The selected display week
 does not determine which games are complete. Requests run in batches of at
 most six; each week requires complete roster coverage and valid paired scores.
 Byes with no matchup ID are excluded. Failed weeks are explicitly listed, and
 partial coverage is shown. A failed season-status refresh retains prior data
-with a warning. Results are in-memory and must be loaded again after refresh.
+with a warning. Connected-provider results reload automatically after refresh;
+snapshot backups can retain the previously loaded results.
 
 The view calculates highest team score, closest non-tied game, largest margin,
 and per-pair wins/losses/ties, point totals, and average signed margins. Zero
@@ -238,7 +260,7 @@ rejected. User-supplied completion and completeness are not independently
 verified. Demo results are fictional illustrations, not reconciled historical
 standings.
 
-ESPN now offers the same load action, fetching `mMatchup` history with existing
+ESPN uses the same automatic loading flow, fetching `mMatchup` history with existing
 session credentials. Each game needs an explicit regular-season classification,
 a single scoring-week mapping ending before the provider's current scoring
 period, numeric final scores, and a final HOME/AWAY/TIE result consistent with

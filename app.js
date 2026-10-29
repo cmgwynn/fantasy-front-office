@@ -21,6 +21,8 @@ function activateTab(tabId) {
     group.querySelector(".nav-current").textContent = activeButton?.textContent || "";
     if (activeButton) group.open = true;
   });
+  if (tabId === "tab-records") loadLeagueRecords();
+  rememberWorkspaceSelection();
   return targetPage;
 }
 
@@ -47,7 +49,6 @@ document.addEventListener("click", e => {
       case "tab-grades": renderTeamGrades(); break;
       case "tab-planner": renderRosterPlanner(); break;
       case "tab-workspace": refreshWorkspaceStatus(); break;
-      case "tab-records": renderLeagueRecords(); break;
       case "tab-waiver": drawWaiverChart(); break;
       case "tab-analytics": drawSingleAnalyticsChart(); break;
       case "tab-compare":
@@ -1597,6 +1598,7 @@ async function importYahooRosterFile(file, { demo = false } = {}) {
     markDataSource("account");
     populateHistorySeasonOptions();
     await loadHistoricalSeason();
+    await reloadWorkspaceWrite;
     setStatus(demo ? "Demo league loaded. All sample players and results are fictional." : `Imported ${league.name} from Yahoo file • ${state.managers.length} teams`);
   } catch (error) {
     markDataSource("account", error);
@@ -1838,6 +1840,7 @@ async function loadEspnLeague(idx) {
   renderAllViews(0);
   await buildTradeDatabase();
   scanPlayerAlertChanges();
+  await reloadWorkspaceWrite;
   setStatus(`Imported ${league.name} from ESPN • ${state.managers.length} teams • Week ${state.week}`);
 }
 
@@ -2014,6 +2017,7 @@ async function loadLeague(idx) {
   renderAllViews(myIdx);
   await buildTradeDatabase();
   scanPlayerAlertChanges();
+  await reloadWorkspaceWrite;
   setStatus(`Synced ${state.activeLeague.name} (${state.activeLeague.playoffTeams}-Team Playoff) • Week ${state.week}`);
 }
 
@@ -6348,16 +6352,28 @@ function getLeagueRecordsKey(league = state.activeLeague) {
   return league ? JSON.stringify([league.provider, league.leagueId, league.season]) : "";
 }
 
-async function loadLeagueRecords() {
+const leagueRecordsLoads = new Map();
+
+function loadLeagueRecords() {
   const league = state.activeLeague;
-  const button = document.getElementById("loadRecordsBtn");
-  const status = document.getElementById("recordsStatus");
-  if (!league) { renderLeagueRecords(); return; }
-  if (!["sleeper", "espn"].includes(league.provider)) { renderLeagueRecords(); return; }
+  if (!league || state.workspaceSnapshot || !["sleeper", "espn"].includes(league.provider)) {
+    renderLeagueRecords();
+    return Promise.resolve();
+  }
   const key = getLeagueRecordsKey(league);
+  if (leagueRecordsLoads.has(key)) return leagueRecordsLoads.get(key);
   const teamIds = new Set(state.managers.map(manager => String(manager.rosterId)));
-  button.disabled = true;
-  status.textContent = league.provider === "espn" ? "Loading ESPN completed regular-season matchups..." : "Loading completed regular-season weeks (up to 6 requests at a time)...";
+  const pending = fetchLeagueRecords(league, teamIds).finally(() => {
+    leagueRecordsLoads.delete(key);
+    if (getLeagueRecordsKey() === key) renderLeagueRecords();
+  });
+  leagueRecordsLoads.set(key, pending);
+  renderLeagueRecords();
+  return pending;
+}
+
+async function fetchLeagueRecords(league, teamIds) {
+  const key = getLeagueRecordsKey(league);
   try {
     if (league.provider === "espn") {
       const data = await fetchEspnLeague(league.leagueId, league.season, ["mSettings", "mTeam", "mMatchup"]);
@@ -6407,9 +6423,6 @@ async function loadLeagueRecords() {
     leagueRecordsCache.set(key, { games: prior?.games || [], source: prior?.source || (league.provider === "espn" ? "ESPN" : "Sleeper"),
       coverage: prior ? `Previously loaded results retained. ${prior.coverage}` : "No results loaded.",
       errors: [`Refresh failed: ${error.message}`] });
-  } finally {
-    button.disabled = false;
-    renderLeagueRecords();
   }
 }
 
@@ -6417,15 +6430,18 @@ function renderLeagueRecords() {
   const container = document.getElementById("leagueRecordsResults");
   const status = document.getElementById("recordsStatus");
   const answer = document.getElementById("recordsAnswer");
-  const button = document.getElementById("loadRecordsBtn");
-  if (!container || !status || !answer || !button) return;
+  if (!container || !status || !answer) return;
   const league = state.activeLeague;
-  const record = leagueRecordsCache.get(getLeagueRecordsKey());
-  button.hidden = !league || !["sleeper", "espn"].includes(league.provider);
+  const key = getLeagueRecordsKey();
+  const record = leagueRecordsCache.get(key);
+  const loading = leagueRecordsLoads.has(key);
+  container.setAttribute("aria-busy", String(loading));
+  const loadingNote = loading ? "Loading current completed regular-season results... " : "";
   if (!league || !record) {
-    status.textContent = !league ? "Connect a league or Explore demo to view records."
-      : ["sleeper", "espn"].includes(league.provider) ? `Choose Load / refresh completed results. No historical matchup scores have been fetched yet.${league.provider === "espn" ? " ESPN access requires a permitted league session; multiweek matchups and tiebreaker overrides are not supported." : ""}`
-      : "Yahoo JSON imports can supply completedMatchups; season standings alone cannot establish head-to-head records.";
+    status.textContent = loadingNote || (!league ? "Connect a league or Explore demo to view records."
+      : state.workspaceSnapshot ? "No completed results in this saved snapshot. Reconnect to load current records."
+      : ["sleeper", "espn"].includes(league.provider) ? `Completed results load automatically when this section opens.${league.provider === "espn" ? " ESPN access requires a permitted league session; multiweek matchups and tiebreaker overrides are not supported." : ""}`
+      : "Yahoo JSON imports can supply completedMatchups; season standings alone cannot establish head-to-head records.");
     container.innerHTML = "";
     answer.textContent = "No completed results loaded. No record can be established.";
     return;
@@ -6434,7 +6450,7 @@ function renderLeagueRecords() {
   const escape = draftEscapeHtml;
   const name = id => state.managers.find(manager => String(manager.rosterId) === id)?.teamName || `Team ${id}`;
   const gameLabel = game => `Week ${game.week}: ${name(game.homeId)} ${game.homeScore.toFixed(2)} - ${name(game.awayId)} ${game.awayScore.toFixed(2)}`;
-  status.textContent = `${league.name} · ${league.season} · ${record.source}. ${report.games.length} games. ${record.coverage}${record.errors.length ? ` INCOMPLETE / UNVERIFIED REFRESH: ${record.errors.join(" | ")}` : ""}`;
+  status.textContent = `${loadingNote}${state.workspaceSnapshot ? "Saved snapshot; reconnect for current records. " : ""}${league.name} · ${league.season} · ${record.source}. ${report.games.length} games. ${record.coverage}${record.errors.length ? ` INCOMPLETE / UNVERIFIED REFRESH: ${record.errors.join(" | ")} Refresh the page to retry, or reopen this section.` : ""}`;
   if (!report.games.length) {
     container.innerHTML = `<p class="draft-empty">No completed head-to-head results available. Projections and standings are not substituted for game scores.</p>`;
     answer.textContent = "No completed results loaded. No record can be established.";
@@ -6831,6 +6847,8 @@ function renderAllViews(teamIdx) {
   renderTeamGrades();
   renderRosterPlanner();
   renderLeagueRecords();
+  if (document.getElementById("tab-records")?.classList.contains("active")) loadLeagueRecords();
+  saveReloadWorkspace();
   renderSosTab(); renderPlayoffBracketTab(); renderDraftRoom();
   if (document.getElementById("tab-inbox")?.classList.contains("active")) renderGMInbox();
   if (document.getElementById("tab-newsletter")?.classList.contains("active")) renderLeagueNewsletter();
@@ -6841,7 +6859,6 @@ function bindControlEvents() {
   bindWorkspaceControls();
   ensureDynamicTradeControls();
   const weekSelect = document.getElementById("weekSelect");
-  document.getElementById("loadRecordsBtn")?.addEventListener("click", loadLeagueRecords);
   document.getElementById("recordsQuestion")?.addEventListener("change", renderLeagueRecords);
   ["compareSearch", "comparePosition"].forEach(id => document.getElementById(id)?.addEventListener(id === "compareSearch" ? "input" : "change", () => renderPlayerComparison()));
   ["comparePlayerA", "comparePlayerB"].forEach(id => document.getElementById(id)?.addEventListener("change", () => renderPlayerComparison(false)));
@@ -6860,6 +6877,7 @@ function bindControlEvents() {
   updateProviderControls();
   renderPlayerComparison();
   document.getElementById("providerSelect")?.addEventListener("change", () => {
+    forgetReloadWorkspace();
     leaveWorkspaceSnapshot();
     state.leagues = [];
     state.activeLeague = null;
@@ -7055,6 +7073,7 @@ function bindControlEvents() {
     if (document.getElementById("tab-newsletter")?.classList.contains("active")) renderLeagueNewsletter();
   });
   document.getElementById("teamSelect")?.addEventListener("change", e => {
+    rememberWorkspaceSelection();
     const idx = parseInt(e.target.value, 10);
     if (document.getElementById("tradeTeamA")) document.getElementById("tradeTeamA").value = idx;
     renderRosterTab(idx); renderOptimizerTab(idx); renderWaiversTab(); renderSosTab(); renderTradeFinder(); renderDraftKeeperLedger(); buildTradeDatabase();
@@ -7158,7 +7177,7 @@ let pendingWorkspaceBackup = null;
 let workspacePreviewVersion = 0;
 const WORKSPACE_SNAPSHOT_KEY = "resume";
 
-function workspaceDatabase(action, value) {
+function workspaceDatabase(action, value, key = WORKSPACE_SNAPSHOT_KEY) {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open("FantasyFrontOfficeWorkspaceV1", 1);
     let unavailable = false;
@@ -7173,12 +7192,96 @@ function workspaceDatabase(action, value) {
       if (unavailable) { db.close(); return; }
       const transaction = db.transaction("snapshots", action === "read" ? "readonly" : "readwrite");
       const store = transaction.objectStore("snapshots");
-      const operation = action === "read" ? store.get(WORKSPACE_SNAPSHOT_KEY) :
-        action === "remove" ? store.delete(WORKSPACE_SNAPSHOT_KEY) : store.put(value, WORKSPACE_SNAPSHOT_KEY);
+      const operation = action === "read" ? store.get(key) :
+        action === "remove" ? store.delete(key) : store.put(value, key);
+      if (action === "restore") store.delete(RELOAD_WORKSPACE_KEY);
       transaction.oncomplete = () => { db.close(); resolve(operation.result); };
       transaction.onabort = () => { db.close(); reject(new Error(`Workspace storage did not commit: ${transaction.error?.message || "transaction aborted"}`)); };
     };
   });
+}
+
+const RELOAD_WORKSPACE_KEY = "last-session";
+const WORKSPACE_SELECTION_KEY = "fantasy-front-office:reload-selection:v1";
+let resumingReloadWorkspace = false;
+let reloadWorkspaceWrite = Promise.resolve();
+
+function reportReloadWorkspaceError(message) {
+  document.getElementById("workspaceStatus").textContent = message;
+  const banner = document.getElementById("workspaceSnapshotBanner");
+  banner.textContent = message;
+  banner.hidden = false;
+}
+
+function rememberWorkspaceSelection() {
+  if (resumingReloadWorkspace || new URLSearchParams(location.search).get("resume") === "0" || !state.activeLeague) return;
+  const manager = state.managers[Number(document.getElementById("teamSelect").value)];
+  if (!manager) return;
+  try {
+    localStorage.setItem(WORKSPACE_SELECTION_KEY, JSON.stringify({
+      leagueKey: getLeagueRecordsKey(), rosterId: String(manager.rosterId),
+      tab: document.querySelector(".tab-page.active")?.id || "tab-inbox", week: state.week
+    }));
+  } catch (error) {
+    reportReloadWorkspaceError(`Reload selection could not be saved: ${error.message}`);
+  }
+}
+
+function saveReloadWorkspace() {
+  if (resumingReloadWorkspace || new URLSearchParams(location.search).get("resume") === "0" || !state.activeLeague || !state.managers.length) return;
+  rememberWorkspaceSelection();
+  let backup;
+  try { backup = buildWorkspaceBackup(); } catch (error) {
+    reportReloadWorkspaceError(`Automatic reload snapshot could not be saved: ${error.message}`);
+    return;
+  }
+  reloadWorkspaceWrite = reloadWorkspaceWrite.then(() => workspaceDatabase("write", backup, RELOAD_WORKSPACE_KEY)).catch(error => {
+    reportReloadWorkspaceError(`Automatic reload snapshot could not be saved: ${error.message}`);
+  });
+}
+
+function forgetReloadWorkspace() {
+  try { localStorage.removeItem(WORKSPACE_SELECTION_KEY); } catch (error) {
+    reportReloadWorkspaceError(`Reload selection could not be cleared: ${error.message}`);
+  }
+  reloadWorkspaceWrite = reloadWorkspaceWrite.then(() => workspaceDatabase("remove", undefined, RELOAD_WORKSPACE_KEY)).catch(error => {
+    reportReloadWorkspaceError(`Automatic reload snapshot could not be cleared: ${error.message}`);
+  });
+}
+
+async function resumeReloadWorkspace(backup) {
+  resumingReloadWorkspace = true;
+  try {
+    let selection;
+    const text = localStorage.getItem(WORKSPACE_SELECTION_KEY);
+    if (text) {
+      selection = JSON.parse(text);
+      if (selection.leagueKey !== getLeagueRecordsKey(backup.snapshot.activeLeague)) selection = null;
+    }
+    if (selection && parseNflWeek(selection.week)) backup.snapshot.week = selection.week;
+    const index = selection ? backup.snapshot.managers.findIndex(manager => String(manager.rosterId) === selection.rosterId) : -1;
+    if (index >= 0) backup.ui.teamIndex = index;
+    if (selection && /^tab-[a-z-]+$/.test(selection.tab) && document.getElementById(selection.tab)?.classList.contains("tab-page")) backup.ui.tab = selection.tab;
+    applyWorkspaceSnapshot(structuredClone(backup));
+    if (backup.snapshot.provider !== "yahoo") {
+      try {
+        await initApp(true);
+        if (state.activeLeague.provider === "espn") {
+          state.activeLeague.espnData = await fetchEspnLeague(state.activeLeague.leagueId, state.activeLeague.season);
+        }
+        await loadLeague(0);
+        const selectedRoster = String(backup.snapshot.managers[backup.ui.teamIndex].rosterId);
+        const teamIndex = state.managers.findIndex(manager => String(manager.rosterId) === selectedRoster);
+        document.getElementById("teamSelect").value = String(teamIndex >= 0 ? teamIndex : 0);
+        document.getElementById("teamSelect").dispatchEvent(new Event("change"));
+        activateTab(backup.ui.tab);
+      } catch (error) {
+        applyWorkspaceSnapshot(structuredClone(backup));
+        const banner = document.getElementById("workspaceSnapshotBanner");
+        banner.textContent += ` Current provider refresh failed: ${error.message}`;
+      }
+    }
+  } finally { resumingReloadWorkspace = false; }
 }
 
 function leaveWorkspaceSnapshot() {
@@ -7331,7 +7434,9 @@ function bindWorkspaceControls() {
     }
     event.currentTarget.disabled = true;
     try {
-      await FFOWorkspace.restoreBackup(pendingWorkspaceBackup, localStorage, backup => workspaceDatabase("write", backup));
+      await reloadWorkspaceWrite;
+      await FFOWorkspace.restoreBackup(pendingWorkspaceBackup, localStorage, backup => workspaceDatabase("restore", backup));
+      localStorage.removeItem(WORKSPACE_SELECTION_KEY);
       location.replace(location.pathname);
     } catch (error) {
       status.textContent = error.message;
@@ -7358,8 +7463,11 @@ function bindWorkspaceControls() {
   document.getElementById("clearWorkspaceBtn").addEventListener("click", async () => {
     try {
       await workspaceDatabase("remove");
+      await reloadWorkspaceWrite;
+      await workspaceDatabase("remove", undefined, RELOAD_WORKSPACE_KEY);
+      localStorage.removeItem(WORKSPACE_SELECTION_KEY);
       await refreshWorkspaceStatus();
-      document.getElementById("workspaceStatus").textContent = "Snapshot resume stopped. Current league and local plans are unchanged.";
+      document.getElementById("workspaceStatus").textContent = "Snapshot resume stopped. Current league and local plans are unchanged. Connecting or importing again enables reload retention.";
     } catch (error) { document.getElementById("workspaceStatus").textContent = `Snapshot could not be removed: ${error.message}`; }
   });
 }
@@ -7371,7 +7479,12 @@ async function bootWorkspace() {
     return;
   }
   let backup;
-  try { backup = await workspaceDatabase("read"); if (backup) FFOWorkspace.validateBackup(backup); } catch (error) {
+  let reloadBackup;
+  try {
+    reloadBackup = await workspaceDatabase("read", undefined, RELOAD_WORKSPACE_KEY);
+    backup = reloadBackup || await workspaceDatabase("read");
+    if (backup) FFOWorkspace.validateBackup(backup);
+  } catch (error) {
     const message = `Saved workspace could not resume: ${error.message} The saved copy has not been deleted; use Workspace & Backups to review or stop resuming it.`;
     document.getElementById("workspaceStatus").textContent = message;
     const banner = document.getElementById("workspaceSnapshotBanner");
@@ -7382,7 +7495,8 @@ async function bootWorkspace() {
   }
   if (backup) {
     try {
-      applyWorkspaceSnapshot(backup);
+      if (reloadBackup) await resumeReloadWorkspace(backup);
+      else applyWorkspaceSnapshot(backup);
       await refreshWorkspaceStatus();
     } catch (error) {
       const message = `Saved workspace could not render: ${error.message}. Your saved copy and plans were retained. Stop resuming the snapshot or reconnect to recover.`;

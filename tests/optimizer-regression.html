@@ -20,7 +20,7 @@
   <h1>Optimizer Regression Checks</h1>
   <p id="summary" role="status">Loading the app runtime...</p>
   <ol id="results"></ol>
-  <iframe id="appFrame" src="../index.html?v=20261029-workspace-1&amp;resume=0" title="Optimizer test runtime"></iframe>
+  <iframe id="appFrame" src="../index.html?v=20261029-records-2&amp;resume=0" title="Optimizer test runtime"></iframe>
   <script>
     async function runOptimizerFixtures() {
       const results = [];
@@ -245,6 +245,20 @@
         check("Workspace export includes a versioned active league, roster selection and current plans",
           fixtureBackup.version === 1 && fixtureBackup.snapshot.activeLeague.name === "Workspace fixture" && fixtureBackup.ui.teamIndex === 0 &&
           !("userId" in fixtureBackup.snapshot) && !("espnData" in fixtureBackup.snapshot.activeLeague));
+        const previousSelectionText = localStorage.getItem(WORKSPACE_SELECTION_KEY);
+        const fixturePageUrl = location.href;
+        try {
+          history.replaceState(null, "", location.pathname);
+          rememberWorkspaceSelection();
+          const remembered = JSON.parse(localStorage.getItem(WORKSPACE_SELECTION_KEY));
+          check("Reload selection saves stable roster identity, league scope, week and section",
+            remembered.rosterId === "1" && remembered.leagueKey === getLeagueRecordsKey() &&
+            remembered.week === 6 && remembered.tab === document.querySelector(".tab-page.active").id);
+        } finally {
+          history.replaceState(null, "", fixturePageUrl);
+          if (previousSelectionText === null) localStorage.removeItem(WORKSPACE_SELECTION_KEY);
+          else localStorage.setItem(WORKSPACE_SELECTION_KEY, previousSelectionText);
+        }
         const storageBeforePreview = JSON.stringify(FFOWorkspace.captureStorage(localStorage));
         await previewWorkspaceFile({ size: 2, text: async () => "{}" });
         check("Invalid backup previews cannot enable restore or change saved plans", !pendingWorkspaceBackup &&
@@ -671,7 +685,15 @@
             { matchup_id: 1, roster_id: 2, points: 100 }
           ] };
         };
-        await loadLeagueRecords();
+        const tabBeforeRecordsLoad = document.querySelector(".tab-page.active").id;
+        activateTab("tab-records");
+        const firstRecordsLoad = leagueRecordsLoads.get(getLeagueRecordsKey());
+        check("Opening Records automatically loads results and exposes loading state",
+          Boolean(firstRecordsLoad) && document.getElementById("recordsStatus").textContent.includes("Loading") &&
+          document.getElementById("leagueRecordsResults").getAttribute("aria-busy") === "true");
+        check("Records opening deduplicates concurrent requests", loadLeagueRecords() === firstRecordsLoad);
+        await firstRecordsLoad;
+        activateTab(tabBeforeRecordsLoad);
         let loadedRecord = leagueRecordsCache.get(getLeagueRecordsKey());
         check("Records loader fetches only completed weeks and caps concurrency",
           recordWeeks.length === 8 && Math.max(...recordWeeks) === 8 && recordMaxRequests <= 6);
@@ -734,8 +756,9 @@
           document.getElementById("recordsAnswer").textContent.includes("No completed results"));
         state.activeLeague = { ...claimLeague, provider: "espn" };
         renderLeagueRecords();
-        check("ESPN records expose a load action without fabricating unloaded history",
-          !document.getElementById("loadRecordsBtn").hidden &&
+        check("ESPN records explain automatic loading without fabricating unloaded history",
+          !document.getElementById("loadRecordsBtn") &&
+          document.getElementById("recordsStatus").textContent.includes("automatically") &&
           document.getElementById("recordsAnswer").textContent.includes("No completed results"));
         let espnHistoryUrl = "", espnHistoryCredentials = "";
         window.fetch = async (url, options) => {
@@ -762,6 +785,28 @@
         check("ESPN record authentication errors are explicit and preserve previous results",
           leagueRecordsCache.get(getLeagueRecordsKey()).games.length === 1 &&
           document.getElementById("recordsStatus").textContent.includes("401"));
+        const raceLeague = state.activeLeague;
+        let releaseRecordRequest;
+        window.fetch = () => new Promise(resolve => { releaseRecordRequest = () => resolve({ ok: false, status: 401 }); });
+        const staleRecordLoad = loadLeagueRecords();
+        state.activeLeague = { ...raceLeague, leagueId: "records-switch-race" };
+        renderLeagueRecords();
+        releaseRecordRequest();
+        await staleRecordLoad;
+        check("An old league's in-flight records response cannot replace a newly selected league",
+          document.getElementById("leagueRecordsResults").textContent === "" &&
+          !leagueRecordsCache.has(getLeagueRecordsKey()) &&
+          !document.getElementById("recordsStatus").textContent.includes("401"));
+        state.activeLeague = raceLeague;
+        let snapshotRecordRequests = 0;
+        window.fetch = async () => { snapshotRecordRequests++; return { ok: false, status: 401 }; };
+        state.workspaceSnapshot = "2026-10-29T06:00:00.000Z";
+        activateTab("tab-records");
+        await loadLeagueRecords();
+        check("Saved workspace records remain explicitly non-live without automatic requests",
+          snapshotRecordRequests === 0 && document.getElementById("recordsStatus").textContent.includes("Saved snapshot"));
+        state.workspaceSnapshot = "";
+        activateTab(tabBeforeRecordsLoad);
         state.activeLeague = claimLeague;
         window.fetch = savedFetch;
 
