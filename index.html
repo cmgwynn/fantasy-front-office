@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Fantasy Front Office</title>
-  <link rel="stylesheet" href="styles.css?v=20261029-records-2" />
+  <link rel="stylesheet" href="styles.css?v=20261029-history-1" />
 </head>
 <body>
 
@@ -208,7 +208,7 @@
       <div>
         <div class="draft-eyebrow">LEAGUE RECORD BOOK</div>
         <h2>Records &amp; Rivalries</h2>
-        <p class="comparison-note">Completed head-to-head results for the active league and season only. Not an all-time record book; identities are team IDs, not cross-season manager identities.</p>
+        <p class="comparison-note">Season results and head-to-head heat maps, plus linked Sleeper career history below. Season identities use roster IDs; career identities use primary manager IDs.</p>
       </div>
       <p id="recordsStatus" class="comparison-note" role="status">Connect a league or Explore demo to view records.</p>
       <div id="leagueRecordsResults"></div>
@@ -220,9 +220,24 @@
           <option value="closest">What was the closest decided matchup?</option>
           <option value="blowout">What was the biggest margin?</option>
           <option value="meetings">Which teams met most often?</option>
+          <option value="luck">Who benefited most from matchup scheduling?</option>
         </select>
         <p id="recordsAnswer" class="comparison-note" aria-live="polite">Load completed results first. Answers use those results only.</p>
       </section>
+      <details id="careerHistoryPanel" class="gm-secondary">
+        <summary>Career history &amp; cross-season rivalries</summary>
+        <p class="comparison-note">Sleeper: automatically follows up to 10 linked seasons when opened. Explore demo illustrates two fictional seasons. Managers are matched by primary owner ID, never by team name or roster number. Only loaded regular-season games count; not verified championships or final finishes.</p>
+        <p id="careerHistoryStatus" class="comparison-note" role="status">Open to load linked Sleeper seasons.</p>
+        <label for="careerHistoryQuestion">Ask the historical record book</label>
+        <select id="careerHistoryQuestion">
+          <option value="wins">Who has the most career wins?</option>
+          <option value="highest">Who posted the highest historical weekly score?</option>
+          <option value="closest">What was the closest historical decided game?</option>
+          <option value="meetings">Which managers have met most often?</option>
+        </select>
+        <p id="careerHistoryAnswer" class="comparison-note" aria-live="polite"></p>
+        <div id="careerHistoryResults"></div>
+      </details>
     </div>
 
     <!-- TAB 2: POWER RANKINGS -->
@@ -932,11 +947,11 @@
   <div id="monetizationDisclosure" class="monetization-disclosure" hidden></div>
 </footer>
 
-<script src="monetization-config.js?v=20261029-records-2"></script>
-<script src="data-fetch.js?v=20261029-records-2"></script>
-<script src="demo-league.js?v=20261029-records-2"></script>
-<script src="league-records.js?v=20261029-records-2"></script>
-<script src="workspace-backup.js?v=20261029-records-2"></script>
-<script src="app.js?v=20261029-records-2"></script>
+<script src="monetization-config.js?v=20261029-history-1"></script>
+<script src="data-fetch.js?v=20261029-history-1"></script>
+<script src="demo-league.js?v=20261029-history-1"></script>
+<script src="league-records.js?v=20261029-history-1"></script>
+<script src="workspace-backup.js?v=20261029-history-1"></script>
+<script src="app.js?v=20261029-history-1"></script>
 </body>
 </html>

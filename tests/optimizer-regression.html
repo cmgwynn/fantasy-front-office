@@ -20,7 +20,7 @@
   <h1>Optimizer Regression Checks</h1>
   <p id="summary" role="status">Loading the app runtime...</p>
   <ol id="results"></ol>
-  <iframe id="appFrame" src="../index.html?v=20261029-records-2&amp;resume=0" title="Optimizer test runtime"></iframe>
+  <iframe id="appFrame" src="../index.html?v=20261029-history-1&amp;resume=0" title="Optimizer test runtime"></iframe>
   <script>
     async function runOptimizerFixtures() {
       const results = [];
@@ -31,6 +31,7 @@
       const savedDbTrades = state.dbTrades;
       const savedDraftAdp = draftState.adpByName;
       const savedRecordsCache = new Map(leagueRecordsCache);
+      const savedCareerCache = new Map(careerHistoryCache);
       const savedPlannerSchedules = new Map(plannerScheduleSources);
       const savedPlannerControls = Object.fromEntries(["plannerWeeks", "plannerSearch", "plannerAdd", "plannerDrop"].map(id => [id, document.getElementById(id).value]));
       const savedPlannerInjuryToggle = document.getElementById("plannerHoldInjuries").checked;
@@ -707,6 +708,14 @@
           document.getElementById("recordsAnswer").textContent.includes("100.00") &&
           document.getElementById("recordsAnswer").textContent.includes("Sleeper") &&
           document.getElementById("recordsAnswer").textContent.includes("incomplete"));
+        check("Records scoring insights use completed games and expose expected wins and weekly awards",
+          document.getElementById("leagueRecordsResults").textContent.includes("Schedule luck") &&
+          document.getElementById("leagueRecordsResults").textContent.includes("scoring median"));
+        document.getElementById("recordsQuestion").value = "luck";
+        renderLeagueRecords();
+        check("Scheduling luck fact explains win equivalents and loaded-game limitations",
+          document.getElementById("recordsAnswer").textContent.includes("win equivalents") &&
+          document.getElementById("recordsAnswer").textContent.includes("not a skill rating"));
         check("Rivalry heat map has row/column headers and row-relative mirrored records",
           document.querySelectorAll(".rivalry-heatmap thead th[scope=col]").length === 3 &&
           document.querySelectorAll(".rivalry-heatmap tbody th[scope=row]").length === 2 &&
@@ -807,6 +816,88 @@
           snapshotRecordRequests === 0 && document.getElementById("recordsStatus").textContent.includes("Saved snapshot"));
         state.workspaceSnapshot = "";
         activateTab(tabBeforeRecordsLoad);
+        state.activeLeague = { ...claimLeague, provider: "sleeper", leagueId: "career-2026", season: "2026", playoffWeekStart: 15 };
+        const historyCalls = [];
+        window.fetch = async url => {
+          const text = String(url);
+          historyCalls.push(text);
+          if (text.endsWith("/state/nfl")) return { ok: true, json: async () => ({ season: "2026", season_type: "regular", week: 2 }) };
+          const prior = text.includes("career-2025");
+          const year = prior ? "2025" : "2026";
+          const leagueId = `career-${year}`;
+          let data;
+          if (text.endsWith("/users")) data = [{ user_id: "alice", display_name: "Alice current" }, { user_id: "bob", display_name: "<b>Bob</b>" }];
+          else if (text.endsWith("/rosters")) data = [
+            { roster_id: 1, owner_id: prior ? "alice" : "bob" }, { roster_id: 2, owner_id: prior ? "bob" : "alice" }
+          ];
+          else if (text.includes("/matchups/")) data = [
+            { roster_id: 1, matchup_id: 1, points: 100 }, { roster_id: 2, matchup_id: 1, points: 90 }
+          ];
+          else data = { league_id: leagueId, season: year, total_rosters: 2,
+            previous_league_id: prior ? null : "career-2025", settings: { playoff_week_start: prior ? 2 : 15 } };
+          return { ok: true, json: async () => data };
+        };
+        const historyLoad = loadCareerHistory();
+        check("Career history deduplicates overlapping linked-season loads", loadCareerHistory() === historyLoad);
+        await historyLoad;
+        const historical = careerHistoryCache.get(getLeagueRecordsKey());
+        const careerReport = FFORecords.summarizeHistory(historical.seasons);
+        check("Career history traverses previous league links and aggregates regular-season games across roster swaps",
+          historical.complete && historical.seasons.length === 2 && careerReport.gamesCount === 2 &&
+          careerReport.careers.find(manager => manager.id === "alice").wins === 1 &&
+          careerReport.careers.find(manager => manager.id === "alice").losses === 1 &&
+          historyCalls.filter(url => url.includes("/matchups/")).length === 2);
+        check("Career history UI escapes manager names and exposes cross-season heat map",
+          !document.querySelector("#careerHistoryResults b") &&
+          document.getElementById("careerHistoryResults").textContent.includes("<b>Bob</b>") &&
+          document.querySelectorAll("#careerHistoryResults .rivalry-heatmap tbody tr").length === 2);
+        document.getElementById("careerHistoryQuestion").value = "highest";
+        renderCareerHistory();
+        check("Historical fact answers cite season and week rather than inventing outcomes",
+          document.getElementById("careerHistoryAnswer").textContent.includes("2025, Week 1") &&
+          document.getElementById("careerHistoryAnswer").textContent.includes("linked Sleeper"));
+        window.fetch = async () => ({ ok: false, status: 503 });
+        await loadCareerHistory();
+        check("Failed career history refresh retains prior seasons with explicit partial coverage",
+          careerHistoryCache.get(getLeagueRecordsKey()).seasons.length === 2 &&
+          document.getElementById("careerHistoryStatus").textContent.includes("503") &&
+          document.getElementById("careerHistoryStatus").textContent.includes("retained"));
+        state.activeLeague = { ...claimLeague, provider: "sleeper", leagueId: "bounded-2026", season: "2026", playoffWeekStart: 2 };
+        let metadataRequests = 0;
+        window.fetch = async url => {
+          const text = String(url);
+          if (text.endsWith("/state/nfl")) return { ok: true, json: async () => ({ season: "2026", season_type: "regular", week: 2 }) };
+          const year = Number(text.match(/bounded-(\d{4})/)?.[1]);
+          let data;
+          if (text.endsWith("/users")) data = [{ user_id: "alice", display_name: "Alice" }, { user_id: "bob", display_name: "Bob" }];
+          else if (text.endsWith("/rosters")) data = [{ roster_id: 1, owner_id: "alice" }, { roster_id: 2, owner_id: "bob" }];
+          else if (text.includes("/matchups/")) data = [{ roster_id: 1, matchup_id: 1, points: 100 }, { roster_id: 2, matchup_id: 1, points: 90 }];
+          else {
+            metadataRequests++;
+            data = { league_id: `bounded-${year}`, season: String(year), total_rosters: 2,
+              previous_league_id: `bounded-${year - 1}`, settings: { playoff_week_start: 2 } };
+          }
+          return { ok: true, json: async () => data };
+        };
+        await loadCareerHistory();
+        check("Career history traversal stops at ten seasons with explicit older-season coverage warning",
+          metadataRequests === 10 && careerHistoryCache.get(getLeagueRecordsKey()).seasons.length === 10 &&
+          !careerHistoryCache.get(getLeagueRecordsKey()).complete &&
+          document.getElementById("careerHistoryStatus").textContent.includes("10-season safety limit"));
+        state.activeLeague = { ...state.activeLeague, leagueId: "cycle-2026" };
+        window.fetch = async url => {
+          const text = String(url);
+          if (text.endsWith("/state/nfl")) return { ok: true, json: async () => ({ season: "2026", season_type: "regular", week: 2 }) };
+          const data = text.endsWith("/rosters") ? [{ roster_id: 1, owner_id: "alice" }, { roster_id: 2, owner_id: "bob" }] :
+            text.endsWith("/users") ? [] :
+            text.includes("/matchups/") ? [{ roster_id: 1, matchup_id: 1, points: 1 }, { roster_id: 2, matchup_id: 1, points: 0 }] :
+            { league_id: "cycle-2026", season: "2026", previous_league_id: "cycle-2026", settings: { playoff_week_start: 2 } };
+          return { ok: true, json: async () => data };
+        };
+        await loadCareerHistory();
+        check("Career history detects linked-league cycles without repeating seasons",
+          careerHistoryCache.get(getLeagueRecordsKey()).seasons.length === 1 &&
+          document.getElementById("careerHistoryStatus").textContent.includes("cycle"));
         state.activeLeague = claimLeague;
         window.fetch = savedFetch;
 
@@ -826,6 +917,8 @@
         if (priorNewsletter === null) localStorage.removeItem("fantasy-front-office:newsletter:v1");
         else localStorage.setItem("fantasy-front-office:newsletter:v1", priorNewsletter);
       } finally {
+        careerHistoryCache.clear();
+        savedCareerCache.forEach((value, key) => careerHistoryCache.set(key, value));
         plannerScheduleSources.clear();
         savedPlannerSchedules.forEach((value, key) => plannerScheduleSources.set(key, value));
         leagueRecordsCache.clear();

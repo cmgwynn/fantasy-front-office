@@ -21,7 +21,10 @@ function activateTab(tabId) {
     group.querySelector(".nav-current").textContent = activeButton?.textContent || "";
     if (activeButton) group.open = true;
   });
-  if (tabId === "tab-records") loadLeagueRecords();
+  if (tabId === "tab-records") {
+    loadLeagueRecords();
+    if (document.getElementById("careerHistoryPanel")?.open) loadCareerHistory();
+  }
   rememberWorkspaceSelection();
   return targetPage;
 }
@@ -6353,6 +6356,152 @@ function getLeagueRecordsKey(league = state.activeLeague) {
 }
 
 const leagueRecordsLoads = new Map();
+const careerHistoryCache = new Map();
+const careerHistoryLoads = new Map();
+
+function renderCareerHistory() {
+  const status = document.getElementById("careerHistoryStatus");
+  const container = document.getElementById("careerHistoryResults");
+  const answer = document.getElementById("careerHistoryAnswer");
+  const key = getLeagueRecordsKey();
+  const entry = careerHistoryCache.get(key);
+  const loading = careerHistoryLoads.has(key);
+  container.setAttribute("aria-busy", String(loading));
+  if (!entry) {
+    status.textContent = loading ? "Loading linked seasons and completed regular-season games..." :
+      !state.activeLeague ? "Connect a league first." :
+      state.activeLeague.provider !== "sleeper" ? "Automatic career history currently requires a Sleeper league. ESPN and imported league identity mapping are not yet supported." :
+      state.workspaceSnapshot ? "No linked history in this snapshot. Reconnect to load history." : "Open this panel to load linked Sleeper seasons.";
+    container.innerHTML = "";
+    answer.textContent = "No historical results loaded.";
+    return;
+  }
+  const report = FFORecords.summarizeHistory(entry.seasons);
+  const escape = draftEscapeHtml;
+  const name = id => report.careers.find(manager => manager.id === id)?.name || "Unknown manager";
+  status.textContent = `${loading ? "Loading linked history... " : ""}${entry.snapshot ? "Saved snapshot. " : ""}${report.seasons.length} loaded season(s): ${report.seasons.join(", ") || "none"}. ${report.gamesCount} identity-matched games; ${report.excludedGames} games excluded for ambiguous/missing owners. ${entry.coverage} ${[...entry.errors, ...report.notices].join(" | ")}`;
+  if (!report.gamesCount) {
+    container.innerHTML = '<p class="draft-empty">No identity-matched completed games. Career totals cannot be established.</p>';
+    answer.textContent = "No historical results loaded; see coverage above.";
+    return;
+  }
+  const facts = {
+    wins: (() => {
+      const max = report.careers[0].wins;
+      return `${report.careers.filter(manager => manager.wins === max).map(manager => name(manager.id)).join(", ")}: ${max} wins in loaded regular-season results.`;
+    })(),
+    highest: `${name(report.highest.managerId)}: ${report.highest.points.toFixed(2)} points in ${report.highest.season}, Week ${report.highest.game.week}.`,
+    closest: report.closest ? `${name(report.closest.homeId)} vs ${name(report.closest.awayId)}: ${report.closest.margin.toFixed(2)} point margin in ${report.closest.season}, Week ${report.closest.game.week}.` : "No decided historical games; all loaded games were ties.",
+    meetings: (() => {
+      const max = report.pairs[0].games;
+      return report.pairs.filter(pair => pair.games === max).map(pair => `${name(pair.a)} vs ${name(pair.b)}: ${pair.games} meetings (${pair.winsA}-${pair.winsB}-${pair.ties}, A-B-T)`).join("; ");
+    })()
+  };
+  answer.textContent = `${facts[document.getElementById("careerHistoryQuestion").value]} Source: ${entry.source || "linked Sleeper matchup results"} for ${report.seasons.join(", ")} only. ${entry.errors.length || report.notices.length || !entry.complete ? "Partial coverage; not a complete all-time claim." : "All traversed seasons loaded; provider corrections remain possible."}`;
+  const matrix = FFORecords.buildRivalryMatrix(report.pairs, report.careers.map(manager => manager.id));
+  const heat = matrix.map(row => `<tr><th scope="row">${escape(name(row.teamId))}</th>${row.cells.map(cell =>
+    cell.kind === "self" ? '<td class="rivalry-self" aria-label="Same manager">-</td>' :
+    cell.kind === "unplayed" ? '<td class="rivalry-unplayed">No games</td>' :
+    `<td class="rivalry-${cell.kind}" aria-label="${escape(`${name(row.teamId)} vs ${name(cell.opponentId)}: ${cell.wins} wins, ${cell.losses} losses, ${cell.ties} ties`)}"><strong>${cell.wins}-${cell.losses}-${cell.ties}</strong><small>${cell.games} games</small></td>`
+  ).join("")}</tr>`).join("");
+  container.innerHTML = `<div class="table-wrap" role="region" aria-label="Career regular-season records" tabindex="0"><table class="comparison-table"><caption>Career records within loaded games only; ordered by wins, then points for</caption><thead><tr><th scope="col">Manager (latest team name)</th><th scope="col">Seasons</th><th scope="col">W-L-T</th><th scope="col">Games</th><th scope="col">Win equivalent</th><th scope="col">Points for</th><th scope="col">Points against</th></tr></thead><tbody>${report.careers.map(manager =>
+    `<tr><th scope="row">${escape(manager.name)}</th><td>${escape(manager.seasons.join(", "))}</td><td>${manager.wins}-${manager.losses}-${manager.ties}</td><td>${manager.games}</td><td>${manager.games ? ((manager.wins + manager.ties * 0.5) / manager.games * 100).toFixed(1) + "%" : "Unrated"}</td><td>${manager.pointsFor.toFixed(2)}</td><td>${manager.pointsAgainst.toFixed(2)}</td></tr>`
+  ).join("")}</tbody></table></div>
+    <h3>Cross-season rivalry heat map</h3><p class="comparison-note">Row manager's W-L-T against the column manager. The season heat-map legend applies. Missing owners and duplicate primary owners are excluded, not guessed. Roster ownership is a season-end/current snapshot: midseason ownership changes and co-owner contributions are not reconstructed.</p>
+    <div class="rivalry-scroll" role="region" aria-label="Cross-season head-to-head heat map" tabindex="0"><table class="rivalry-heatmap"><caption>Loaded regular-season manager rivalries; not playoff results</caption><thead><tr><th scope="col">Manager / Opponent</th>${matrix.map(row => `<th scope="col">${escape(name(row.teamId))}</th>`).join("")}</tr></thead><tbody>${heat}</tbody></table></div>
+    <details class="rivalry-details"><summary>Season sources and coverage</summary><ul class="team-grade-priorities">${entry.seasons.map(season => `<li>${escape(season.season)} / League ${escape(season.leagueId)}: ${escape(season.coverage)} ${escape(season.errors.join(" | "))}</li>`).join("")}</ul></details>`;
+}
+
+function loadCareerHistory() {
+  const league = state.activeLeague;
+  const key = getLeagueRecordsKey();
+  if (league?.isDemo && !state.workspaceSnapshot) {
+    careerHistoryCache.set(key, FFODemo.createDemoHistory());
+    renderCareerHistory();
+    saveReloadWorkspace();
+    return Promise.resolve();
+  }
+  if (!league || league.provider !== "sleeper" || state.workspaceSnapshot) {
+    renderCareerHistory();
+    return Promise.resolve();
+  }
+  if (careerHistoryLoads.has(key)) return careerHistoryLoads.get(key);
+  const pending = fetchCareerHistory({ ...league }).finally(() => {
+    careerHistoryLoads.delete(key);
+    if (getLeagueRecordsKey() === key) {
+      renderCareerHistory();
+      saveReloadWorkspace();
+    }
+  });
+  careerHistoryLoads.set(key, pending);
+  renderCareerHistory();
+  return pending;
+}
+
+async function fetchCareerHistory(activeLeague) {
+  const key = getLeagueRecordsKey(activeLeague);
+  const seasons = [], errors = [], seenIds = new Set(), seenYears = new Set();
+  let nextId = String(activeLeague.leagueId), previousYear = Infinity, complete = false;
+  for (let index = 0; index < 10 && nextId; index++) {
+    try {
+      if (seenIds.has(nextId)) throw new Error("Linked-league cycle detected; traversal stopped.");
+      seenIds.add(nextId);
+      const metadata = await fetchJson(`https://api.sleeper.app/v1/league/${encodeURIComponent(nextId)}`);
+      if (String(metadata?.league_id) !== nextId || !/^\d{4}$/.test(String(metadata.season)) ||
+          Number(metadata.season) >= previousYear || seenYears.has(String(metadata.season)) ||
+          (index === 0 && String(metadata.season) !== String(activeLeague.season))) {
+        throw new Error("Linked league identity/season is inconsistent; traversal stopped.");
+      }
+      const year = String(metadata.season);
+      previousYear = Number(year);
+      seenYears.add(year);
+      const [rosters, users] = await Promise.all([
+        fetchJson(`https://api.sleeper.app/v1/league/${encodeURIComponent(nextId)}/rosters`),
+        fetchJson(`https://api.sleeper.app/v1/league/${encodeURIComponent(nextId)}/users`)
+      ]);
+      if (!Array.isArray(rosters) || !rosters.length || !Array.isArray(users) ||
+          (Number.isInteger(metadata.total_rosters) && rosters.length !== metadata.total_rosters) ||
+          rosters.some(roster => !Number.isInteger(roster.roster_id)) ||
+          new Set(rosters.map(roster => roster.roster_id)).size !== rosters.length) throw new Error("Historical roster coverage is invalid.");
+      const names = new Map(users.map(user => [String(user.user_id), user.metadata?.team_name || user.display_name]));
+      const teams = rosters.map(roster => ({
+        rosterId: String(roster.roster_id),
+        ownerId: typeof roster.owner_id === "string" && roster.owner_id.trim() ? roster.owner_id : null,
+        name: String(names.get(String(roster.owner_id)) || `Team ${roster.roster_id}`)
+      }));
+      const linkedLeague = { provider: "sleeper", leagueId: nextId, season: year,
+        playoffWeekStart: metadata.settings?.playoff_week_start };
+      if (!Number.isInteger(linkedLeague.playoffWeekStart) || linkedLeague.playoffWeekStart < 1 || linkedLeague.playoffWeekStart > 19) {
+        throw new Error("Historical playoff boundary is missing or unsupported; regular-season games cannot be verified.");
+      }
+      if (nextId === String(activeLeague.leagueId)) {
+        const currentLoad = leagueRecordsLoads.get(getLeagueRecordsKey(linkedLeague));
+        if (currentLoad) await currentLoad;
+        else await fetchLeagueRecords(linkedLeague, new Set(teams.map(team => team.rosterId)));
+      } else {
+        await fetchLeagueRecords(linkedLeague, new Set(teams.map(team => team.rosterId)));
+      }
+      const record = leagueRecordsCache.get(getLeagueRecordsKey(linkedLeague));
+      if (!record) throw new Error("Historical completed results are unavailable.");
+      seasons.push({ season: year, leagueId: nextId, teams, games: record.games, coverage: record.coverage, errors: record.errors });
+      if (record.errors.length) errors.push(`${year}: incomplete completed-result coverage.`);
+      nextId = metadata.previous_league_id ? String(metadata.previous_league_id) : "";
+      if (nextId === "0") nextId = "";
+      if (!nextId) complete = true;
+    } catch (error) {
+      errors.push(`History load stopped: ${error.message}`);
+      break;
+    }
+  }
+  if (nextId && seasons.length === 10) errors.push("10-season safety limit reached; older linked seasons were not loaded.");
+  const prior = careerHistoryCache.get(key);
+  if (!seasons.length && prior) {
+    careerHistoryCache.set(key, { ...prior, complete: false, errors: [...prior.errors, ...errors, "Previously loaded history retained."] });
+  } else {
+    careerHistoryCache.set(key, { seasons, errors, complete,
+      coverage: complete ? "Reached the end of the provider's linked-league chain; disconnected seasons may exist." : "Linked history is incomplete." });
+  }
+}
 
 function loadLeagueRecords() {
   const league = state.activeLeague;
@@ -6427,6 +6576,7 @@ async function fetchLeagueRecords(league, teamIds) {
 }
 
 function renderLeagueRecords() {
+  renderCareerHistory();
   const container = document.getElementById("leagueRecordsResults");
   const status = document.getElementById("recordsStatus");
   const answer = document.getElementById("recordsAnswer");
@@ -6457,10 +6607,16 @@ function renderLeagueRecords() {
     return;
   }
   const high = report.highest;
+  const insights = FFORecords.scoringInsights(record.games);
   const facts = {
     highest: `${name(high.teamId)} scored ${high.points.toFixed(2)}. ${gameLabel(high.game)}`,
     closest: report.closest ? `${report.closest.margin.toFixed(2)} point margin. ${gameLabel(report.closest.game)}` : "No decided games; all loaded matchups were ties.",
     blowout: `${report.blowout.margin.toFixed(2)} point margin. ${gameLabel(report.blowout.game)}`,
+    luck: (() => {
+      const sorted = [...insights.teams].sort((a, b) => b.luck - a.luck);
+      const max = sorted[0].luck;
+      return `${sorted.filter(team => Math.abs(team.luck - max) < 0.000001).map(team => name(team.id)).join(", ")}: ${max >= 0 ? "+" : ""}${max.toFixed(2)} win equivalents versus schedule-neutral expected wins. Loaded games only; not a skill rating.`;
+    })(),
     meetings: (() => {
       const max = report.pairs[0].games;
       const tied = report.pairs.filter(pair => pair.games === max);
@@ -6487,6 +6643,12 @@ function renderLeagueRecords() {
       </div>
     </section>
     <div class="comparison-cards">${cards}</div>
+    <details class="rivalry-details"><summary>Verified scoring, expected wins &amp; weekly awards</summary>
+    <p class="comparison-note">Uses loaded completed scores, not season PF or projections. Each week's expected win equivalent = (opponents outscored + half of tied opponents) / other scored teams in that week. Actual win equivalent = wins + half of ties. Luck = actual minus expected. Byes/unloaded teams are excluded; partial weeks make these partial-sample estimates. This table does not replace provider standings or account for median-game formats.</p>
+    <div class="table-wrap" role="region" aria-label="Score-based expected wins" tabindex="0"><table class="comparison-table"><caption>Loaded-game scoring insights, ordered by expected wins</caption><thead><tr><th scope="col">Team</th><th scope="col">Weeks</th><th scope="col">W-L-T</th><th scope="col">All-play W-L-T</th><th scope="col">Expected wins</th><th scope="col">Schedule luck</th><th scope="col">Points for</th></tr></thead><tbody>${insights.teams.map(team =>
+      `<tr><th scope="row">${escape(name(team.id))}</th><td>${team.weeks}</td><td>${team.wins}-${team.losses}-${team.ties}</td><td>${team.allPlayWins}-${team.allPlayLosses}-${team.allPlayTies}</td><td>${team.expectedWins.toFixed(2)}</td><td>${team.luck >= 0 ? "+" : ""}${team.luck.toFixed(2)}</td><td>${team.pointsFor.toFixed(2)}</td></tr>`
+    ).join("")}</tbody></table></div>
+    <ul class="team-grade-priorities">${insights.awards.map(award => `<li>Week ${award.week}: top score ${escape(award.highest.map(name).join(", "))} (${award.high.toFixed(2)}); scoring median ${award.median.toFixed(2)} across ${award.teams} scored teams.${award.highScoringLosses.length ? ` Highest-scoring loss: ${escape(award.highScoringLosses.map(score => name(score.id)).join(", "))} (${award.highScoringLosses[0].points.toFixed(2)}).` : ""}${award.lowScoringWins.length ? ` Lowest-scoring win: ${escape(award.lowScoringWins.map(score => name(score.id)).join(", "))} (${award.lowScoringWins[0].points.toFixed(2)}).` : ""}</li>`).join("")}</ul></details>
     <details class="rivalry-details"><summary>Detailed rivalry scores &amp; point margins</summary><p class="comparison-note">A-B-T = Team A wins, Team B wins, ties. Positive average margins favor Team A.</p>
     <div class="table-wrap"><table class="comparison-table"><caption>Season head-to-head rivalry details</caption><thead><tr><th scope="col">Team A</th><th scope="col">Team B</th><th scope="col">Meetings</th><th scope="col">A-B-T</th><th scope="col">A total pts</th><th scope="col">B total pts</th><th scope="col">Avg margin (A-B)</th></tr></thead><tbody>${report.pairs.map(pair => `<tr><th scope="row">${escape(name(pair.a))}</th><td>${escape(name(pair.b))}</td><td>${pair.games}</td><td>${pair.winsA}-${pair.winsB}-${pair.ties}</td><td>${pair.pointsA.toFixed(2)}</td><td>${pair.pointsB.toFixed(2)}</td><td>${((pair.pointsA - pair.pointsB) / pair.games).toFixed(2)}</td></tr>`).join("")}</tbody></table></div></details>`;
   answer.textContent = `${facts[document.getElementById("recordsQuestion").value] || facts.highest} Source: ${record.source}; ${league.season}, loaded results only.${record.errors.length ? " Coverage is incomplete; see load errors above." : ""}`;
@@ -6848,6 +7010,7 @@ function renderAllViews(teamIdx) {
   renderRosterPlanner();
   renderLeagueRecords();
   if (document.getElementById("tab-records")?.classList.contains("active")) loadLeagueRecords();
+  if (document.getElementById("careerHistoryPanel")?.open) loadCareerHistory();
   saveReloadWorkspace();
   renderSosTab(); renderPlayoffBracketTab(); renderDraftRoom();
   if (document.getElementById("tab-inbox")?.classList.contains("active")) renderGMInbox();
@@ -6860,6 +7023,10 @@ function bindControlEvents() {
   ensureDynamicTradeControls();
   const weekSelect = document.getElementById("weekSelect");
   document.getElementById("recordsQuestion")?.addEventListener("change", renderLeagueRecords);
+  document.getElementById("careerHistoryQuestion")?.addEventListener("change", renderCareerHistory);
+  document.getElementById("careerHistoryPanel")?.addEventListener("toggle", event => {
+    if (event.currentTarget.open) loadCareerHistory();
+  });
   ["compareSearch", "comparePosition"].forEach(id => document.getElementById(id)?.addEventListener(id === "compareSearch" ? "input" : "change", () => renderPlayerComparison()));
   ["comparePlayerA", "comparePlayerB"].forEach(id => document.getElementById(id)?.addEventListener("change", () => renderPlayerComparison(false)));
   ["plannerWeeks", "plannerHoldInjuries", "plannerAdd", "plannerDrop"].forEach(id =>
@@ -7314,6 +7481,7 @@ function buildWorkspaceBackup() {
       }
     },
     storage: FFOWorkspace.captureStorage(localStorage),
+    careerHistory: careerHistoryCache.get(getLeagueRecordsKey()) || null,
     records: leagueRecordsCache.get(getLeagueRecordsKey()) || { games: [], source: "No completed results saved", coverage: "No completed results saved.", errors: [] }
   };
   return FFOWorkspace.parseBackup(JSON.stringify(backup));
@@ -7353,6 +7521,8 @@ function applyWorkspaceSnapshot(backup) {
   })));
   leagueRecordsCache.clear();
   leagueRecordsCache.set(getLeagueRecordsKey(), backup.records);
+  careerHistoryCache.clear();
+  if (backup.careerHistory) careerHistoryCache.set(getLeagueRecordsKey(), { ...backup.careerHistory, snapshot: true });
   ESPN_PLAYER_TO_INTERNAL_ID.clear();
   Object.values(state.players).forEach(player => { if (player.espnId) ESPN_PLAYER_TO_INTERNAL_ID.set(String(player.espnId), player.id); });
   rebuildPlayerTeamIndex();

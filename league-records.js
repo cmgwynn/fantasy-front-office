@@ -138,5 +138,121 @@
     }));
   }
 
-  window.FFORecords = Object.freeze({ validateGames, normalizeSleeperWeek, normalizeEspnSchedule, summarize, buildRivalryMatrix });
+  function summarizeHistory(seasons) {
+    if (!Array.isArray(seasons)) throw new Error("Historical seasons must be an array.");
+    const seenSeasons = new Set(), careers = new Map(), pairs = new Map();
+    let highest = null, closest = null, blowout = null;
+    let gamesCount = 0, excludedGames = 0;
+    const notices = [];
+    for (const season of [...seasons].sort((a, b) => String(a.season).localeCompare(String(b.season)))) {
+      if (!season || !/^\d{4}$/.test(String(season.season)) || !Array.isArray(season.teams) || !Array.isArray(season.errors)) {
+        throw new Error("Historical seasons need a four-digit year, teams, games and error list.");
+      }
+      if (seenSeasons.has(String(season.season))) throw new Error("Duplicate historical season.");
+      seenSeasons.add(String(season.season));
+      const teams = new Map();
+      const owners = new Set(), ambiguous = new Set();
+      season.teams.forEach(team => {
+        if (!team || !["string", "number"].includes(typeof team.rosterId) || typeof team.name !== "string" ||
+            !(team.ownerId === null || typeof team.ownerId === "string")) throw new Error("Invalid historical roster identity.");
+        const rosterId = String(team.rosterId);
+        if (teams.has(rosterId)) throw new Error("Duplicate historical roster ID.");
+        teams.set(rosterId, team);
+        if (team.ownerId) {
+          if (owners.has(team.ownerId)) ambiguous.add(team.ownerId);
+          owners.add(team.ownerId);
+        }
+      });
+      for (const team of season.teams) {
+        if (!team.ownerId || ambiguous.has(team.ownerId)) {
+          notices.push(`${season.season}: ${team.name} has no unique primary owner; its career games are excluded.`);
+          continue;
+        }
+        if (!careers.has(team.ownerId)) careers.set(team.ownerId, {
+          id: team.ownerId, name: team.name, seasons: [], wins: 0, losses: 0, ties: 0, pointsFor: 0, pointsAgainst: 0, games: 0
+        });
+        const career = careers.get(team.ownerId);
+        career.name = team.name;
+        career.seasons.push(String(season.season));
+      }
+      for (const game of validateGames(season.games)) {
+        const home = teams.get(game.homeId), away = teams.get(game.awayId);
+        if (!home || !away) throw new Error("Historical game references an unknown roster.");
+        if (!home.ownerId || !away.ownerId || ambiguous.has(home.ownerId) || ambiguous.has(away.ownerId)) { excludedGames++; continue; }
+        const homeCareer = careers.get(home.ownerId), awayCareer = careers.get(away.ownerId);
+        gamesCount++;
+        const winner = game.homeScore > game.awayScore ? homeCareer.id : game.awayScore > game.homeScore ? awayCareer.id : null;
+        for (const [career, points, against] of [[homeCareer, game.homeScore, game.awayScore], [awayCareer, game.awayScore, game.homeScore]]) {
+          career.games++; career.pointsFor += points; career.pointsAgainst += against;
+          if (winner === null) career.ties++;
+          else if (winner === career.id) career.wins++;
+          else career.losses++;
+          if (!highest || points > highest.points) highest = { points, managerId: career.id, season: String(season.season), game };
+        }
+        const margin = Math.abs(game.homeScore - game.awayScore);
+        const fact = { margin, season: String(season.season), game, homeId: homeCareer.id, awayId: awayCareer.id };
+        if (margin > 0 && (!closest || margin < closest.margin)) closest = fact;
+        if (!blowout || margin > blowout.margin) blowout = fact;
+        const [a, b] = [homeCareer.id, awayCareer.id].sort();
+        const key = JSON.stringify([a, b]);
+        if (!pairs.has(key)) pairs.set(key, { a, b, winsA: 0, winsB: 0, ties: 0, pointsA: 0, pointsB: 0, games: 0 });
+        const pair = pairs.get(key);
+        pair.games++;
+        pair.pointsA += homeCareer.id === a ? game.homeScore : game.awayScore;
+        pair.pointsB += homeCareer.id === b ? game.homeScore : game.awayScore;
+        if (winner === null) pair.ties++;
+        else if (winner === a) pair.winsA++;
+        else pair.winsB++;
+      }
+      notices.push(...season.errors.map(error => `${season.season}: ${error}`));
+    }
+    return { careers: [...careers.values()].sort((a, b) => b.wins - a.wins || b.pointsFor - a.pointsFor || a.id.localeCompare(b.id)),
+      pairs: [...pairs.values()].sort((a, b) => b.games - a.games || a.a.localeCompare(b.a)),
+      highest, closest, blowout, gamesCount, excludedGames, notices, seasons: [...seenSeasons] };
+  }
+
+  function scoringInsights(games) {
+    const valid = validateGames(games);
+    const weeks = new Map(), teams = new Map();
+    for (const game of valid) {
+      if (!weeks.has(game.week)) weeks.set(game.week, []);
+      for (const [id, points, opponentPoints] of [[game.homeId, game.homeScore, game.awayScore], [game.awayId, game.awayScore, game.homeScore]]) {
+        weeks.get(game.week).push({ id, points, opponentPoints });
+        if (!teams.has(id)) teams.set(id, { id, weeks: 0, wins: 0, losses: 0, ties: 0, expectedWins: 0,
+          allPlayWins: 0, allPlayLosses: 0, allPlayTies: 0, pointsFor: 0 });
+      }
+    }
+    const awards = [];
+    for (const [week, scores] of weeks) {
+      const high = Math.max(...scores.map(score => score.points));
+      const sorted = scores.map(score => score.points).sort((a, b) => a - b);
+      const middle = Math.floor(sorted.length / 2);
+      const median = (sorted[middle - 1] + sorted[middle]) / 2;
+      const unlucky = scores.filter(score => score.points < score.opponentPoints).sort((a, b) => b.points - a.points);
+      const lucky = scores.filter(score => score.points > score.opponentPoints).sort((a, b) => a.points - b.points);
+      awards.push({ week, highest: scores.filter(score => score.points === high).map(score => score.id), high, median,
+        highScoringLosses: unlucky.length ? unlucky.filter(score => score.points === unlucky[0].points) : [],
+        lowScoringWins: lucky.length ? lucky.filter(score => score.points === lucky[0].points) : [], teams: scores.length });
+      for (const score of scores) {
+        const team = teams.get(score.id);
+        const others = scores.filter(other => other.id !== score.id);
+        const wins = others.filter(other => score.points > other.points).length;
+        const ties = others.filter(other => score.points === other.points).length;
+        team.weeks++;
+        team.wins += score.points > score.opponentPoints ? 1 : 0;
+        team.losses += score.points < score.opponentPoints ? 1 : 0;
+        team.ties += score.points === score.opponentPoints ? 1 : 0;
+        team.expectedWins += (wins + ties * 0.5) / others.length;
+        team.allPlayWins += wins;
+        team.allPlayTies += ties;
+        team.allPlayLosses += others.length - wins - ties;
+        team.pointsFor += score.points;
+      }
+    }
+    return { teams: [...teams.values()].map(team => ({
+      ...team, luck: team.wins + team.ties * 0.5 - team.expectedWins
+    })).sort((a, b) => b.expectedWins - a.expectedWins || b.pointsFor - a.pointsFor || a.id.localeCompare(b.id)), awards };
+  }
+
+  window.FFORecords = Object.freeze({ validateGames, normalizeSleeperWeek, normalizeEspnSchedule, summarize, buildRivalryMatrix, summarizeHistory, scoringInsights });
 })();

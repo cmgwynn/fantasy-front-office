@@ -37,5 +37,25 @@
       }))
     };
   }
-  window.FFODemo = Object.freeze({ createDemoLeague });
+  function createDemoHistory() {
+    const current = createDemoLeague();
+    const year = Number(current.season);
+    const teams = current.teams.map((team, index) => ({
+      rosterId: String(index + 1), ownerId: `demo-manager-${index + 1}`, name: team.teamName
+    }));
+    return { source: "Fictional demo matchup results", errors: [], complete: true,
+      coverage: "Two fictional seasons for illustration; not real league history.",
+      seasons: [
+        { season: String(year - 1), leagueId: "demo-prior", teams,
+          games: [
+            { week: 1, completed: true, homeId: "1", awayId: "3", homeScore: 110, awayScore: 104 },
+            { week: 1, completed: true, homeId: "2", awayId: "4", homeScore: 120, awayScore: 120 },
+            { week: 2, completed: true, homeId: "3", awayId: "1", homeScore: 115, awayScore: 90 },
+            { week: 2, completed: true, homeId: "4", awayId: "2", homeScore: 98, awayScore: 125 }
+          ], errors: [], coverage: "Two supplied fictional regular-season weeks." },
+        { season: current.season, leagueId: "demo-current", teams,
+          games: current.completedMatchups, errors: [], coverage: "Two supplied fictional regular-season weeks." }
+      ] };
+  }
+  window.FFODemo = Object.freeze({ createDemoLeague, createDemoHistory });
 })();

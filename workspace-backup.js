@@ -145,6 +145,17 @@
       typeof backup.records.coverage === "string" && Array.isArray(backup.records.errors) && backup.records.errors.every(message => typeof message === "string"),
     "Invalid completed-result cache.");
     window.FFORecords.validateGames(backup.records.games);
+    if (backup.careerHistory !== undefined && backup.careerHistory !== null) {
+      const history = backup.careerHistory;
+      requireValue(object(history) && Array.isArray(history.seasons) && history.seasons.length <= 10 &&
+        Array.isArray(history.errors) && history.errors.every(error => typeof error === "string") &&
+        typeof history.coverage === "string" && typeof history.complete === "boolean" &&
+        (history.source === undefined || typeof history.source === "string") &&
+        history.seasons.every(season => object(season) && typeof season.coverage === "string" &&
+          id(season.leagueId) && Array.isArray(season.errors) && season.errors.every(error => typeof error === "string")),
+      "Invalid career-history snapshot.");
+      window.FFORecords.summarizeHistory(history.seasons);
+    }
     const rosterIds = new Set(managers.map(manager => String(manager.rosterId)));
     requireValue(backup.records.games.every(game => rosterIds.has(String(game.homeId)) && rosterIds.has(String(game.awayId))),
       "Completed results reference a roster not in this backup.");

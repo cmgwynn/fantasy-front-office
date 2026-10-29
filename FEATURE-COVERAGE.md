@@ -226,7 +226,7 @@ snapshot backups can retain the previously loaded results.
 The view calculates highest team score, closest non-tied game, largest margin,
 and per-pair wins/losses/ties, point totals, and average signed margins. Zero
 and negative scores are supported. Equal record scores/margins display the
-first game in week/team-ID order. The fact lookup offers four fixed questions
+first game in week/team-ID order. The fact lookup offers five fixed questions
 answered directly from loaded games with season/source context; it is not a
 free-form AI historian.
 
@@ -260,6 +260,21 @@ rejected. User-supplied completion and completeness are not independently
 verified. Demo results are fictional illustrations, not reconciled historical
 standings.
 
+The expandable **Verified scoring, expected wins & weekly awards** section
+calculates all-play records from each week's loaded scores. Expected win
+equivalents sum `(opponents outscored + 0.5 * tied opponents) / other scored
+teams` for each week. Actual equivalents are wins + half of ties; scheduling
+luck is actual minus expected. Legitimate zeros/negative scores are retained.
+Byes and unloaded teams are not scored; incomplete coverage is not promoted
+to a complete-season estimate. This section does not replace provider standings
+or the older model-based Power Rankings tab.
+
+Weekly completed-score awards include all tied top scorers, the scoring median,
+the highest-scoring loss and lowest-scoring win (ties for awards included).
+The scheduling-luck fact question explains the same formula and limitations.
+These are deterministic score summaries, not generative narratives or skill
+ratings, and no fantasy outcome is inferred from projections.
+
 ESPN uses the same automatic loading flow, fetching `mMatchup` history with existing
 session credentials. Each game needs an explicit regular-season classification,
 a single scoring-week mapping ending before the provider's current scoring
@@ -271,9 +286,40 @@ is explicit and retains prior results with a warning. Available schedule
 completeness is not independently verified. Real access to private league
 1174632430 remains blocked by ESPN authorization; normalization is fixture-tested.
 
-All records are scoped to one league and season, keyed by team IDs. They are
-not all-time records, cross-season manager identities, championships, or
-streaks. Median/multi-opponent formats,
+The main heat map remains scoped to one league and season, keyed by team IDs.
+The expandable **Career history & cross-season rivalries** panel automatically
+follows Sleeper's `previous_league_id` chain when opened, up to 10 seasons.
+Metadata IDs, descending years, unique season coverage, roster IDs and playoff
+boundaries are checked. Loads stop on cycles, inconsistent metadata or provider
+errors with explicit coverage messages; overlapping history loads are shared.
+Each season uses the completed-game validation above, with at most six weekly
+requests in flight. Failed weeks remain explicitly partial.
+
+Career identities use primary Sleeper owner IDs, not matching names or roster
+numbers. Renames and roster swaps preserve identities; replacements do not
+inherit the predecessor's career. Missing owners and owners assigned multiple
+rosters in one season are excluded, with counts and explanations. Current/end
+of season ownership snapshots do not reconstruct midseason ownership changes
+or allocate credit to co-owners.
+
+Career tables show loaded seasons, W/L/T, games, tie-adjusted win equivalent,
+points for/against, and cross-season rivalry heat maps. Four historical fact
+questions cover most wins, highest weekly score, closest decided game and
+most frequent rivalries, with source, season/week and partial-coverage warnings.
+Latest team names label each career. Scores/margins tied for a record display
+the first game by season, week, and roster ID; most-wins/most-meetings answers
+include ties. This is a bounded linked-history record book, not a claim that
+disconnected or older leagues are complete.
+Explore demo includes two explicitly fictional seasons illustrating the same
+career table, rivalry heat map and grounded historical answers.
+
+Loaded career history is included in workspace backup and reload snapshots;
+older version-1 backups without this optional field remain supported.
+Snapshot history is labeled non-live. ESPN/imported cross-season identity
+mapping, championships, final finishes, streaks and median/multi-opponent formats
+remain unimplemented.
+
+Median/multi-opponent formats,
 automatic multi-season traversal, and verified finishes remain future work.
 Standings and projections are never substituted for game scores.
 
@@ -285,13 +331,13 @@ and Premium workflows have not been independently exercised.
 
 | Publicly advertised capability | This project's coverage | Remaining work |
 | --- | --- | --- |
-| Power rankings, standings, scoring, expected wins | Partial: rankings and projections | Verify formulas and historical weekly trends with provider fixtures |
-| Weekly reports, awards, storylines | Partial: newsletter and weekly report | Completed-week narratives and upcoming previews with verified inputs |
+| Power rankings, standings, scoring, expected wins | Rankings/projections plus verified loaded-score all-play, weekly expected wins and scheduling luck in Records | Replace older ranking approximations and add verified historical weekly trends |
+| Weekly reports, awards, storylines | Newsletter/report plus deterministic completed-score weekly awards in Records | Wire verified awards into newsletters; grounded narratives and upcoming previews |
 | League-specific roster and player values | Partial: scoring and roster models | Audit scoring completeness and positional assumptions |
 | Playoff/championship odds and likely seeds | Partial: playoff projections and bracket | Validated schedule simulation, seed distributions, championship paths |
 | Trade comparison and mutually beneficial packages | Partial: builder and finder | Verify package constraints and both-lineup improvements |
-| All-time records, finishes, head-to-head, rivalries | Season-scoped record book and head-to-head rivalries from completed Sleeper/ESPN/imported results; season standings | Cross-season manager identity, all-time aggregation, finishes, broader provider rule support |
-| League Historian questions | Fixed fact lookup over loaded scores with source/season context | Broader grounded questions and cross-season historical coverage |
+| All-time records, finishes, head-to-head, rivalries | Season record book plus bounded Sleeper linked-season career records, owner-ID identity mapping and cross-season heat map | ESPN/imported career mapping, championships/finishes, streaks, disconnected seasons and broader provider rules |
+| League Historian questions | Fixed season and career fact lookup over loaded scores with source/season context | Broader grounded questions, richer narratives and additional providers |
 | FAAB planner | Partial: local budget and claims | Provider balances, deadlines, claim reconciliation |
 | Rate my team and player comparison | Dedicated player comparison, roster scenarios, explained league-relative weekly team grades with starter-group breakdowns | Validated historical production, calibrated season/dynasty grades, and provider-rule completeness |
 | Weekly lineup analyzer | Partial: optimizer and kickoff locks | Provider rule verification and missing-input warnings |

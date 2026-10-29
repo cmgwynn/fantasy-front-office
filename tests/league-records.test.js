@@ -6,9 +6,93 @@ const test = require("node:test");
 
 const sandbox = { window: {} };
 vm.runInNewContext(fs.readFileSync(path.join(__dirname, "../league-records.js"), "utf8"), sandbox);
-const { validateGames, normalizeSleeperWeek, normalizeEspnSchedule, summarize, buildRivalryMatrix } = sandbox.window.FFORecords;
+const { validateGames, normalizeSleeperWeek, normalizeEspnSchedule, summarize, buildRivalryMatrix, summarizeHistory, scoringInsights } = sandbox.window.FFORecords;
 const game = (week, homeScore, awayScore, homeId = "1", awayId = "2") =>
   ({ week, completed: true, homeId, awayId, homeScore, awayScore });
+
+const historySeason = (season, games, owners = ["alice", "bob"]) => ({
+  season, games, errors: [], teams: [
+    { rosterId: "1", ownerId: owners[0], name: `First ${season}` },
+    { rosterId: "2", ownerId: owners[1], name: `Second ${season}` }
+  ]
+});
+
+test("score-based expected wins use weekly opponent distributions, not season points totals", () => {
+  const report = scoringInsights([game(1, 100, 90), game(1, 80, 70, "3", "4"), game(2, 0, 0)]);
+  const team = report.teams.find(item => item.id === "1");
+  assert.equal(team.expectedWins, 1.5);
+  assert.equal(team.wins, 1);
+  assert.equal(team.ties, 1);
+  assert.equal(team.luck, 0);
+  assert.equal(team.allPlayWins, 3);
+  assert.equal(team.allPlayTies, 1);
+  const lucky = report.teams.find(item => item.id === "3");
+  assert.ok(Math.abs(lucky.luck - 2 / 3) < 1e-10);
+  assert.equal(report.awards[0].median, 85);
+  assert.equal(report.awards[0].highScoringLosses[0].id, "2");
+  assert.equal(report.awards[0].lowScoringWins[0].id, "3");
+});
+
+test("expected wins preserve ties, zero/negative points, sum conservation and empty coverage", () => {
+  const report = scoringInsights([game(1, 0, 0), game(1, -2, -2, "3", "4")]);
+  assert.equal(report.teams.reduce((sum, team) => sum + team.expectedWins, 0), 2);
+  assert.equal(report.teams.reduce((sum, team) => sum + team.luck, 0), 0);
+  assert.equal(report.awards[0].highest.length, 2);
+  assert.equal(report.awards[0].highScoringLosses.length, 0);
+  assert.equal(report.awards[0].lowScoringWins.length, 0);
+  assert.equal(scoringInsights([]).teams.length, 0);
+  assert.throws(() => scoringInsights([game(1, 1, 0), game(1, 1, 0)]), /Duplicate/);
+});
+
+test("career history keeps same-week games separate across years and follows owner IDs across roster swaps", () => {
+  const report = summarizeHistory([
+    historySeason("2025", [game(1, 100, 90), game(2, 0, 0)]),
+    historySeason("2026", [game(1, 120, 110)], ["bob", "alice"])
+  ]);
+  assert.equal(report.gamesCount, 3);
+  assert.equal(report.careers.length, 2);
+  const alice = report.careers.find(manager => manager.id === "alice");
+  assert.equal(alice.name, "Second 2026");
+  assert.equal(alice.wins, 1);
+  assert.equal(alice.losses, 1);
+  assert.equal(alice.ties, 1);
+  assert.equal(alice.pointsFor, 210);
+  assert.equal(report.pairs[0].winsA, 1);
+  assert.equal(report.pairs[0].winsB, 1);
+  assert.equal(report.highest.season, "2026");
+  assert.equal(report.highest.managerId, "bob");
+  assert.equal(report.closest.margin, 10);
+});
+
+test("career history never merges replacement managers by roster number or team name", () => {
+  const first = historySeason("2025", [game(1, 100, 90)]);
+  const second = historySeason("2026", [game(1, 80, 95)], ["new-owner", "bob"]);
+  second.teams[0].name = first.teams[0].name;
+  const report = summarizeHistory([first, second]);
+  assert.equal(report.careers.length, 3);
+  assert.equal(report.pairs.length, 2);
+  assert.equal(report.careers.find(manager => manager.id === "alice").games, 1);
+});
+
+test("career history excludes unknown or duplicate primary owners explicitly", () => {
+  const report = summarizeHistory([
+    historySeason("2025", [game(1, 10, 5)], [null, "bob"]),
+    historySeason("2026", [game(1, 10, 5)], ["bob", "bob"])
+  ]);
+  assert.equal(report.gamesCount, 0);
+  assert.equal(report.excludedGames, 2);
+  assert.equal(report.notices.length, 3);
+});
+
+test("career history validates seasons and roster references and retains ties and negative scores", () => {
+  assert.throws(() => summarizeHistory([historySeason("2025", []), historySeason("2025", [])]), /Duplicate historical season/);
+  assert.throws(() => summarizeHistory([historySeason("2025", [game(1, 1, 2, "3", "2")])]), /unknown roster/);
+  const report = summarizeHistory([historySeason("2025", [game(1, -2, -2)])]);
+  assert.equal(report.closest, null);
+  assert.equal(report.highest.points, -2);
+  assert.equal(report.careers[0].ties, 1);
+  assert.equal(summarizeHistory([]).gamesCount, 0);
+});
 
 test("records aggregate reversed home/away games and ties without mixing teams", () => {
   const report = summarize([game(1, 100, 90), game(2, 110, 80, "2", "1"), game(3, 0, 0)]);

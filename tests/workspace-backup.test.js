@@ -40,6 +40,16 @@ test("workspace round trip preserves explicit zero points, selected view and loc
   assert.equal(backup.storage[faabKey], faabValue);
 });
 
+test("workspace preserves optional career history while retaining support for older backups", () => {
+  const backup = fixture();
+  backup.careerHistory = { seasons: [{ season: "2025", leagueId: "older", coverage: "Fixture", errors: [],
+    teams: [{ rosterId: "1", ownerId: "alice", name: "Old team" }], games: [] }],
+  errors: [], coverage: "One season", complete: true };
+  assert.equal(workspace.parseBackup(JSON.stringify(backup)).careerHistory.seasons[0].season, "2025");
+  backup.careerHistory.seasons[0].teams.push({ rosterId: "1", ownerId: "bob", name: "Duplicate" });
+  assert.throws(() => workspace.validateBackup(backup), /Duplicate historical roster/);
+});
+
 test("workspace validation rejects malformed or unsupported backups before mutation", () => {
   assert.throws(() => workspace.parseBackup("{"), /valid JSON/);
   for (const change of [
