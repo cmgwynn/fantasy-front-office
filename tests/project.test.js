@@ -9,7 +9,7 @@ const root = path.resolve(__dirname, "..");
 const read = file => fs.readFileSync(path.join(root, file), "utf8");
 
 test("browser JavaScript entry points parse", () => {
-  for (const file of ["app.js", "data-fetch.js", "demo-league.js", "league-records.js", "monetization-config.js"]) {
+  for (const file of ["app.js", "data-fetch.js", "demo-league.js", "league-records.js", "workspace-backup.js", "monetization-config.js"]) {
     const result = spawnSync(process.execPath, ["--check", file], {
       cwd: root,
       encoding: "utf8"
@@ -38,7 +38,7 @@ test("HTML references existing local assets in the expected script order", () =>
   ].map(match => match[1]).filter(asset => !/^(?:[a-z]+:)?\/\//i.test(asset));
 
   assert.ok(assets.length > 0, "Expected local CSS or JavaScript assets.");
-  assert.ok(assets.every(asset => asset.endsWith("?v=20261029-planner-1")), "All local assets must use the current release version.");
+  assert.ok(assets.every(asset => asset.endsWith("?v=20261029-workspace-1")), "All local assets must use the current release version.");
   for (const asset of assets) {
     assert.ok(fs.existsSync(path.join(root, asset.split("?")[0])), `Missing local asset: ${asset}`);
   }
@@ -47,12 +47,13 @@ test("HTML references existing local assets in the expected script order", () =>
   const dataFetchIndex = html.indexOf('<script src="data-fetch.js?');
   const demoIndex = html.indexOf('<script src="demo-league.js?');
   const recordsIndex = html.indexOf('<script src="league-records.js?');
+  const workspaceIndex = html.indexOf('<script src="workspace-backup.js?');
   const appIndex = html.indexOf('<script src="app.js?');
   assert.ok(configIndex >= 0, "Monetization configuration script is missing.");
   assert.ok(dataFetchIndex > configIndex, "Data-fetch module must load after configuration.");
   assert.ok(demoIndex > dataFetchIndex, "Demo module must load before the app.");
   assert.ok(recordsIndex > demoIndex, "Records module must load after the demo module.");
-  assert.ok(appIndex > recordsIndex, "App script must load after its dependencies.");
+  assert.ok(workspaceIndex > recordsIndex && appIndex > workspaceIndex, "Workspace must load after records and before the app.");
 });
 
 test("static interface IDs, labels, and tab navigation targets are consistent", () => {
@@ -75,6 +76,12 @@ test("static interface IDs, labels, and tab navigation targets are consistent", 
   assert.deepEqual(missingLabelTargets, [], "Every explicit label target must exist.");
   assert.deepEqual(missingNavTargets, [], "Every navigation button must target a tab.");
   assert.deepEqual(missingMobileTabTargets, [], "Every mobile navigation option must target a tab.");
+  const desktopTargets = [...html.matchAll(/\bdata-tab="([^"]+)"/g)].map(match => match[1]);
+  const mobileTargets = [...html.matchAll(/<option\b[^>]*\bvalue="(tab-[^"]+)"/g)].map(match => match[1]);
+  assert.deepEqual([...desktopTargets].sort(), [...tabIds].sort(), "Every page must have exactly one desktop navigation entry.");
+  assert.deepEqual([...mobileTargets].sort(), [...tabIds].sort(), "Mobile and desktop navigation must expose identical pages.");
+  assert.equal((html.match(/name="sidebar-section"/g) || []).length, 5, "Sidebar must contain five native accordion groups.");
+  assert.equal((html.match(/<optgroup label=/g) || []).length, 5, "Mobile navigation must preserve the same five groups.");
   assert.match(html, /<button class="nav-btn active" data-tab="tab-inbox" aria-current="page">/, "Initial active section must be the first navigation item.");
   assert.match(html, /<option value="tab-inbox" selected>/, "Initial mobile navigation must match the active section.");
   assert.match(html, /<div id="tab-inbox" class="tab-page active">/, "Initial content panel must match the active navigation item.");
@@ -85,7 +92,7 @@ test("browser regression harness is wired to the app and includes saved-state co
   const html = read("tests/optimizer-regression.html");
   const appHtml = read("index.html");
 
-  assert.match(html, /src="\.\.\/index\.html\?v=20261029-planner-1"/, "Regression harness must load the current app release.");
+  assert.match(html, /src="\.\.\/index\.html\?v=20261029-workspace-1&amp;resume=0"/, "Regression harness must load the current app release without resuming personal snapshots.");
   assert.match(html, /runOptimizerFixtures/, "Regression harness must execute its fixtures.");
   assert.match(html, /Cross-league queue saves to target budget/, "Saved FAAB state should remain covered.");
   assert.match(html, /Newsletter standings movement uses saved issue/, "Saved newsletter state should remain covered.");

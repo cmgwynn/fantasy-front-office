@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Fantasy Front Office</title>
-  <link rel="stylesheet" href="styles.css?v=20261029-planner-1" />
+  <link rel="stylesheet" href="styles.css?v=20261029-workspace-1" />
 </head>
 <body>
 
@@ -42,56 +42,108 @@
 </div>
 
 <div class="body-layout">
-  <div class="sidebar">
+  <nav class="sidebar" aria-label="Main navigation">
+    <div class="sidebar-heading"><span>Front Office</span><small>Your league, organized.</small></div>
     <label class="mobile-nav-label" for="mobileTabSelect">VIEW</label>
     <select id="mobileTabSelect" class="mobile-nav-select" aria-label="Navigate to section">
+      <optgroup label="Home">
       <option value="tab-inbox" selected>GM Inbox</option>
+      <option value="tab-workspace">Workspace &amp; Backups</option>
+      </optgroup>
+      <optgroup label="Roster">
       <option value="tab-roster">Roster Overview</option>
       <option value="tab-grades">Team Grades</option>
-      <option value="tab-records">Records & Rivalries</option>
-      <option value="tab-power">Power Rankings</option>
-      <option value="tab-intel">League Intel</option>
-      <option value="tab-newsletter">League Newsletter</option>
       <option value="tab-opt">Lineup Optimizer</option>
       <option value="tab-planner">Multiweek Planner</option>
       <option value="tab-waiver">Waiver Wire</option>
       <option value="tab-trade">Trade Center</option>
-      <option value="tab-draft">Draft Room</option>
+      </optgroup>
+      <optgroup label="League">
+      <option value="tab-records">Records &amp; Rivalries</option>
+      <option value="tab-power">Power Rankings</option>
+      <option value="tab-intel">League Intel</option>
+      <option value="tab-newsletter">League Newsletter</option>
+      <option value="tab-bracket">Playoff Bracket</option>
+      <option value="tab-matchup">Matchup Simulator</option>
+      </optgroup>
+      <optgroup label="Research">
       <option value="tab-analytics">Player Analytics</option>
       <option value="tab-compare">Player Compare</option>
       <option value="tab-sos">SOS Heat-Map</option>
-      <option value="tab-bracket">Playoff Bracket</option>
-      <option value="tab-matchup">Matchup Simulator</option>
+      </optgroup>
+      <optgroup label="Draft">
+      <option value="tab-draft">Draft Room</option>
+      </optgroup>
     </select>
-    <div class="nav-group">
-      <div class="nav-group-title">Overview</div>
-      <button class="nav-btn active" data-tab="tab-inbox" aria-current="page">GM Inbox</button>
-      <button class="nav-btn" data-tab="tab-roster">Roster Overview</button>
-      <button class="nav-btn" data-tab="tab-grades">Team Grades</button>
-      <button class="nav-btn" data-tab="tab-records">Records & Rivalries</button>
-      <button class="nav-btn" data-tab="tab-power">Power Rankings</button>
-      <button class="nav-btn" data-tab="tab-intel">League Intel</button>
-      <button class="nav-btn" data-tab="tab-newsletter">League Newsletter</button>
+    <div class="sidebar-groups">
+      <details class="nav-group has-current" name="sidebar-section" open>
+        <summary><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m3 10 9-7 9 7v10H3Z M9 20v-7h6v7"/></svg><span>Home<small class="nav-current">GM Inbox</small></span><span class="nav-chevron" aria-hidden="true"></span></summary>
+        <div class="nav-group-items">
+          <button class="nav-btn active" data-tab="tab-inbox" aria-current="page">GM Inbox</button>
+          <button class="nav-btn" data-tab="tab-workspace">Workspace &amp; Backups</button>
+        </div>
+      </details>
+      <details class="nav-group" name="sidebar-section">
+        <summary><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5h14v16H5Z M9 3h6v4H9Z M9 11h6 M9 15h6"/></svg><span>Roster<small class="nav-current"></small></span><span class="nav-chevron" aria-hidden="true"></span></summary>
+        <div class="nav-group-items">
+          <button class="nav-btn" data-tab="tab-roster">Roster Overview</button>
+          <button class="nav-btn" data-tab="tab-grades">Team Grades</button>
+          <button class="nav-btn" data-tab="tab-opt">Lineup Optimizer</button>
+          <button class="nav-btn" data-tab="tab-planner">Multiweek Planner</button>
+          <button class="nav-btn" data-tab="tab-waiver">Waiver Wire</button>
+          <button class="nav-btn" data-tab="tab-trade">Trade Center</button>
+        </div>
+      </details>
+      <details class="nav-group" name="sidebar-section">
+        <summary><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3h8v9a4 4 0 0 1-8 0Z M8 5H4v3a4 4 0 0 0 4 4 M16 5h4v3a4 4 0 0 1-4 4 M12 16v5 M8 21h8"/></svg><span>League<small class="nav-current"></small></span><span class="nav-chevron" aria-hidden="true"></span></summary>
+        <div class="nav-group-items">
+          <button class="nav-btn" data-tab="tab-records">Records &amp; Rivalries</button>
+          <button class="nav-btn" data-tab="tab-power">Power Rankings</button>
+          <button class="nav-btn" data-tab="tab-intel">League Intel</button>
+          <button class="nav-btn" data-tab="tab-newsletter">League Newsletter</button>
+          <button class="nav-btn" data-tab="tab-bracket">Playoff Bracket</button>
+          <button class="nav-btn" data-tab="tab-matchup">Matchup Simulator</button>
+        </div>
+      </details>
+      <details class="nav-group" name="sidebar-section">
+        <summary><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="10" cy="10" r="6"/><path d="m15 15 6 6"/></svg><span>Research<small class="nav-current"></small></span><span class="nav-chevron" aria-hidden="true"></span></summary>
+        <div class="nav-group-items">
+          <button class="nav-btn" data-tab="tab-analytics">Player Analytics</button>
+          <button class="nav-btn" data-tab="tab-compare">Player Compare</button>
+          <button class="nav-btn" data-tab="tab-sos">SOS Heat-Map</button>
+        </div>
+      </details>
+      <details class="nav-group" name="sidebar-section">
+        <summary><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L21 7l-4-4L4 16Z M14 6l4 4"/></svg><span>Draft<small class="nav-current"></small></span><span class="nav-chevron" aria-hidden="true"></span></summary>
+        <div class="nav-group-items">
+          <button class="nav-btn" data-tab="tab-draft">Draft Room</button>
+        </div>
+      </details>
     </div>
-    <div class="nav-group">
-      <div class="nav-group-title">Manage</div>
-      <button class="nav-btn" data-tab="tab-opt">Lineup Optimizer</button>
-      <button class="nav-btn" data-tab="tab-planner">Multiweek Planner</button>
-      <button class="nav-btn" data-tab="tab-waiver">Waiver Wire</button>
-      <button class="nav-btn" data-tab="tab-trade">Trade Center</button>
-      <button class="nav-btn" data-tab="tab-draft">Draft Room</button>
-    </div>
-    <div class="nav-group">
-      <div class="nav-group-title">Research</div>
-      <button class="nav-btn" data-tab="tab-analytics">Player Analytics</button>
-      <button class="nav-btn" data-tab="tab-compare">Player Compare</button>
-      <button class="nav-btn" data-tab="tab-sos">SOS Heat-Map</button>
-      <button class="nav-btn" data-tab="tab-bracket">Playoff Bracket</button>
-      <button class="nav-btn" data-tab="tab-matchup">Matchup Simulator</button>
-    </div>
-  </div>
+    <p class="sidebar-caption">One place for every decision.</p>
+  </nav>
 
   <div class="content-stack">
+    <div id="workspaceSnapshotBanner" class="workspace-banner" role="status" hidden></div>
+    <div id="tab-workspace" class="tab-page">
+      <div><div class="draft-eyebrow">ON YOUR DEVICE</div><h2>Workspace &amp; Backups</h2><p class="comparison-note">Keep a league snapshot and your saved local plans. No account, cloud upload, or provider credentials.</p></div>
+      <section class="comparison-card">
+        <h3>Pick up where you left off</h3>
+        <p class="comparison-note">Save the active league, roster data, current view, and multiweek scenario. Snapshots resume on this browser without fetching fresh data; local draft/FAAB/newsletter/Inbox/watchlist/pick'em saves keep their latest device changes. Downloaded backups also capture those local plans for explicit restoration. Reconnect to update your league.</p>
+        <div class="workspace-actions"><button id="saveWorkspaceBtn" type="button">Save on this device</button><button id="exportWorkspaceBtn" type="button" class="btn-builder-action">Download backup</button><button id="clearWorkspaceBtn" type="button" class="btn-builder-action">Stop resuming snapshot</button></div>
+        <p id="workspaceSavedStatus" class="comparison-note">No device snapshot checked yet.</p>
+      </section>
+      <section class="comparison-card">
+        <h3>Restore a backup</h3>
+        <p class="comparison-note">Choose an original Fantasy Front Office JSON backup (up to 25 MB). Nothing changes until you review the preview and confirm. Restore replaces this app's saved local plans with the backup's set, including plans for other leagues; unrelated browser data stays untouched. Download a current backup first.</p>
+        <label for="workspaceImportFile">Choose backup<input id="workspaceImportFile" type="file" accept=".json,application/json" /></label>
+        <div id="workspaceRestorePreview" hidden></div>
+        <label class="workspace-confirm" for="workspaceRestoreConfirm"><input id="workspaceRestoreConfirm" type="checkbox" /> Replace saved local plans and resume this backup on reload</label>
+        <button id="restoreWorkspaceBtn" type="button" disabled>Restore reviewed backup</button>
+      </section>
+      <p id="workspaceStatus" class="comparison-note" role="status">Backups contain league and manager details. Keep files private and restore only files you trust.</p>
+      <details class="gm-secondary"><summary>What is and isn't included?</summary><p class="comparison-note">One active league snapshot, its completed-result cache, loaded player data, selected roster/week/view, and all recognized local app saves are included. Other leagues' live rosters, provider sign-ins, cookies, notification permissions, live score refresh, external schedule caches, and unsaved trade/bracket scenarios are not. Multiweek scenarios are included; future scores and bye snapshots retain their original uncertainty. Backups preserve the model inputs/results as saved, not verified historical outcomes. Snapshots are manual, not continuous autosave. Browser clearing or storage eviction can remove the device copy; keep a downloaded file too.</p></details>
+    </div>
     <!-- TAB 1: ROSTER -->
     <div id="tab-roster" class="tab-page">
       <div class="card-banner">
@@ -881,10 +933,11 @@
   <div id="monetizationDisclosure" class="monetization-disclosure" hidden></div>
 </footer>
 
-<script src="monetization-config.js?v=20261029-planner-1"></script>
-<script src="data-fetch.js?v=20261029-planner-1"></script>
-<script src="demo-league.js?v=20261029-planner-1"></script>
-<script src="league-records.js?v=20261029-planner-1"></script>
-<script src="app.js?v=20261029-planner-1"></script>
+<script src="monetization-config.js?v=20261029-workspace-1"></script>
+<script src="data-fetch.js?v=20261029-workspace-1"></script>
+<script src="demo-league.js?v=20261029-workspace-1"></script>
+<script src="league-records.js?v=20261029-workspace-1"></script>
+<script src="workspace-backup.js?v=20261029-workspace-1"></script>
+<script src="app.js?v=20261029-workspace-1"></script>
 </body>
 </html>

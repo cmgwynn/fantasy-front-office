@@ -20,7 +20,7 @@
   <h1>Optimizer Regression Checks</h1>
   <p id="summary" role="status">Loading the app runtime...</p>
   <ol id="results"></ol>
-  <iframe id="appFrame" src="../index.html?v=20261029-planner-1" title="Optimizer test runtime"></iframe>
+  <iframe id="appFrame" src="../index.html?v=20261029-workspace-1&amp;resume=0" title="Optimizer test runtime"></iframe>
   <script>
     async function runOptimizerFixtures() {
       const results = [];
@@ -69,7 +69,7 @@
         state.players[id] = {
           id, name, position, team: "FA", projectedPoints: score, seasonPpg: score,
           isPick: false, baseValue: 100, injuryStatus: "Healthy", byeWeek: 0,
-          isCurrentNfl: true, vorpScore: score
+          isCurrentNfl: true, vorpScore: score, posRank: 999, ovrRank: 999
         };
       };
       const check = (name, passed, detail) => results.push({ name, passed: Boolean(passed), detail: detail || "" });
@@ -82,6 +82,12 @@
         activateTab("tab-power");
         const powerNav = document.querySelector('.nav-btn[data-tab="tab-power"]');
         check("Active section is exposed to assistive technology", powerNav?.getAttribute("aria-current") === "page" && document.getElementById("mobileTabSelect").value === "tab-power");
+        check("Sidebar opens the active tool's group and keeps only one group expanded",
+          powerNav.closest(".nav-group").open && document.querySelectorAll(".sidebar .nav-group[open]").length === 1 &&
+          powerNav.closest(".nav-group").querySelector(".nav-current").textContent === "Power Rankings");
+        const groupBeforeInvalidTab = document.querySelector(".nav-group[open]");
+        check("Unknown tab activation preserves the current section", activateTab("tab-missing") === null &&
+          document.querySelector(".tab-page.active").id === "tab-power" && groupBeforeInvalidTab.open);
         activateTab(savedTabId);
         window.fetch = async () => ({ ok: true, json: async () => ({ season: "2026", display_week: 8, week: 8 }) });
         const weekProviders = ["", "espn", "sleeper", "yahoo"];
@@ -219,6 +225,48 @@
         state.managers = beforePlannerManagers;
         state.week = beforePlannerWeek;
         renderRosterPlanner();
+
+        const backupProvider = state.provider;
+        const backupWeek = state.week;
+        const backupLeague = state.activeLeague;
+        const backupManagers = state.managers;
+        const backupTeamOptions = document.getElementById("teamSelect").innerHTML;
+        const backupTeamValue = document.getElementById("teamSelect").value;
+        state.provider = "yahoo";
+        state.week = 6;
+        state.activeLeague = { provider: "yahoo", leagueId: "workspace-fixture", name: "Workspace fixture", season: "2026",
+          rosterPositions: ["QB"], scoringSettings: { rec: 1 } };
+        state.managers = [{ rosterId: 1, teamName: "Workspace roster", players: ["fixture_plan_QB"], starters: ["fixture_plan_QB"],
+          reserve: [], taxi: [], ownedPicks: [], history: [1], wins: 1, losses: 0, pf: 100, pa: 90, maxPf: 100,
+          eff: 100, rosPpg: 15, allPlayW: 1, allPlayL: 0, luck: 0, power: 100, week1Rank: 1, currentRank: 1,
+          projW: 10, projL: 4, playoffPct: 60 }];
+        document.getElementById("teamSelect").innerHTML = '<option value="0">Workspace roster</option>';
+        const fixtureBackup = buildWorkspaceBackup();
+        check("Workspace export includes a versioned active league, roster selection and current plans",
+          fixtureBackup.version === 1 && fixtureBackup.snapshot.activeLeague.name === "Workspace fixture" && fixtureBackup.ui.teamIndex === 0 &&
+          !("userId" in fixtureBackup.snapshot) && !("espnData" in fixtureBackup.snapshot.activeLeague));
+        const storageBeforePreview = JSON.stringify(FFOWorkspace.captureStorage(localStorage));
+        await previewWorkspaceFile({ size: 2, text: async () => "{}" });
+        check("Invalid backup previews cannot enable restore or change saved plans", !pendingWorkspaceBackup &&
+          document.getElementById("restoreWorkspaceBtn").disabled && document.getElementById("workspaceStatus").textContent.includes("rejected") &&
+          JSON.stringify(FFOWorkspace.captureStorage(localStorage)) === storageBeforePreview);
+        const fixtureText = JSON.stringify(fixtureBackup);
+        await previewWorkspaceFile({ size: fixtureText.length, text: async () => fixtureText });
+        check("Valid workspace backup previews require explicit confirmation before restore",
+          pendingWorkspaceBackup?.version === 1 && !document.getElementById("workspaceRestorePreview").hidden &&
+          document.getElementById("restoreWorkspaceBtn").disabled && !document.getElementById("workspaceRestoreConfirm").checked);
+        document.getElementById("workspaceRestoreConfirm").checked = true;
+        document.getElementById("workspaceRestoreConfirm").dispatchEvent(new Event("change"));
+        check("Backup confirmation enables restore only after validation", !document.getElementById("restoreWorkspaceBtn").disabled);
+        await previewWorkspaceFile(null);
+        check("Clearing a backup resets confirmation and prevents stale restore", !pendingWorkspaceBackup &&
+          document.getElementById("restoreWorkspaceBtn").disabled && !document.getElementById("workspaceRestoreConfirm").checked);
+        state.provider = backupProvider;
+        state.week = backupWeek;
+        state.activeLeague = backupLeague;
+        state.managers = backupManagers;
+        document.getElementById("teamSelect").innerHTML = backupTeamOptions;
+        document.getElementById("teamSelect").value = backupTeamValue;
 
         window.fetch = async () => ({ ok: false, status: 404 });
         let failedRequestError = "";

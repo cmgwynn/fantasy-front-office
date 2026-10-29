@@ -14,12 +14,67 @@ regression suite before publishing. Verify the public app after deployment.
 HTML assets and the regression iframe use a shared release query version.
 Bump those versions together whenever publishing changed assets to avoid a new
 HTML page reusing older cached scripts or styles.
-Refreshing starts on GM Inbox; Player Compare and Team Grades are separate
-navigation items, and draft features are inside Draft Room. Loading a provider
+Fresh visits start on GM Inbox unless a manually saved workspace resumes.
+Player Compare and Team Grades are separate navigation items, and draft
+features are inside Draft Room. Loading a provider
 league is separate from loading the UI; a provider authorization failure does
 not mean the release is missing. Explore demo previews roster-based features.
 
 ## Current release
+
+### Compact sidebar
+
+The desktop sidebar uses five native accordion groups: **Home**, **Roster**,
+**League**, **Research**, and **Draft**. One group is expanded at a time.
+Selecting a tool through a shortcut also opens its group and synchronizes the
+mobile picker and `aria-current`. Collapsing the current group leaves the
+selected tool's name visible in its summary. Native summaries support keyboard
+Enter/Space, with visible focus indicators and reduced-motion support.
+The sidebar uses system fonts, rounded inset selection, restrained blue accents,
+original line icons, and 48px group targets. At widths up to 960px, a native
+44px picker with the same five option groups replaces the sidebar list.
+All existing tools remain accessible; no analytics were removed.
+
+### Workspace snapshots and backups
+
+Open **Home > Workspace & Backups**. **Save on this device** commits a manual
+snapshot to IndexedDB and resumes it on a later unlinked visit. It captures one
+active league, loaded player/model data, completed results, selected roster,
+week, view, and multiweek add/drop scenario. Resume uses that snapshot without
+automatic league/schedule refresh and shows a persistent non-live-data banner.
+Local draft, FAAB, newsletter, Inbox, watchlist, portfolio-selection, and pick'em
+saves retain their latest device changes on ordinary resume.
+
+**Download backup** exports the same versioned snapshot plus all recognized
+local app saves as JSON. It does not update the device snapshot. Backups contain
+private league/manager details; keep files private. No provider cookies,
+credentials, notification permissions, other sites' local storage, or cloud
+account are included. Other leagues' local saves are included, but not their
+live rosters. Unsaved trade/bracket scenarios and external schedule caches are
+not included.
+
+Restore validates the format/version, 25 MB byte limit, data shape, roster/player
+references, completed results, and recognized saved-plan keys before showing a
+preview. Plain-text snapshot data is supported; markup, unsafe object keys,
+malformed JSON, invalid settings, and unsupported versions are rejected.
+Restoring requires a separate replacement checkbox and button. It replaces
+**all recognized local app saves**, including removing entries absent from the
+backup, while preserving unrelated browser data. Local-plan writes roll back
+if a write or the IndexedDB commit fails; rollback failure is explicitly
+reported. The page reloads only after the snapshot transaction commits.
+
+**Stop resuming snapshot** removes only the device resume copy, not the current
+session, local plans, downloaded backups, or NFL caches. Explicit provider,
+league/user, or week links take precedence over snapshot resume. `?resume=0`
+also bypasses resume without deleting it; the browser test harness uses this
+to avoid loading personal snapshots. Errors preserve the saved copy and are
+shown in Workspace and the snapshot banner.
+
+Snapshots are manual, not autosave or synced accounts. Reconnect/re-import for
+fresh provider data. Browser eviction/clearing can remove the device copy;
+download a file as an independent backup. Export rejects invalid existing
+recognized saves rather than silently omitting them. Restoring a valid backup
+can replace corrupt local saves.
 
 ### Current week selection
 
@@ -225,7 +280,7 @@ and Premium workflows have not been independently exercised.
 
 ## Multiweek roster planning
 
-Open **Multiweek Planner** under Manage, select a roster in the header, and
+Open **Multiweek Planner** under Roster, select a roster in the header, and
 choose a 2-, 4-, or 6-week window beginning with the selected header week.
 Windows stop at Week 18. The weekly comparison shows starter-slot coverage,
 remaining gaps, and the change from an optional unowned-player addition and
@@ -268,7 +323,7 @@ FFWrapped parity gaps. Backend integrations remain deferred.
 
 ## Next releases
 
-1. Workspace restoration and versioned backup/restore with validation.
+1. Extend manual workspace snapshots with opt-in autosave and broader saved scenarios.
 2. Source-linked player news, timestamped recommendation explanations, and
    explicit missing-data states. News requires a licensed or permitted feed.
 3. Visibility-aware score refresh and action deadlines. Background push
