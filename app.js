@@ -5085,10 +5085,17 @@ function buildWeeklyRecommendations() {
   if (!manager) return [];
   const recommendations = [];
   const optimal = calcOptimalLineup(manager.players, false, getLineupLockConstraints(manager));
+  const currentStarters = new Set((manager.starters || []).map(String));
+  const optimalSlots = new Map(optimal.filled.flatMap((player, index) => player ? [[String(player.id), index]] : []));
   optimal.slots.forEach((slot, index) => {
-    const current = state.players[manager.starters[index]];
     const best = optimal.filled[index];
-    if (!current || !best || current.id === best.id) return;
+    if (!best || currentStarters.has(String(best.id))) return;
+    let current = state.players[manager.starters[index]];
+    // Follow retained starters across slots to find who actually leaves the lineup.
+    while (current && optimalSlots.has(String(current.id))) {
+      current = state.players[manager.starters[optimalSlots.get(String(current.id))]];
+    }
+    if (!current) return;
     const gain = (best.projectedPoints || 0) - (current.projectedPoints || 0);
     if (gain < 0.5) return;
     const unavailable = ["Out", "IR", "PUP", "Suspended"].includes(current.injuryStatus) || current.byeWeek === state.week;

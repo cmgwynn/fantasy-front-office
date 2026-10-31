@@ -48,6 +48,9 @@ urgent warnings), and put Details and the review button on the same line.
 Portfolio rows show status and affected roster counts instead of vague prose.
 The kickoff check uses a short status with source caveats inside its disclosure.
 Upcoming weeks show bye counts; individual names remain in the coverage details.
+Start/sit advice compares players entering and leaving the starting lineup,
+following any RB/FLEX or repeated-slot reshuffling. Moving two existing starters
+between slots is not an action and cannot create an artificial projected gain.
 Healthy roster-check status is a plain line rather than another bordered banner;
 warning states retain their existing prominence. The connected phone header
 keeps status, data details and sharing on one line.

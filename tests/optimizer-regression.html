@@ -20,7 +20,7 @@
   <h1>Optimizer Regression Checks</h1>
   <p id="summary" role="status">Loading the app runtime...</p>
   <ol id="results"></ol>
-  <iframe id="appFrame" src="../index.html?v=20261031-inbox-moves-1&amp;resume=0" title="Optimizer test runtime"></iframe>
+  <iframe id="appFrame" src="../index.html?v=20261031-starter-advice-1&amp;resume=0" title="Optimizer test runtime"></iframe>
   <script>
     async function runOptimizerFixtures() {
       const results = [];
@@ -845,6 +845,44 @@
           !deduplicatedAdvice.some(item => item.type === "Roster risk" && item.playerId === "fixture_owned_qb"));
         state.managers[0].players.pop();
         state.players.fixture_owned_qb.injuryStatus = "Healthy";
+        const starterAdviceContext = {
+          league: state.activeLeague, managers: state.managers, waivers: state.waiverTargets
+        };
+        try {
+          addPlayer("fixture_mason", "Jordan Mason", "RB", 12);
+          addPlayer("fixture_judkins", "Quinshon Judkins", "RB", 11.5);
+          addPlayer("fixture_bench_rb", "Bench RB", "RB", 16);
+          state.activeLeague = { ...state.activeLeague, rosterPositions: ["RB", "FLEX", "BN"] };
+          state.waiverTargets = [];
+          state.managers = [{
+            rosterId: "starter-advice", players: ["fixture_mason", "fixture_judkins"],
+            starters: ["fixture_judkins", "fixture_mason"]
+          }];
+          const reorderedAdvice = buildWeeklyRecommendations();
+          check("Inbox does not suggest starting one existing starter over another after RB/FLEX reordering",
+            !reorderedAdvice.some(item => item.type === "Start / sit"));
+          state.managers[0].players.push("fixture_bench_rb");
+          const replacementAdvice = buildWeeklyRecommendations().filter(item => item.type === "Start / sit");
+          check("Inbox follows RB/FLEX reshuffling to recommend only the real bench-to-starter replacement",
+            replacementAdvice.length === 1 &&
+            replacementAdvice[0].playerId === "fixture_bench_rb" &&
+            replacementAdvice[0].comparisonPlayerId === "fixture_judkins" &&
+            replacementAdvice[0].projectedGain === 4.5);
+          state.activeLeague = { ...state.activeLeague, rosterPositions: ["RB", "RB", "FLEX"] };
+          addPlayer("fixture_third_rb", "Third RB", "RB", 10);
+          state.managers[0].players.push("fixture_third_rb");
+          state.managers[0].starters = ["fixture_third_rb", "fixture_judkins", "fixture_mason"];
+          const repeatedSlotAdvice = buildWeeklyRecommendations().filter(item => item.type === "Start / sit");
+          check("Inbox pairs a new starter with the outgoing player across repeated starting slots",
+            repeatedSlotAdvice.length === 1 &&
+            repeatedSlotAdvice[0].playerId === "fixture_bench_rb" &&
+            repeatedSlotAdvice[0].comparisonPlayerId === "fixture_third_rb" &&
+            repeatedSlotAdvice[0].projectedGain === 6);
+        } finally {
+          state.activeLeague = starterAdviceContext.league;
+          state.managers = starterAdviceContext.managers;
+          state.waiverTargets = starterAdviceContext.waivers;
+        }
         const demoProjection = { ...state.players.fixture_claim_rb, isDemo: true, byeWeek: state.week };
         check("Demo projections ignore real NFL byes",
           computeLeagueProj(demoProjection, { pts_ppr: 12 }, {}) === 12);
