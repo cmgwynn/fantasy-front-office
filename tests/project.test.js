@@ -41,7 +41,7 @@ test("HTML references existing local assets in the expected script order", () =>
   ].map(match => match[1]).filter(asset => !/^(?:[a-z]+:)?\/\//i.test(asset));
 
   assert.ok(assets.length > 0, "Expected local CSS or JavaScript assets.");
-  assert.ok(assets.every(asset => asset.endsWith("?v=20261031-decision-quality-1")), "All local assets must use the current release version.");
+  assert.ok(assets.every(asset => asset.endsWith("?v=20261031-launch-pages-1")), "All local assets must use the current release version.");
   for (const asset of assets) {
     assert.ok(fs.existsSync(path.join(root, asset.split("?")[0])), `Missing local asset: ${asset}`);
   }
@@ -59,6 +59,37 @@ test("HTML references existing local assets in the expected script order", () =>
   assert.ok(recordsIndex > demoIndex, "Records module must load after the demo module.");
   assert.ok(workspaceIndex > recordsIndex && appIndex > workspaceIndex, "Workspace must load after records and before the app.");
   assert.ok(playoffIndex > workspaceIndex && appIndex > playoffIndex, "Playoff engine must load before the app.");
+});
+
+test("public information pages and footer expose working local links without loading the app", () => {
+  const pages = ["index.html", "privacy.html", "terms.html", "contact.html"];
+  for (const file of pages) {
+    const html = read(file);
+    assert.match(html, /<footer class="site-footer" aria-label="Site information">/);
+    for (const route of ["privacy", "terms", "contact"]) {
+      assert.ok(html.includes(`href="/${route}"`), `${file} must link to ${route}.`);
+    }
+    for (const [, href] of html.matchAll(/\bhref="([^"]+)"/g)) {
+      if (/^(?:https?:|mailto:|#)/.test(href)) continue;
+      const route = href.split("?")[0];
+      const target = route === "/" ? "index.html" : route.startsWith("/") ? `${route.slice(1)}.html` : route;
+      assert.ok(fs.existsSync(path.join(root, target)), `${file} has a missing local link: ${href}`);
+    }
+    if (file === "index.html") continue;
+    assert.match(html, /<html lang="en">/);
+    assert.match(html, /name="viewport"/);
+    assert.match(html, /<main class="info-content">/);
+    assert.match(html, /href="mailto:support@fantasyfo\.com"/);
+    assert.match(html, /Chavous Gwynn/);
+    assert.match(html, /United States adults aged 18/);
+    assert.doesNotMatch(html, /<script\b/, "Information pages must work without app initialization or provider requests.");
+    assert.match(html, /styles\.css\?v=20261031-launch-pages-1/);
+  }
+  const sandbox = { window: {} };
+  vm.runInNewContext(read("monetization-config.js"), sandbox);
+  assert.equal(sandbox.window.FFO_MONETIZATION.privacyUrl, "https://fantasyfo.com/privacy");
+  assert.equal(sandbox.window.FFO_MONETIZATION.adsense.enabled, false);
+  assert.equal(sandbox.window.FFO_MONETIZATION.adsense.consentManagementConfigured, false);
 });
 
 test("static interface IDs, labels, and tab navigation targets are consistent", () => {
@@ -145,7 +176,7 @@ test("browser regression harness is wired to the app and includes saved-state co
   const html = read("tests/optimizer-regression.html");
   const appHtml = read("index.html");
 
-  assert.match(html, /src="\.\.\/index\.html\?v=20261031-decision-quality-1&amp;resume=0"/, "Regression harness must load the current app release without resuming personal snapshots.");
+  assert.match(html, /src="\.\.\/index\.html\?v=20261031-launch-pages-1&amp;resume=0"/, "Regression harness must load the current app release without resuming personal snapshots.");
   assert.doesNotMatch(appHtml, /id="loadRecordsBtn"/, "Records must load automatically without a manual refresh button.");
   assert.match(html, /runOptimizerFixtures/, "Regression harness must execute its fixtures.");
   assert.match(html, /Cross-league queue saves to target budget/, "Saved FAAB state should remain covered.");

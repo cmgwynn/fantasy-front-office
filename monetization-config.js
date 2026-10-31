@@ -15,5 +15,5 @@ window.FFO_MONETIZATION = {
     clientId: "",
     footerSlot: ""
   },
-  privacyUrl: ""
+  privacyUrl: "https://fantasyfo.com/privacy"
 };

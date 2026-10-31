@@ -2,7 +2,8 @@
 
 ## Published site
 
-The public app is <https://fantasy-front-office.pages.dev/>.
+The primary public app is <https://fantasyfo.com/>. The previous
+<https://fantasy-front-office.pages.dev/> address remains available.
 Cloudflare Pages publishes the root of the `main` branch in
 `cmgwynn/fantasy-front-office`. Changes must be committed and pushed to that
 repository, then the Pages deployment must complete.
@@ -685,3 +686,24 @@ FFWrapped parity gaps. Backend integrations remain deferred.
    validated simulation features from the inventory above.
 6. Backend authentication, optional cross-device persistence, and video
    generation after architecture, provider permissions, and hosting approval.
+# Public launch information
+
+The main app has a compact, always-visible Privacy / Terms / Contact footer,
+separate from optional monetization placements. Standalone information pages work
+without JavaScript or provider requests, use the app's responsive styling, and
+link back to the tools. Cloudflare Pages serves `/privacy`, `/terms`, and `/contact`.
+
+The operator is Chavous Gwynn; the initial intended audience is United States
+adults aged 18 and older. The public support address is support@fantasyfo.com,
+whose inbound forwarding was verified by the operator. Forwarding is not a
+sending mailbox: ordinary replies can disclose the destination email address.
+
+The privacy notice covers localStorage/IndexedDB saves and clearing site data,
+direct Sleeper/ESPN requests and images, hosting/logging, identifiers in shared
+URLs, imports processed locally, and emailed support information. AdSense remains
+disabled and no visitor-tracking script has been added. Monetization configuration
+now points to the published privacy page; future ads/tracking require another
+policy and consent review. Terms describe estimated results, provider limitations,
+local-save risks, and the fact that plans do not submit provider transactions.
+These launch notices are not a legal compliance certification; legal review and
+commercial data/image usage verification remain outstanding.
