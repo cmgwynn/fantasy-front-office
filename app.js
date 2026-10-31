@@ -3898,7 +3898,7 @@ function updateFaabSettings() {
   renderWaiversTab();
 }
 
-function toggleFaabClaim(playerId) {
+function toggleFaabClaim(playerId, bidOverride = null) {
   const player = state.players[playerId];
   if (!player) return;
   const existingIndex = faabState.claims.findIndex(claim => claim.playerId === playerId);
@@ -3907,7 +3907,7 @@ function toggleFaabClaim(playerId) {
     const manager = state.managers[parseInt(document.getElementById("teamSelect")?.value || "0", 10)];
     const drop = getFaabDropCandidates(manager, player)[0] || null;
     faabState.claims.push({
-      playerId, playerName: player.name, position: player.position, bid: getSuggestedFaabBid(player),
+      playerId, playerName: player.name, position: player.position, bid: bidOverride ?? getSuggestedFaabBid(player),
       dropPlayerId: drop?.id || "", dropPlayerName: drop?.name || "", dropProjection: drop ? Number(drop.projectedPoints) || 0 : null,
       dropChoiceSet: true, status: "queued", queuedWeek: state.week
     });
@@ -4009,16 +4009,29 @@ function renderWaiverNeeds(manager, needs) {
   }
   targetsPanel.innerHTML = targets.length ? targets.map(({ player, need }) => {
     const fit = !playable(player) ? "Future depth · unavailable this week" : need?.urgent ? "Priority fit" : "Depth fit";
-    return `<div class="waiver-fit-item"><div><span class="waiver-fit-label">${draftEscapeHtml(fit)}${need ? ` · ${draftEscapeHtml(need.position)} need` : " · Available option"}</span>${renderPlayerProfile(player, `${Number(player.projectedPoints || 0).toFixed(1)} projected · ${Number(player.vorpScore || 0).toFixed(1)} VORP`)}</div><button class="btn-builder-action" type="button" data-waiver-fit-player="${draftEscapeHtml(player.id)}">${faabState.claims.some(claim => claim.playerId === player.id) ? "Queued" : `Queue $${getSuggestedFaabBid(player)}`}</button></div>`;
+    const queued = faabState.claims.find(claim => claim.playerId === player.id);
+    return `<div class="waiver-fit-item"><div><span class="waiver-fit-label">${draftEscapeHtml(fit)}${need ? ` · ${draftEscapeHtml(need.position)} need` : " · Available option"}</span>${renderPlayerProfile(player, `${Number(player.projectedPoints || 0).toFixed(1)} projected · ${Number(player.vorpScore || 0).toFixed(1)} VORP`)}</div><div class="faab-inline-queue">${renderFaabBidInput(player, queued ? queued.bid : getSuggestedFaabBid(player), Boolean(queued))}${renderFaabQueueButton(player, Boolean(queued))}</div></div>`;
   }).join("") : `<div class="draft-empty">No matching available players found for these needs.</div>`;
 }
 
 let waiverReviewPlayerId = "";
 
-function getWaiverCandidates(manager, pf = "ALL", reviewPlayerId = "") {
+function getWaiverRankMetric(player, mode, pf = "ALL") {
+  const stats = state.rawStats[player.id];
+  const games = Number(stats?.gp || stats?.gms_active || 0);
+  if (mode === 1) {
+    if (games <= 0) return null;
+    if (player.position === "QB") return pf === "QB" ? player.rushAttPerGame + player.passYdsPerGame / 25 : null;
+    return ["RB", "WR", "TE"].includes(player.position) ? player.touchesPerGame + player.targetsPerGame : null;
+  }
+  if (mode === 2) return games > 0 && player.projectedPoints > 0 ? player.projectedPoints - player.seasonPpg : null;
+  return null;
+}
+
+function getWaiverCandidates(manager, pf = "ALL", reviewPlayerId = "", mode = 0) {
   const rostered = new Set(state.managers.flatMap(roster => roster.players || []).map(String));
   const rosterNeeds = getWaiverRosterNeeds(manager);
-  return Object.values(state.players).filter(p => {
+  const pool = Object.values(state.players).filter(p => {
     if (Boolean(p.isDemo) !== Boolean(state.activeLeague?.isDemo)) return false;
     if (p.isPick || rostered.has(String(p.id))) return false;
     if (p.position !== "DEF" && !p.isCurrentNfl) return false;
@@ -4026,8 +4039,13 @@ function getWaiverCandidates(manager, pf = "ALL", reviewPlayerId = "") {
     if (pf === "FLEX" && !["RB","WR","TE"].includes(p.position)) return false;
     if (pf !== "ALL" && pf !== "FLEX" && p.position !== pf) return false;
     return p.projectedPoints > 1 || p.seasonPpg > 2;
-  }).map(player => ({ ...player, waiverFitScore: rosterNeeds.fitByPosition[player.position] || (pf === "FLEX" ? rosterNeeds.fitByPosition.FLEX || 0 : 0) }))
-    .sort((a, b) => Number(String(b.id) === reviewPlayerId) - Number(String(a.id) === reviewPlayerId) ||
+  }).map(player => ({ ...player, waiverFitScore: rosterNeeds.fitByPosition[player.position] || (pf === "FLEX" ? rosterNeeds.fitByPosition.FLEX || 0 : 0), waiverRankMetric: getWaiverRankMetric(player, mode, pf) }));
+  const pinned = (a, b) => Number(String(b.id) === reviewPlayerId) - Number(String(a.id) === reviewPlayerId);
+  if (mode === 1 || mode === 2) {
+    return pool.filter(player => player.waiverRankMetric !== null || String(player.id) === reviewPlayerId)
+      .sort((a, b) => pinned(a, b) || ((b.waiverRankMetric ?? -Infinity) - (a.waiverRankMetric ?? -Infinity)) || (b.projectedPoints - a.projectedPoints)).slice(0, 15);
+  }
+  return pool.sort((a, b) => pinned(a, b) ||
       (b.waiverFitScore - a.waiverFitScore) || (pf === "ALL" ? (b.vorpScore - a.vorpScore) : (b.projectedPoints - a.projectedPoints))).slice(0, 15);
 }
 
@@ -4037,15 +4055,24 @@ function renderWaiversTab() {
   const selectedManager = state.managers[selectedTeamIndex];
   const rosterNeeds = getWaiverRosterNeeds(selectedManager);
   const pf = document.getElementById("waiverPos")?.value || "ALL";
+  const mode = parseInt(document.getElementById("waiverChartMode")?.value || "0", 10);
   state.waiverTargets = getWaiverCandidates(selectedManager, pf, waiverReviewPlayerId);
+  state.waiverRankedTargets = mode ? getWaiverCandidates(selectedManager, pf, waiverReviewPlayerId, mode) : state.waiverTargets;
   renderWaiverNeeds(selectedManager, rosterNeeds.needs);
 
   const tbl = document.getElementById("waiverTbl");
   if (!tbl) return;
-  tbl.innerHTML = `<thead><tr><th>Pos</th><th style="text-align:left;">Player</th><th>NFL Team</th><th>Health Status</th><th>${state.season} Bye</th><th>Season PPG</th><th>Week ${state.week} Proj</th><th>VORP</th><th>Roster fit</th><th>Suggested Bid</th><th></th></tr></thead><tbody></tbody>`;
+  const rankNote = document.getElementById("waiverRankNote");
+  if (rankNote) rankNote.textContent = ["Roster fit first, then value over replacement.",
+    "Touches + targets per game for RB/WR/TE (QB filter: rushes + pass yards/25). Players with games played only.",
+    "This week's projection minus season average. Positive = trending up this week. Players with games played only."][mode] || "";
+  const metricHeader = mode === 1 ? "Usage / game" : mode === 2 ? "Wk vs season" : "VORP";
+  const formatMetric = fa => mode === 1 ? `${fa.waiverRankMetric.toFixed(1)}` : mode === 2 ? `${fa.waiverRankMetric >= 0 ? "+" : ""}${fa.waiverRankMetric.toFixed(1)}` : `+${fa.vorpScore.toFixed(1)}`;
+  tbl.innerHTML = `<thead><tr><th>Pos</th><th style="text-align:left;">Player</th><th>NFL Team</th><th>Health Status</th><th>${state.season} Bye</th><th>Season PPG</th><th>Week ${state.week} Proj</th><th class="waiver-rank-col">${metricHeader}</th><th>Roster fit</th><th>Bid</th><th></th></tr></thead><tbody></tbody>`;
   const tbody = tbl.querySelector("tbody");
+  if (!state.waiverRankedTargets.length) tbody.innerHTML = `<tr><td colspan="11" class="draft-empty">${mode ? "No available players with games played match this view." : "No available players match this filter."}</td></tr>`;
 
-  state.waiverTargets.forEach(fa => {
+  state.waiverRankedTargets.forEach(fa => {
     const queuedIndex = faabState.claims.findIndex(claim => claim.playerId === fa.id);
     const bid = queuedIndex >= 0 ? faabState.claims[queuedIndex].bid : getSuggestedFaabBid(fa);
     const hCol = ["Questionable","Doubtful"].includes(fa.injuryStatus) ? "var(--warn)" : (["Out","IR","PUP","Suspended"].includes(fa.injuryStatus) ? "var(--bad)" : "var(--good)");
@@ -4062,10 +4089,10 @@ function renderWaiversTab() {
       <td style="color:${isBye ? 'var(--bad)' : 'var(--text-muted)'};font-weight:${isBye ? '700' : '400'};">${fa.byeWeek > 0 ? (isBye ? `Wk ${fa.byeWeek} (BYE)` : `Wk ${fa.byeWeek}`) : "--"}</td>
       <td>${fa.seasonPpg.toFixed(2)} pts</td>
       <td style="color:var(--good);font-weight:700;">${fa.projectedPoints.toFixed(2)} pts</td>
-      <td style="color:var(--accent);font-weight:700;">+${fa.vorpScore.toFixed(1)}</td>
+      <td class="waiver-rank-col" style="color:var(--accent);font-weight:700;">${formatMetric(fa)}</td>
       <td class="waiver-fit-cell">${fa.waiverFitScore >= 80 ? "Priority" : (fa.waiverFitScore > 0 ? "Depth" : "General")}</td>
-      <td style="font-weight:700;">$${bid}</td>
-      <td><button class="btn-builder-action faab-queue-btn" type="button" data-faab-player="${draftEscapeHtml(fa.id)}">${queuedIndex >= 0 ? "Queued" : "Queue bid"}</button></td>`;
+      <td>${renderFaabBidInput(fa, bid, queuedIndex >= 0)}</td>
+      <td>${renderFaabQueueButton(fa, queuedIndex >= 0)}</td>`;
     tbody.appendChild(tr);
   });
   renderFaabPlanner();
@@ -4083,28 +4110,57 @@ function drawWaiverChart() {
   ctx.scale(dpr, dpr);
   ctx.clearRect(0, 0, W, H);
 
-  const list = state.waiverTargets.slice(0, 8);
+  const list = (state.waiverRankedTargets || state.waiverTargets).slice(0, 8);
   if (!list.length) return;
   const mode = parseInt(document.getElementById("waiverChartMode")?.value || "0", 10);
   const pf = document.getElementById("waiverPos")?.value || "ALL";
   ctx.fillStyle = "#F2F4F8"; ctx.font = "700 12px -apple-system, sans-serif";
-  ctx.fillText(mode === 0 ? `TOP AVAILABLE ${pf} TARGETS — VORP PICKUP SCORE (WEEK ${state.week})` : (mode === 1 ? "ROLE WORKLOAD & SNAP SHARE LEADERS" : "BREAKOUT MOMENTUM — WEEK PROJ vs SEASON AVG"), 20, 26);
+  ctx.fillText(mode === 0 ? `TOP AVAILABLE ${pf} TARGETS — VORP PICKUP SCORE (WEEK ${state.week})` : (mode === 1 ? "USAGE LEADERS — TOUCHES + TARGETS PER GAME" : `TRENDING UP — WEEK ${state.week} PROJ MINUS SEASON AVG`), 20, 26);
 
   const plot = { l: 215, t: 44, w: W - 375, h: H - 54 };
   const rowH = plot.h / list.length;
-  const metric = p => mode === 0 ? (pf === "ALL" ? p.vorpScore : p.projectedPoints) : (mode === 1 ? p.touchesPerGame + p.targetsPerGame : p.projectedPoints);
-  const maxV = Math.max(10, ...list.map(metric)) * 1.15;
+  const metric = p => mode === 0 ? (pf === "ALL" ? p.vorpScore : p.projectedPoints) : Math.max(0, p.waiverRankMetric ?? 0);
+  const maxV = Math.max(mode === 2 ? 3 : 10, ...list.map(metric)) * 1.15;
 
   list.forEach((p, i) => {
     const y = plot.t + i * rowH;
     ctx.fillStyle = "#F2F4F8"; ctx.font = "700 11px -apple-system, sans-serif";
     ctx.fillText(`#${i+1}  ${p.name.slice(0, 16)} (${p.position} - ${p.team})`, 18, y + rowH * 0.65);
     const w = Math.max(0.04, metric(p) / maxV) * plot.w;
-    ctx.fillStyle = p.vorpScore >= 6 ? "#30D158" : "#0A84FF";
+    ctx.fillStyle = mode === 1 ? "#64D2FF" : mode === 2 ? ((p.waiverRankMetric ?? 0) > 0 ? "#30D158" : "#FF9F0A") : (p.vorpScore >= 6 ? "#30D158" : "#0A84FF");
     ctx.fillRect(plot.l, y + rowH * 0.22, w, rowH * 0.56);
     ctx.fillStyle = "#F2F4F8"; ctx.font = "700 10px -apple-system, sans-serif";
-    ctx.fillText(mode === 0 ? `+${p.vorpScore.toFixed(1)} VORP (${p.projectedPoints.toFixed(1)} Proj)` : `${p.projectedPoints.toFixed(1)} pts (${p.seasonPpg.toFixed(1)} PPG)`, plot.l + w + 10, y + rowH * 0.65);
+    const label = mode === 0 ? `+${p.vorpScore.toFixed(1)} VORP (${p.projectedPoints.toFixed(1)} Proj)`
+      : mode === 1 ? `${(p.waiverRankMetric ?? 0).toFixed(1)} / game · ${p.snapSharePct.toFixed(0)}% snaps`
+      : `${(p.waiverRankMetric ?? 0) >= 0 ? "+" : ""}${(p.waiverRankMetric ?? 0).toFixed(1)} (${p.projectedPoints.toFixed(1)} proj vs ${p.seasonPpg.toFixed(1)} PPG)`;
+    ctx.fillText(label, plot.l + w + 10, y + rowH * 0.65);
   });
+}
+
+function renderFaabBidInput(player, bid, queued) {
+  const id = draftEscapeHtml(player.id);
+  return `<label class="faab-inline-bid"><span>$</span><input type="number" inputmode="numeric" min="0" max="${faabState.budget}" step="1" value="${Math.max(0, Number(bid) || 0)}" data-faab-draft-bid="${id}" aria-label="${queued ? "Queued" : "Bid"} amount for ${draftEscapeHtml(player.name)}" title="${queued ? "Edit queued bid" : `Suggested $${getSuggestedFaabBid(player)} · change before queuing`}" /></label>`;
+}
+
+function renderFaabQueueButton(player, queued) {
+  return `<button class="btn-builder-action faab-queue-btn${queued ? " is-queued" : ""}" type="button" data-faab-player="${draftEscapeHtml(player.id)}" aria-label="${queued ? "Remove queued claim for" : "Queue bid for"} ${draftEscapeHtml(player.name)}">${queued ? "Queued ✓ · Remove" : "Queue"}</button>`;
+}
+
+function readFaabDraftBid(container, playerId) {
+  const input = [...container.querySelectorAll("[data-faab-draft-bid]")].find(item => item.dataset.faabDraftBid === String(playerId));
+  if (!input || input.value.trim() === "") return null;
+  const value = Math.round(Number(input.value));
+  return Number.isFinite(value) ? Math.min(faabState.budget, Math.max(0, value)) : null;
+}
+
+function updateQueuedFaabBidFromDraft(input) {
+  const claim = faabState.claims.find(item => String(item.playerId) === input.dataset.faabDraftBid);
+  if (!claim) return;
+  const value = Math.round(Number(input.value));
+  if (input.value.trim() === "" || !Number.isFinite(value)) { input.value = claim.bid; return; }
+  claim.bid = Math.min(faabState.budget, Math.max(0, value));
+  saveFaabState();
+  renderWaiversTab();
 }
 
 function getAnalyticsMedian(values) {
@@ -8876,13 +8932,23 @@ function bindControlEvents() {
   document.getElementById("faabBudget")?.addEventListener("change", updateFaabSettings);
   document.getElementById("faabWeeks")?.addEventListener("change", updateFaabSettings);
   document.getElementById("faabStrategy")?.addEventListener("change", updateFaabSettings);
-  document.getElementById("waiverTbl")?.addEventListener("click", e => {
-    const button = e.target.closest("[data-faab-player]");
-    if (button) toggleFaabClaim(button.dataset.faabPlayer);
-  });
-  document.getElementById("waiverNeedTargets")?.addEventListener("click", e => {
-    const button = e.target.closest("[data-waiver-fit-player]");
-    if (button) toggleFaabClaim(button.dataset.waiverFitPlayer);
+  ["waiverTbl", "waiverNeedTargets"].forEach(containerId => {
+    const container = document.getElementById(containerId);
+    container?.addEventListener("click", e => {
+      const button = e.target.closest("[data-faab-player]");
+      if (button) toggleFaabClaim(button.dataset.faabPlayer, readFaabDraftBid(container, button.dataset.faabPlayer));
+    });
+    container?.addEventListener("change", e => {
+      const input = e.target.closest("[data-faab-draft-bid]");
+      if (input) updateQueuedFaabBidFromDraft(input);
+    });
+    container?.addEventListener("keydown", e => {
+      const input = e.target.closest("[data-faab-draft-bid]");
+      if (!input || e.key !== "Enter") return;
+      e.preventDefault();
+      if (faabState.claims.some(claim => String(claim.playerId) === input.dataset.faabDraftBid)) updateQueuedFaabBidFromDraft(input);
+      else toggleFaabClaim(input.dataset.faabDraftBid, readFaabDraftBid(container, input.dataset.faabDraftBid));
+    });
   });
   document.getElementById("faabClaims")?.addEventListener("change", e => {
     const input = e.target.closest("[data-faab-bid]");
@@ -9088,7 +9154,7 @@ function bindControlEvents() {
   });
   document.querySelectorAll("[data-companion-tab]").forEach(button => button.addEventListener("click", () => activateTab(button.dataset.companionTab, { navigate: true, focus: true })));
   document.getElementById("waiverPos")?.addEventListener("change", renderWaiversTab);
-  document.getElementById("waiverChartMode")?.addEventListener("change", drawWaiverChart);
+  document.getElementById("waiverChartMode")?.addEventListener("change", renderWaiversTab);
   document.getElementById("analyticsPos")?.addEventListener("change", () => { updateAnalyticsDropdownOptions(); drawSingleAnalyticsChart(); });
   document.getElementById("weeklyMatchupPosition")?.addEventListener("change", renderWeeklyMatchups);
   document.getElementById("weeklyMatchupScope")?.addEventListener("change", renderWeeklyMatchups);

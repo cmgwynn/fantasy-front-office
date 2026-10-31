@@ -56,6 +56,13 @@ status observations and external player updates are not a verified news feed.
 Waiver fit suggestions, bid queue and player table also use visible portraits.
 Fit cards prioritize playable current-week candidates; unavailable profiles are
 marked future depth rather than immediate priority coverage.
+The Waivers "Rank by" control re-ranks the target table and chart by pickup
+value (VORP), usage (touches + targets per game; QB rushes + pass yards/25 only
+under the QB filter) or this week's projection minus season average. Usage and
+trend modes include only players with real games played. Inbox recommendations
+stay value-ranked. Every Queue button has a bid input pre-filled with the
+suggested FAAB amount; the user can override it before queuing (Enter also
+queues), and editing a queued player's input updates the claim in place.
 Schedule portraits now highlight the highest three positive verified projections
 from each active roster for the actual displayed schedule week, not roster order.
 

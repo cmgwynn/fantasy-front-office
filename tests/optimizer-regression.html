@@ -20,7 +20,7 @@
   <h1>Optimizer Regression Checks</h1>
   <p id="summary" role="status">Loading the app runtime...</p>
   <ol id="results"></ol>
-  <iframe id="appFrame" src="../index.html?v=20261031-season-grades-1&amp;resume=0" title="Optimizer test runtime"></iframe>
+  <iframe id="appFrame" src="../index.html?v=20261031-waiver-bids-1&amp;resume=0" title="Optimizer test runtime"></iframe>
   <script>
     async function runOptimizerFixtures() {
       const results = [];
@@ -1101,6 +1101,54 @@
             document.getElementById("waiverPos").value === "RB" &&
             document.querySelector("#waiverTbl tbody tr.is-reviewed-pickup")?.dataset.waiverPlayer === "fixture_claim_rb" &&
             faabState.claims.length === claimCountBefore);
+          {
+            const rankContext = { mode: document.getElementById("waiverChartMode").value, claims: JSON.stringify(faabState.claims),
+              stats: ["fixture_claim_rb", "fixture_unlocked_rb"].map(id => state.rawStats[id]),
+              usage: ["fixture_claim_rb", "fixture_unlocked_rb"].map(id => [state.players[id].touchesPerGame, state.players[id].targetsPerGame, state.players[id].seasonPpg]) };
+            try {
+              state.rawStats.fixture_claim_rb = { gp: 5 };
+              state.rawStats.fixture_unlocked_rb = { gp: 5 };
+              Object.assign(state.players.fixture_claim_rb, { touchesPerGame: 60, targetsPerGame: 1, seasonPpg: -80 });
+              Object.assign(state.players.fixture_unlocked_rb, { touchesPerGame: 90, targetsPerGame: 4, seasonPpg: 30 });
+              const usageOrder = getWaiverCandidates(state.managers[0], "RB", "", 1).map(player => player.id);
+              const trendOrder = getWaiverCandidates(state.managers[0], "RB", "", 2).map(player => player.id);
+              check("Waiver Rank by re-ranks on real usage and week-vs-season trend, excluding players without games",
+                usageOrder.includes("fixture_claim_rb") && usageOrder.indexOf("fixture_unlocked_rb") >= 0 && usageOrder.indexOf("fixture_unlocked_rb") < usageOrder.indexOf("fixture_claim_rb") &&
+                trendOrder.includes("fixture_claim_rb") && (!trendOrder.includes("fixture_unlocked_rb") || trendOrder.indexOf("fixture_claim_rb") < trendOrder.indexOf("fixture_unlocked_rb")) &&
+                !usageOrder.includes("fixture_owned_rb") && getWaiverRankMetric(state.players.fixture_drop_wr, 1) === null);
+              const modeSelect = document.getElementById("waiverChartMode");
+              modeSelect.value = "1";
+              modeSelect.dispatchEvent(new Event("change"));
+              check("Changing Rank by visibly updates the waiver table, not just the chart",
+                document.querySelector("#waiverTbl th.waiver-rank-col").textContent === "Usage / game" &&
+                document.getElementById("waiverRankNote").textContent.includes("Touches + targets"));
+              modeSelect.value = "0";
+              modeSelect.dispatchEvent(new Event("change"));
+              faabState.claims = faabState.claims.filter(claim => claim.playerId !== "fixture_claim_rb");
+              renderWaiversTab();
+              const bidInput = document.querySelector('#waiverTbl [data-faab-draft-bid="fixture_claim_rb"]');
+              const suggested = getSuggestedFaabBid(state.players.fixture_claim_rb);
+              const prefilled = Number(bidInput?.value) === suggested;
+              bidInput.value = "3";
+              document.querySelector('#waiverTbl [data-faab-player="fixture_claim_rb"]').click();
+              const queuedBid = faabState.claims.find(claim => claim.playerId === "fixture_claim_rb")?.bid;
+              const queuedInput = document.querySelector('#waiverTbl [data-faab-draft-bid="fixture_claim_rb"]');
+              queuedInput.value = "5";
+              queuedInput.dispatchEvent(new Event("change", { bubbles: true }));
+              check("Queue bid pre-fills the suggested amount, queues an edited bid and edits it in place",
+                prefilled && queuedBid === 3 &&
+                faabState.claims.find(claim => claim.playerId === "fixture_claim_rb")?.bid === 5 &&
+                document.querySelector('#waiverTbl [data-faab-player="fixture_claim_rb"]').textContent.includes("Remove"));
+            } finally {
+              document.getElementById("waiverChartMode").value = rankContext.mode;
+              faabState.claims = JSON.parse(rankContext.claims);
+              saveFaabState();
+              ["fixture_claim_rb", "fixture_unlocked_rb"].forEach((id, index) => {
+                if (rankContext.stats[index] === undefined) delete state.rawStats[id]; else state.rawStats[id] = rankContext.stats[index];
+                [state.players[id].touchesPerGame, state.players[id].targetsPerGame, state.players[id].seasonPpg] = rankContext.usage[index];
+              });
+            }
+          }
           movePreview.innerHTML = renderGmInboxAction(weeklyWaivers[0], false, {}, "layout-fixture", []);
           const compareButton = movePreview.querySelector("[data-compare-a]");
           document.body.appendChild(movePreview);

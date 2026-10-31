@@ -10,7 +10,7 @@
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
   <link rel="icon" href="icons/app-icon.svg" type="image/svg+xml" />
   <title>Fantasy Front Office</title>
-  <link rel="stylesheet" href="styles.css?v=20261031-season-grades-1" />
+  <link rel="stylesheet" href="styles.css?v=20261031-waiver-bids-1" />
 </head>
 <body>
 
@@ -453,14 +453,9 @@
       <div class="tool-intro"><h2>Waiver Planner</h2><p>Find available upgrades. Verify availability and submit claims in your league; saved bids stay here.</p></div>
       <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
         <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
-          <select id="waiverPos" style="width:185px;">
+          <select id="waiverPos" style="width:185px;" aria-label="Waiver position filter">
             <option value="ALL">All positions</option><option value="QB">QB</option><option value="RB">RB</option>
             <option value="WR">WR</option><option value="TE">TE</option><option value="FLEX">FLEX (RB/WR/TE)</option><option value="DEF">DEF</option><option value="K">K</option>
-          </select>
-          <select id="waiverChartMode" style="min-width:310px;">
-            <option value="0">Pickup value</option>
-            <option value="1">Usage &amp; opportunity</option>
-            <option value="2">Weekly projection vs. season</option>
           </select>
         </div>
       </div>
@@ -495,8 +490,17 @@
         <div id="faabClaims" class="faab-claims"></div>
         <div id="faabClaimDisclosure" class="faab-claim-disclosure">Claims are saved as a local plan; submit them in your fantasy provider.</div>
       </section>
+      <div class="waiver-targets-heading">
+        <div><div class="sec-hdr" style="color:var(--good);">TOP AVAILABLE WAIVER TARGETS</div><span id="waiverRankNote" class="draft-subtitle">Roster fit first, then value over replacement.</span></div>
+        <label class="waiver-rank-control">Rank by
+          <select id="waiverChartMode">
+            <option value="0">Pickup value</option>
+            <option value="1">Usage &amp; opportunity</option>
+            <option value="2">Trending up (week vs. season)</option>
+          </select>
+        </label>
+      </div>
       <canvas id="waiverCanvas" class="chart-canvas" style="height:280px;"></canvas>
-      <div class="sec-hdr" style="color:var(--good);">TOP AVAILABLE WAIVER TARGETS</div>
       <div class="table-wrap"><table id="waiverTbl"></table></div>
     </div>
 
@@ -1059,14 +1063,14 @@
 </footer>
 
 <p id="appInstallStatus" class="app-install-status" role="status"></p>
-<script src="pwa.js?v=20261031-season-grades-1"></script>
-<script src="monetization-config.js?v=20261031-season-grades-1"></script>
-<script src="data-fetch.js?v=20261031-season-grades-1"></script>
-<script src="demo-league.js?v=20261031-season-grades-1"></script>
-<script src="league-records.js?v=20261031-season-grades-1"></script>
-<script src="workspace-backup.js?v=20261031-season-grades-1"></script>
-<script src="playoff-simulator.js?v=20261031-season-grades-1"></script>
-<script src="weekly-matchups.js?v=20261031-season-grades-1"></script>
-<script src="app.js?v=20261031-season-grades-1"></script>
+<script src="pwa.js?v=20261031-waiver-bids-1"></script>
+<script src="monetization-config.js?v=20261031-waiver-bids-1"></script>
+<script src="data-fetch.js?v=20261031-waiver-bids-1"></script>
+<script src="demo-league.js?v=20261031-waiver-bids-1"></script>
+<script src="league-records.js?v=20261031-waiver-bids-1"></script>
+<script src="workspace-backup.js?v=20261031-waiver-bids-1"></script>
+<script src="playoff-simulator.js?v=20261031-waiver-bids-1"></script>
+<script src="weekly-matchups.js?v=20261031-waiver-bids-1"></script>
+<script src="app.js?v=20261031-waiver-bids-1"></script>
 </body>
 </html>
