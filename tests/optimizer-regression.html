@@ -20,7 +20,7 @@
   <h1>Optimizer Regression Checks</h1>
   <p id="summary" role="status">Loading the app runtime...</p>
   <ol id="results"></ol>
-  <iframe id="appFrame" src="../index.html?v=20261031-winning-decisions-1&amp;resume=0" title="Optimizer test runtime"></iframe>
+  <iframe id="appFrame" src="../index.html?v=20261031-league-schedule-1&amp;resume=0" title="Optimizer test runtime"></iframe>
   <script>
     async function runOptimizerFixtures() {
       const results = [];
@@ -91,6 +91,82 @@
         check("Unknown tab activation preserves the current section", activateTab("tab-missing") === null &&
           document.querySelector(".tab-page.active").id === "tab-power" && groupBeforeInvalidTab.open);
         activateTab(savedTabId);
+        check("Inbox is a direct destination and closes unrelated navigation groups",
+          !document.querySelector('.nav-btn[data-tab="tab-inbox"]').closest("details") &&
+          document.querySelectorAll(".sidebar .nav-group[open]").length === 0);
+        activateTab("tab-draft");
+        check("Draft is a direct destination with synchronized mobile navigation",
+          !document.querySelector('.nav-btn[data-tab="tab-draft"]').closest("details") &&
+          document.getElementById("mobileTabSelect").value === "tab-draft");
+        activateTab(savedTabId);
+        {
+          const scheduleManagers = [{ rosterId: 1, teamName: "Team A" }, { rosterId: 2, teamName: "Team B" }, { rosterId: 3, teamName: "Team C" }];
+          const paired = normalizeLeagueSchedule({ provider: "sleeper" }, [
+            { roster_id: 1, matchup_id: 7 }, { roster_id: 2, matchup_id: 7 }, { roster_id: 3, matchup_id: null }
+          ], 8, scheduleManagers);
+          check("League schedule pairs Sleeper teams and preserves an explicitly unpaired roster",
+            paired.games.length === 2 && paired.games.some(game => game.homeId === "1" && game.awayId === "2") &&
+            paired.games.some(game => game.homeId === "3" && game.awayId === null) && paired.issues.length === 0);
+          const unresolved = normalizeLeagueSchedule({ provider: "sleeper" }, [
+            { roster_id: 1, matchup_id: 7 }, { roster_id: 2, matchup_id: 7 }, { roster_id: 3, matchup_id: 7 }
+          ], 8, scheduleManagers);
+          check("League schedule does not invent pairings from ambiguous or incomplete groups",
+            unresolved.games.length === 0 && unresolved.issues.length > 0);
+          const espnScheduleLeague = { provider: "espn", espnData: { settings: { scheduleSettings: { matchupPeriods: { 3: [8, 9], 4: [10] } } } } };
+          const espnPair = normalizeLeagueSchedule(espnScheduleLeague, [
+            { matchupPeriodId: 3, home: { teamId: 1 }, away: { teamId: 2 } },
+            { matchupPeriodId: 4, home: { teamId: 2 }, away: { teamId: 3 } }
+          ], 8, scheduleManagers);
+          check("ESPN schedule maps scoring weeks rather than assuming matchup-period IDs are weeks",
+            espnPair.games.length === 1 && espnPair.games[0].note.includes("Weeks 8, 9") &&
+            espnPair.games[0].homeId === "1");
+          let missingMapping = false;
+          try { normalizeLeagueSchedule({ provider: "espn" }, [], 8, scheduleManagers); }
+          catch (error) { missingMapping = error.message.includes("mapping"); }
+          check("ESPN missing week mapping is an explicit schedule error", missingMapping);
+          const priorScheduleLeague = state.activeLeague, priorScheduleManagers = state.managers;
+          const priorScheduleSnapshot = state.workspaceSnapshot, priorScheduleWeek = state.week;
+          const priorScheduleTeamOptions = document.getElementById("teamSelect").innerHTML;
+          const priorScheduleFetch = window.fetch;
+          try {
+            state.activeLeague = { provider: "sleeper", leagueId: "schedule-fixture", season: "2026" };
+            state.managers = scheduleManagers;
+            state.workspaceSnapshot = "";
+            state.week = 8;
+            document.getElementById("teamSelect").innerHTML = '<option value="0">Team A</option>';
+            let requests = 0;
+            window.fetch = async () => { requests++; return { ok: true, json: async () => [
+              { roster_id: 1, matchup_id: 7 }, { roster_id: 2, matchup_id: 7 }, { roster_id: 3, matchup_id: null }
+            ] }; };
+            await loadLeagueSchedule(true);
+            check("League schedule loads provider pairings and selected-week controls",
+              document.getElementById("leagueScheduleWeek").value === "8" &&
+              document.querySelectorAll("#leagueScheduleResults tbody tr").length === 2 && requests === 1);
+            document.getElementById("leagueScheduleScope").value = "mine";
+            await loadLeagueSchedule();
+            check("My-team schedule filters without refetching and still names the opponent",
+              requests === 1 && document.querySelectorAll("#leagueScheduleResults tbody tr").length === 1 &&
+              document.getElementById("leagueScheduleResults").textContent.includes("Team B"));
+            window.fetch = async () => { throw new Error("Schedule fixture offline"); };
+            await loadLeagueSchedule(true);
+            check("Schedule failures are visible and do not leave stale pairings presented as current",
+              document.getElementById("leagueScheduleStatus").textContent.includes("Schedule fixture offline") &&
+              !document.getElementById("leagueScheduleResults").textContent);
+            state.workspaceSnapshot = "fixture snapshot";
+            await loadLeagueSchedule(true);
+            check("Saved snapshots do not fetch or fabricate future league schedules",
+              document.getElementById("leagueScheduleStatus").textContent.includes("snapshot") &&
+              document.getElementById("leagueScheduleResults").textContent.includes("No published matchup"));
+          } finally {
+            state.activeLeague = priorScheduleLeague; state.managers = priorScheduleManagers;
+            state.workspaceSnapshot = priorScheduleSnapshot; state.week = priorScheduleWeek;
+            document.getElementById("teamSelect").innerHTML = priorScheduleTeamOptions;
+            document.getElementById("leagueScheduleScope").value = "all";
+            window.fetch = priorScheduleFetch;
+            leagueScheduleCache.clear();
+            leagueScheduleContext = "";
+          }
+        }
         window.fetch = async () => ({ ok: true, json: async () => ({ season: "2026", display_week: 8, week: 8 }) });
         const weekProviders = ["", "espn", "sleeper", "yahoo"];
         let providerWeeksCorrect = true;

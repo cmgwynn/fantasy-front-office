@@ -23,7 +23,7 @@ function activateTab(tabId) {
     const activeButton = group.querySelector(".nav-btn.active");
     group.classList.toggle("has-current", Boolean(activeButton));
     group.querySelector(".nav-current").textContent = activeButton?.textContent || "";
-    if (activeButton) group.open = true;
+    group.open = Boolean(activeButton);
   });
   if (tabId === "tab-records") {
     loadLeagueRecords();
@@ -6939,7 +6939,132 @@ function buildRosterPlan(manager, { weeks = 4, addId = "", dropId = "", holdInju
     rows: window.map(week => ({ week, baseline: coverage(ids, week), proposed: coverage(proposedIds, week) })) };
 }
 
+const leagueScheduleCache = new Map();
+const leagueScheduleLoads = new Map();
+let leagueScheduleContext = "";
+
+function normalizeLeagueSchedule(league, data, week, managers = state.managers) {
+  const known = new Set(managers.map(manager => String(manager.rosterId)));
+  const games = [];
+  const issues = [];
+  const seen = new Set();
+  const add = (homeId, awayId, note = "") => {
+    const home = String(homeId ?? ""), away = awayId === null || awayId === undefined ? null : String(awayId);
+    if (!known.has(home) || (away !== null && (!known.has(away) || away === home)) ||
+        seen.has(home) || (away !== null && seen.has(away))) {
+      issues.push("Unknown or duplicate teams were excluded.");
+      return;
+    }
+    seen.add(home);
+    if (away !== null) seen.add(away);
+    games.push({ homeId: home, awayId: away, note });
+  };
+  if (!Array.isArray(data)) throw new Error("Provider schedule response is invalid.");
+  if (league.provider === "sleeper") {
+    const pairs = new Map();
+    data.forEach(team => {
+      if (team.matchup_id === null || team.matchup_id === undefined) {
+        add(team.roster_id, null, "Provider bye / unpaired");
+        return;
+      }
+      const key = String(team.matchup_id);
+      if (!pairs.has(key)) pairs.set(key, []);
+      pairs.get(key).push(team);
+    });
+    pairs.forEach(teams => {
+      if (teams.length === 2) add(teams[0].roster_id, teams[1].roster_id);
+      else issues.push("Unresolved matchup groups were excluded.");
+    });
+  } else if (league.provider === "espn") {
+    const periods = league.espnData?.settings?.scheduleSettings?.matchupPeriods;
+    if (!periods || typeof periods !== "object") throw new Error("ESPN scoring-week mapping is unavailable. Refresh your league.");
+    data.forEach(game => {
+      const weeks = periods[game.matchupPeriodId];
+      if (!Array.isArray(weeks) || !weeks.every(value => Number.isInteger(value) && value >= 1 && value <= 18)) {
+        issues.push("Some ESPN matchup periods have no valid week mapping.");
+        return;
+      }
+      if (!weeks.includes(week)) return;
+      const note = weeks.length > 1 ? `Multiweek matchup: Weeks ${weeks.join(", ")}` : "";
+      if (game.home && game.away) add(game.home.teamId, game.away.teamId, note);
+      else if (game.home || game.away) add((game.home || game.away).teamId, null, note || "Provider bye / unpaired");
+    });
+  } else {
+    data.forEach(game => add(game.homeId, game.awayId, game.note || ""));
+  }
+  if (seen.size < known.size) issues.push(`${known.size - seen.size} team${known.size - seen.size === 1 ? "" : "s"} have no published pairing for this week.`);
+  return { games, issues: [...new Set(issues)] };
+}
+
+async function loadLeagueSchedule(force = false) {
+  const league = state.activeLeague;
+  const select = document.getElementById("leagueScheduleWeek");
+  const status = document.getElementById("leagueScheduleStatus");
+  const results = document.getElementById("leagueScheduleResults");
+  if (!select || !status || !results) return;
+  if (!league || !state.managers.length) {
+    status.textContent = "Connect a league to see its schedule.";
+    results.innerHTML = "";
+    return;
+  }
+  const context = getLeagueRecordsKey(league);
+  if (leagueScheduleContext !== context || !select.options.length) {
+    leagueScheduleContext = context;
+    select.innerHTML = Array.from({ length: 18 }, (_, index) => `<option value="${index + 1}">Week ${index + 1}</option>`).join("");
+    select.value = String(state.week);
+  }
+  const week = Number(select.value);
+  const key = `${context}:${week}`;
+  const snapshot = Boolean(state.workspaceSnapshot) || league.provider === "yahoo";
+  const cacheKey = `${key}:${snapshot ? "snapshot" : "provider"}`;
+  const current = () => state.activeLeague === league && Number(select.value) === week;
+  results.innerHTML = "";
+  status.textContent = `Loading Week ${week} matchups…`;
+  try {
+    let report = leagueScheduleCache.get(cacheKey);
+    if (force || !report || Date.now() - report.checkedAt > 60000) {
+      if (!leagueScheduleLoads.has(cacheKey)) {
+        const managers = [...state.managers];
+        const pending = (async () => {
+          let data, source;
+          if (snapshot) {
+            const completed = leagueRecordsCache.get(context)?.games.filter(game => game.week === week) || [];
+            data = completed.length ? completed : week === Number(state.week) ? getNormalizedCurrentMatchups() : [];
+            source = `${league.isDemo ? "Fictional demo" : "Saved/imported snapshot"} · Only supplied pairings; reconnect or re-import to update.`;
+          } else if (league.provider === "sleeper") {
+            data = await fetchJson(`https://api.sleeper.app/v1/league/${encodeURIComponent(league.leagueId)}/matchups/${week}`);
+            source = "Sleeper published matchups";
+          } else if (league.provider === "espn") {
+            const response = await fetchEspnLeague(league.leagueId, league.season, ["mSettings", "mTeam", "mMatchup"]);
+            league.espnData = { ...league.espnData, settings: response.settings, schedule: response.schedule };
+            data = response.schedule;
+            source = "ESPN published matchups";
+          } else throw new Error("League schedule is not supported for this provider.");
+          const normalized = normalizeLeagueSchedule(snapshot ? { provider: "snapshot" } : league, data, week, managers);
+          const value = { ...normalized, source, checkedAt: Date.now() };
+          leagueScheduleCache.set(cacheKey, value);
+          return value;
+        })().finally(() => leagueScheduleLoads.delete(cacheKey));
+        leagueScheduleLoads.set(cacheKey, pending);
+      }
+      report = await leagueScheduleLoads.get(cacheKey);
+    }
+    if (!current()) return;
+    const manager = state.managers[Number(document.getElementById("teamSelect").value || "0")];
+    const mine = document.getElementById("leagueScheduleScope").value === "mine";
+    const games = report.games.filter(game => !mine || [game.homeId, game.awayId].includes(String(manager?.rosterId)));
+    const name = id => state.managers.find(team => String(team.rosterId) === id)?.teamName || `Team ${id}`;
+    status.textContent = `Week ${week} · ${report.source}. ${report.issues.join(" ")} Pairings only; scores are in Matchup Simulator.`;
+    results.innerHTML = games.length ? `<div class="table-wrap"><table class="comparison-table"><caption>${mine ? "Selected team's matchup" : "Entire league"} · Week ${week}</caption><thead><tr><th>Team</th><th>Opponent</th><th>Details</th></tr></thead><tbody>${games.map(game => `<tr><td>${draftEscapeHtml(name(game.homeId))}</td><td>${game.awayId === null ? "No opponent assigned" : draftEscapeHtml(name(game.awayId))}</td><td>${draftEscapeHtml(game.note || "Published pairing")}</td></tr>`).join("")}</tbody></table></div>` : `<p class="draft-empty">No published matchup available${mine ? " for your selected team" : ""}. Future playoff opponents may not be assigned yet.</p>`;
+  } catch (error) {
+    if (!current()) return;
+    status.textContent = `Week ${week} schedule unavailable: ${error.message} Use Refresh schedule to retry.`;
+    results.innerHTML = "";
+  }
+}
+
 function renderRosterPlanner(refreshChoices = true) {
+  if (document.getElementById("tab-planner")?.classList.contains("active")) loadLeagueSchedule();
   const container = document.getElementById("plannerResults");
   if (!container) return;
   const manager = state.managers[parseInt(document.getElementById("teamSelect")?.value || "0", 10)];
@@ -7355,6 +7480,9 @@ function bindControlEvents() {
   document.getElementById("gmShowMoreBtn")?.addEventListener("click", () => { gmInboxExpanded = !gmInboxExpanded; renderGMInbox(); });
   document.getElementById("gmInboxList")?.addEventListener("click", handleGMInboxClick);
   document.getElementById("gmSchedule")?.addEventListener("click", handleGMInboxClick);
+  document.getElementById("leagueScheduleWeek")?.addEventListener("change", () => loadLeagueSchedule());
+  document.getElementById("leagueScheduleScope")?.addEventListener("change", () => loadLeagueSchedule());
+  document.getElementById("refreshLeagueScheduleBtn")?.addEventListener("click", () => loadLeagueSchedule(true));
   document.getElementById("gmInboxCompleted")?.addEventListener("click", handleGMInboxClick);
   document.getElementById("portfolioPressureList")?.addEventListener("click", handleGMInboxClick);
   document.getElementById("newsletterLeagueSelect")?.addEventListener("change", event => {

@@ -14,8 +14,8 @@ HTML assets and the regression iframe use a shared release query version.
 Bump those versions together whenever publishing changed assets to avoid a new
 HTML page reusing older cached scripts or styles.
 Fresh visits start on GM Inbox unless a previous league or manually saved workspace resumes.
-Navigation groups organize the tools into Overview, My Team, League, Players,
-Draft, and Extras. Labels describe the job each view performs; in-view notes explain
+GM Inbox and Draft Room are direct destinations. Multi-tool groups organize
+My Team, League, Players, and Extras. Labels describe the job each view performs; in-view notes explain
 where outputs are estimates, local plans, or dependent on provider data.
 Loading a provider league is separate from loading the UI; a provider
 authorization failure does not mean the release is missing. Connect or import
@@ -25,15 +25,17 @@ a league to use roster-based features.
 
 ### Compact sidebar
 
-The desktop sidebar uses six native accordion groups: **Overview**, **My
-Team**, **League**, **Players**, **Draft**, and **Extras**. One group is expanded at a time.
+The desktop sidebar uses four native accordion groups: **My Team**, **League**,
+**Players**, and **Extras**. GM Inbox and Draft Room are direct buttons, never
+single-item disclosure groups. Only the active tool's group is expanded;
+selecting a direct destination closes the groups.
 Selecting a tool through a shortcut also opens its group and synchronizes the
 mobile picker and `aria-current`. Collapsing the current group leaves the
 selected tool's name visible in its summary. Native summaries support keyboard
 Enter/Space, with visible focus indicators and reduced-motion support.
 The sidebar uses system fonts, rounded inset selection, restrained blue accents,
 original line icons, and 48px group targets. At widths up to 960px, a native
-44px picker with the same six option groups replaces the sidebar list.
+44px picker with the same four option groups and direct Inbox/Draft options replaces the sidebar list.
 Short phone landscape layouts keep that picker beside the content and compact
 the provider controls to preserve the limited vertical space. Player Analytics
 uses a responsive scatter plot with labels for the top 10 players in the current
@@ -44,6 +46,19 @@ Weekly picks, historical standings, and secondary tables are collapsed.
 The illustrative playoff bracket is optional beneath the schedule simulation.
 
 ### Decision-first Inbox and integrated recap
+
+**Schedule & Coverage** includes a fantasy league schedule above bye planning.
+Choose any NFL week (1–18) and the entire league or selected team. Sleeper
+loads published pairings on demand, not an expensive whole-season crawl.
+ESPN uses its scoring-week-to-matchup-period mapping and labels multiweek
+matchups rather than assuming a period equals a week. Explicit provider
+unpaired entries are distinguished from missing or unresolved pairings.
+Future playoff opponents may not be assigned yet. This view shows pairings,
+not inferred final scores or simulated opponents.
+Results are cached for one minute per league/season/week, with a refresh action.
+Failures are visible and clear the displayed rows. Saved/imported snapshots
+use only supplied current pairings or completed-game records, never network
+requests or invented future schedules.
 
 GM Inbox initially shows at most three prioritized actions, with one primary
 review button each. Explanations, comparisons, feedback, and data assumptions

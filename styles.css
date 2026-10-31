@@ -98,6 +98,7 @@ button:active { transform:translateY(1px); }
 .nav-btn { min-height:44px; background:transparent; color:var(--text-muted); text-align:left; padding:10px; border-radius:10px; font-size:12px; font-weight:500; border:none; cursor:pointer; line-height:1.4; }
 .nav-btn:hover { background:rgba(255,255,255,0.055); color:var(--text-main); }
 .nav-btn.active { background:rgba(86,156,255,0.16); color:#A0CAFF; box-shadow:none; font-weight:600; }
+.nav-direct { min-height:48px; padding:12px; font-size:14px; color:var(--text-main); }
 .sidebar-caption { padding:0 12px; line-height:1.5; }
 .mobile-nav-label, .mobile-nav-select { display:none; }
 .tool-intro { display:flex; flex-direction:column; gap:4px; }

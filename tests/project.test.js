@@ -41,7 +41,7 @@ test("HTML references existing local assets in the expected script order", () =>
   ].map(match => match[1]).filter(asset => !/^(?:[a-z]+:)?\/\//i.test(asset));
 
   assert.ok(assets.length > 0, "Expected local CSS or JavaScript assets.");
-  assert.ok(assets.every(asset => asset.endsWith("?v=20261031-winning-decisions-1")), "All local assets must use the current release version.");
+  assert.ok(assets.every(asset => asset.endsWith("?v=20261031-league-schedule-1")), "All local assets must use the current release version.");
   for (const asset of assets) {
     assert.ok(fs.existsSync(path.join(root, asset.split("?")[0])), `Missing local asset: ${asset}`);
   }
@@ -85,13 +85,16 @@ test("static interface IDs, labels, and tab navigation targets are consistent", 
   const mobileTargets = [...html.matchAll(/<option\b[^>]*\bvalue="(tab-[^"]+)"/g)].map(match => match[1]);
   assert.deepEqual([...desktopTargets].sort(), [...tabIds].sort(), "Every page must have exactly one desktop navigation entry.");
   assert.deepEqual([...mobileTargets].sort(), [...tabIds].sort(), "Mobile and desktop navigation must expose identical pages.");
-  assert.equal((html.match(/name="sidebar-section"/g) || []).length, 6, "Sidebar must contain six native accordion groups.");
-  assert.equal((html.match(/<optgroup label=/g) || []).length, 6, "Mobile navigation must preserve the same six groups.");
-  assert.deepEqual([...html.matchAll(/<optgroup label="([^"]+)"/g)].map(match => match[1]), ["Overview", "My Team", "League", "Players", "Draft", "Extras"], "Optional tools belong below winning decisions.");
+  assert.equal((html.match(/name="sidebar-section"/g) || []).length, 4, "Only multi-item groups should have disclosure navigation.");
+  assert.equal((html.match(/<optgroup label=/g) || []).length, 4, "Mobile navigation must preserve the same four groups.");
+  assert.deepEqual([...html.matchAll(/<optgroup label="([^"]+)"/g)].map(match => match[1]), ["My Team", "League", "Players", "Extras"], "Single tools should not have wrapper groups.");
+  const groups = [...html.matchAll(/<details class="nav-group[^"]*"[^>]*>[\s\S]*?<\/details>/g)];
+  assert.ok(groups.every(([group]) => (group.match(/class="nav-btn"/g) || []).length > 1), "Every collapsible navigation group must contain multiple destinations.");
+  assert.match(html, /<button class="nav-btn nav-direct" data-tab="tab-draft">Draft Room<\/button>/, "Draft Room should be a direct destination.");
   for (const label of ["My Roster", "Schedule &amp; Coverage", "Waiver Planner", "Trade Analyzer", "Team Grade", "Playoff Scenarios", "Compare Players", "Strength of Schedule"]) {
     assert.ok(html.includes(`>${label}</option>`) || html.includes(`>${label}</button>`), `Navigation should use a clear label for ${label}.`);
   }
-  assert.match(html, /<button class="nav-btn active" data-tab="tab-inbox" aria-current="page">/, "Initial active section must be the first navigation item.");
+  assert.match(html, /<button class="nav-btn active nav-direct" data-tab="tab-inbox" aria-current="page">/, "GM Inbox must be a direct navigation item.");
   assert.match(html, /<option value="tab-inbox" selected>/, "Initial mobile navigation must match the active section.");
   assert.match(html, /<div id="tab-inbox" class="tab-page active">/, "Initial content panel must match the active navigation item.");
   assert.match(html, /<div id="tab-roster" class="tab-page">/, "Roster Overview must not start active.");
@@ -125,7 +128,7 @@ test("browser regression harness is wired to the app and includes saved-state co
   const html = read("tests/optimizer-regression.html");
   const appHtml = read("index.html");
 
-  assert.match(html, /src="\.\.\/index\.html\?v=20261031-winning-decisions-1&amp;resume=0"/, "Regression harness must load the current app release without resuming personal snapshots.");
+  assert.match(html, /src="\.\.\/index\.html\?v=20261031-league-schedule-1&amp;resume=0"/, "Regression harness must load the current app release without resuming personal snapshots.");
   assert.doesNotMatch(appHtml, /id="loadRecordsBtn"/, "Records must load automatically without a manual refresh button.");
   assert.match(html, /runOptimizerFixtures/, "Regression harness must execute its fixtures.");
   assert.match(html, /Cross-league queue saves to target budget/, "Saved FAAB state should remain covered.");
