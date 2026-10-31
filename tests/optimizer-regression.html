@@ -20,7 +20,7 @@
   <h1>Optimizer Regression Checks</h1>
   <p id="summary" role="status">Loading the app runtime...</p>
   <ol id="results"></ol>
-  <iframe id="appFrame" src="../index.html?v=20261031-player-trajectory-1&amp;resume=0" title="Optimizer test runtime"></iframe>
+  <iframe id="appFrame" src="../index.html?v=20261031-season-grades-1&amp;resume=0" title="Optimizer test runtime"></iframe>
   <script>
     async function runOptimizerFixtures() {
       const results = [];
@@ -1368,6 +1368,7 @@
           document.getElementById("comparePlayerB").value === "");
         state.activeLeague = claimLeague;
         const gradeThresholds = [[110, "A"], [109.99, "B"], [100, "B"], [99.99, "C"], [90, "C"], [89.99, "D"], [80, "D"], [79.99, "F"]];
+        state.currentNflSelection = null;
         check("Team grades use exact documented thresholds, not rounded display values",
           gradeThresholds.every(([points, letter]) => getRelativeTeamGrade(points, 100).letter === letter) &&
           getRelativeTeamGrade(10, 0).letter === "Unrated");
@@ -1416,6 +1417,43 @@
           qbGradeUnit.querySelector(".grade-pill").textContent === "B" &&
           qbGradeUnit.querySelector(".badge").textContent === "A" &&
           qbGradeUnit.textContent.includes("5.0 league unit average"));
+        {
+          const byeTeam = Object.keys(CURRENT_BYE_WEEKS).find(team => CURRENT_BYE_WEEKS[team] >= 5 && CURRENT_BYE_WEEKS[team] <= 12);
+          const byeWeek = CURRENT_BYE_WEEKS[byeTeam];
+          const otherTeam = Object.keys(CURRENT_BYE_WEEKS).find(team => CURRENT_BYE_WEEKS[team] !== byeWeek);
+          addPlayer("fixture_backup_qb", "Backup QB", "QB", 14);
+          const priorSeasonGrade = { qbTeam: state.players.fixture_owned_qb.team, season: state.season, stats: state.rawStats.fixture_owned_qb, roster: state.managers[1].players };
+          state.players.fixture_owned_qb.team = byeTeam;
+          state.players.fixture_backup_qb.team = otherTeam;
+          state.managers[1].players = [...priorSeasonGrade.roster, "fixture_backup_qb"];
+          state.season = claimLeague.season;
+          state.rawStats.fixture_owned_qb = { gp: 6, pts_ppr: 120 };
+          state.currentNflSelection = { season: claimLeague.season, week: byeWeek };
+          const seasonWindow = getTeamGradeSeasonWindow();
+          const seasonKey = `${seasonWindow.season}:${seasonWindow.weeks.join(",")}`;
+          teamGradeSeasonCache.set(seasonKey, { weeks: seasonWindow.weeks, checkedAt: Date.now(), projections: seasonWindow.weeks.map(week => ({
+            fixture_owned_qb: week === byeWeek ? {} : { pts_ppr: 20 }, fixture_backup_qb: { pts_ppr: 14 } })) });
+          const seasonProfiles = buildSeasonPlayerGrades(teamGradeSeasonCache.get(seasonKey));
+          check("Season player grades ignore a bye week and blend rest-of-season with season scoring",
+            Math.abs(seasonProfiles.fixture_owned_qb.rosPpg - 20) < 0.0001 &&
+            seasonProfiles.fixture_owned_qb.rosGames === seasonWindow.weeks.length - 1 &&
+            seasonProfiles.fixture_owned_qb.seasonPpg === 20 && seasonProfiles.fixture_owned_qb.rank === 1 &&
+            seasonProfiles.fixture_owned_qb.letter === "A" && seasonProfiles.fixture_backup_qb.seasonPpg === null &&
+            seasonProfiles.fixture_backup_qb.rank === 2 && seasonProfiles.fixture_backup_qb.letter === "B");
+          renderTeamGrades();
+          const seasonQbUnit = [...document.querySelectorAll(".team-grade-unit")].find(unit => unit.querySelector("h3").textContent === "QB unit");
+          check("Team Grade renders season player grades with schedule pills instead of a weekly-bye F",
+            seasonQbUnit.querySelector(".grade-pill").textContent === "A" &&
+            seasonQbUnit.textContent.includes("QB1") && seasonQbUnit.textContent.includes("20.0 season (6 gp)") &&
+            seasonQbUnit.querySelector(".sos-mini-pill") &&
+            document.querySelector("#teamGradeResults .team-grade-basis").textContent.includes("Byes don't count against players"));
+          teamGradeSeasonCache.delete(seasonKey);
+          state.players.fixture_owned_qb.team = priorSeasonGrade.qbTeam;
+          state.managers[1].players = priorSeasonGrade.roster;
+          state.season = priorSeasonGrade.season;
+          if (priorSeasonGrade.stats === undefined) delete state.rawStats.fixture_owned_qb; else state.rawStats.fixture_owned_qb = priorSeasonGrade.stats;
+          state.currentNflSelection = null;
+        }
         state.managers[0].teamName = gradeName;
         state.managers = [state.managers[0]];
         check("Team grades require a league comparison baseline",

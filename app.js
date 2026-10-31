@@ -1208,10 +1208,18 @@ function computeLeagueProj(m, st, rules) {
   if (m.position !== "DEF" && (!m.team || m.team === "FA" || !m.isCurrentNfl || ["Out","IR","Suspended","PUP"].includes(m.injuryStatus))) return 0;
   if (m.byeWeek > 0 && m.byeWeek === state.week) return 0;
   if (!st) return sleeperProjectionFeedIsAuthoritative ? 0 : defaultRealisticProj(m);
+  const scored = scoreLeagueStatLine(st, rules);
+  if (scored !== null) return scored;
+  if (sleeperProjectionFeedIsAuthoritative) return 0;
+  return defaultRealisticProj(m);
+}
+
+function scoreLeagueStatLine(st, rules) {
+  if (!st || typeof st !== "object") return null;
   if (rules && Object.keys(rules).length && state.activeLeague?.provider !== "espn") {
     let tot = 0, hit = false;
     for (const k in st) {
-      if (!k.startsWith("pts_") && rules[k] !== undefined) { tot += st[k] * rules[k]; hit = true; }
+      if (!k.startsWith("pts_") && rules[k] !== undefined && Number.isFinite(Number(st[k]))) { tot += Number(st[k]) * rules[k]; hit = true; }
     }
     if (hit) return Math.max(0, tot);
   }
@@ -1219,8 +1227,7 @@ function computeLeagueProj(m, st, rules) {
   if (recM >= 0.9 && st.pts_ppr !== undefined) return Math.max(0, st.pts_ppr);
   if (recM >= 0.4 && st.pts_half_ppr !== undefined) return Math.max(0, st.pts_half_ppr);
   if (st.pts_std !== undefined) return Math.max(0, st.pts_std);
-  if (sleeperProjectionFeedIsAuthoritative) return 0;
-  return defaultRealisticProj(m);
+  return null;
 }
 
 function getResolvedPlayoffTeamCount() {
@@ -8213,6 +8220,110 @@ function renderRosterPlanner(refreshChoices = true) {
     <details class="gm-secondary"><summary>Coverage method and limitations</summary><p class="comparison-note">Each player can fill only one eligible starter slot per week, including FLEX and superflex. IR, taxi, and picks are excluded. Assignments maximize slot coverage, not player quality or points; equivalent assignments can name different gaps. Known coverage uses scheduled games or explicit imported bye snapshots. Possible coverage also allows unknown schedules. A missing game alone is never called a bye: schedule-derived byes require 17 reciprocal games across Weeks 1-18 and a successful schedule source. A partial/failed source remains unknown. Imported planningByeWeek values are user-supplied, not independently verified.</p><p class="comparison-note">IR, PUP and Suspended players remain excluded without a verified return date. Out and Doubtful apply only to the currently selected week, not automatically to every future week. Questionable players remain eligible with their status shown. No return dates, future points, kickoff locks, roster limits, waiver eligibility, FAAB cost, or transactions are modeled. This is hypothetical planning, not a legal lineup recommendation. Scenarios are not saved and reset when switching rosters/leagues. The window ends at Week 18. ${state.activeLeague.isDemo ? "Demo byes and players are fictional." : escape(state.dataErrors.schedule || "Schedule freshness is shown in the header; provider schedules can change.")}</p></details>`;
 }
 
+const teamGradeSeasonCache = new Map();
+const teamGradeSeasonLoads = new Map();
+const TEAM_GRADE_WEIGHTS = { ros: 0.6, season: 0.4, sosSwing: 0.08 };
+
+function getTeamGradeSeasonWindow() {
+  const league = state.activeLeague;
+  if (!league || league.isDemo || state.workspaceSnapshot || league.provider === "yahoo") return { reason: "Season view needs a live league connection; grades use this week's projection." };
+  const current = state.currentNflSelection;
+  if (!current || String(current.season) !== String(league.season)) return { reason: "Season view is available for the current NFL season only; grades use this week's projection." };
+  const end = Math.min(18, Math.max(...getPlayoffWeeksForActiveLeague()));
+  const start = Number(current.week);
+  if (!Number.isFinite(start) || start > end) return { reason: "No fantasy weeks remain; grades use this week's projection." };
+  return { season: String(league.season), weeks: Array.from({ length: end - start + 1 }, (_, index) => start + index) };
+}
+
+async function fetchSleeperWeekProjections(season, week) {
+  const key = `${season}:${week}`;
+  const cached = scheduleProjectionCache.get(key);
+  if (cached && Date.now() - cached.checkedAt <= 10 * 60000) return cached.values;
+  const data = await fetchJson(`https://api.sleeper.app/v1/projections/nfl/regular/${encodeURIComponent(season)}/${week}`);
+  if (!data || typeof data !== "object" || !Object.keys(data).length) throw new Error(`No projection coverage for Week ${week}.`);
+  const values = Array.isArray(data) ? Object.fromEntries(data.filter(row => row.player_id).map(row => [row.player_id, row.stats || row])) : data;
+  scheduleProjectionCache.set(key, { values, checkedAt: Date.now() });
+  return values;
+}
+
+function ensureTeamGradeSeasonData(seasonWindow) {
+  const key = `${seasonWindow.season}:${seasonWindow.weeks.join(",")}`;
+  if (teamGradeSeasonCache.has(key)) return teamGradeSeasonCache.get(key);
+  if (!teamGradeSeasonLoads.has(key)) {
+    teamGradeSeasonLoads.set(key, Promise.all(seasonWindow.weeks.map(week => fetchSleeperWeekProjections(seasonWindow.season, week)))
+      .then(values => { teamGradeSeasonCache.set(key, { weeks: seasonWindow.weeks, projections: values, checkedAt: Date.now() }); })
+      .catch(error => { teamGradeSeasonCache.set(key, { error: error.message }); })
+      .finally(() => {
+        teamGradeSeasonLoads.delete(key);
+        if (document.getElementById("tab-grades")?.classList.contains("active")) renderTeamGrades();
+      }));
+  }
+  return null;
+}
+
+function getPositionStarterDemand(position) {
+  const slots = (state.activeLeague?.rosterPositions || []).filter(slot => !["BN", "IR", "TAXI"].includes(slot));
+  const positions = ["QB", "RB", "WR", "TE", "K", "DEF"];
+  return slots.reduce((sum, slot) => {
+    if (!isPosEligible(position, slot)) return sum;
+    const eligible = positions.filter(pos => isPosEligible(pos, slot));
+    if (eligible.length === 1) return sum + 1;
+    if (eligible.includes("QB")) return sum + (position === "QB" ? 0.75 : 0.25 / (eligible.length - 1));
+    return sum + 1 / eligible.length;
+  }, 0);
+}
+
+function getSeasonGradeLetter(rank, demandLine) {
+  const line = Math.max(1, demandLine);
+  if (!Number.isFinite(rank)) return "F";
+  if (rank <= Math.ceil(line * 0.25)) return "A";
+  if (rank <= Math.ceil(line * 0.6)) return "B";
+  if (rank <= Math.ceil(line)) return "C";
+  if (rank <= Math.ceil(line * 1.5)) return "D";
+  return "F";
+}
+
+function buildSeasonPlayerGrades(seasonData) {
+  const rules = state.activeLeague?.scoringSettings || {};
+  const teamCount = Math.max(2, state.managers.length);
+  const statsMatchSeason = String(state.season) === String(state.activeLeague?.season);
+  const profiles = {};
+  Object.values(state.players).forEach(player => {
+    if (!player || player.isPick || player.isDemo || !["QB", "RB", "WR", "TE", "K", "DEF"].includes(player.position)) return;
+    let team = String(player.team || "").toUpperCase();
+    if (team === "JAC") team = "JAX"; if (team === "LA") team = "LAR";
+    const gameWeeks = seasonData.weeks.filter(week => team && team !== "FA" && CURRENT_BYE_WEEKS[team] !== week);
+    let rosTotal = 0;
+    gameWeeks.forEach(week => { rosTotal += scoreLeagueStatLine(seasonData.projections[seasonData.weeks.indexOf(week)][player.id], rules) || 0; });
+    const rosPpg = gameWeeks.length ? rosTotal / gameWeeks.length : 0;
+    const stats = statsMatchSeason ? state.rawStats[player.id] : null;
+    const games = Number(stats?.gp || stats?.gms_active || 0);
+    const seasonPoints = games > 0 ? scoreLeagueStatLine(stats, rules) : null;
+    const seasonPpg = seasonPoints !== null ? seasonPoints / games : null;
+    const sos = ["QB", "RB", "WR", "TE", "DEF"].includes(player.position) && gameWeeks.length
+      ? computeSosWindowMetrics(team, gameWeeks, player.position) : null;
+    const sosFactor = sos ? 1 + Math.max(-1, Math.min(1, (sos.avgRank - 16.5) / 15.5)) * TEAM_GRADE_WEIGHTS.sosSwing : 1;
+    const base = rosTotal <= 0 ? 0 : seasonPpg === null ? rosPpg : rosPpg * TEAM_GRADE_WEIGHTS.ros + seasonPpg * TEAM_GRADE_WEIGHTS.season;
+    profiles[player.id] = { player, rosTotal, rosPpg, rosGames: gameWeeks.length, seasonPoints, seasonPpg, games, sos, sosFactor, score: base * sosFactor };
+  });
+  const byPosition = {};
+  Object.values(profiles).forEach(profile => (byPosition[profile.player.position] ||= []).push(profile));
+  Object.entries(byPosition).forEach(([position, list]) => {
+    list.sort((a, b) => b.score - a.score);
+    const demandLine = getPositionStarterDemand(position) * teamCount || teamCount;
+    list.forEach((profile, index) => {
+      profile.rank = profile.score > 0 ? index + 1 : null;
+      profile.demandLine = demandLine;
+      profile.letter = profile.score > 0 ? getSeasonGradeLetter(profile.rank, demandLine) : "F";
+    });
+  });
+  return profiles;
+}
+
+function getSeasonSosLetter(avgRank) {
+  return avgRank >= 24.5 ? "A+" : avgRank >= 20.5 ? "A" : avgRank >= 16.5 ? "B+" : avgRank >= 13 ? "C" : avgRank >= 9.5 ? "D" : "F";
+}
+
 function buildTeamGradeReport(managerIndex) {
   if (!state.activeLeague || state.managers.length < 2) return { reason: "Connect or import a league with at least two rosters." };
   const manager = state.managers[managerIndex];
@@ -8274,23 +8385,54 @@ function renderTeamGrades() {
   const roster = activePlayers(manager);
   const leaguePlayers = state.managers.flatMap(activePlayers);
   const positions = [...new Set(roster.map(player => player.position))];
+  const seasonWindow = getTeamGradeSeasonWindow();
+  const seasonData = seasonWindow.reason ? null : ensureTeamGradeSeasonData(seasonWindow);
+  const seasonLoading = !seasonWindow.reason && !seasonData;
+  const profileKey = `${getLeagueRecordsKey()}:${JSON.stringify(state.activeLeague.scoringSettings || {})}:${state.managers.length}`;
+  if (seasonData && !seasonData.error && seasonData.profileKey !== profileKey) {
+    seasonData.profiles = buildSeasonPlayerGrades(seasonData);
+    seasonData.profileKey = profileKey;
+  }
+  const profiles = seasonData && !seasonData.error ? seasonData.profiles : null;
+  const basis = profiles
+    ? `Player grades: Weeks ${seasonData.weeks[0]}–${seasonData.weeks.at(-1)} projections (60%), this season's scoring (40%) and remaining schedule. Byes don't count against players.`
+    : seasonLoading ? "Loading rest-of-season projections… player grades will appear shortly."
+    : seasonData?.error ? `Season view unavailable: ${seasonData.error} Player grades use this week's projection.`
+    : seasonWindow.reason;
+  const sosClass = letter => letter.startsWith("A") ? "sos-mini-elite" : ["D", "F"].includes(letter) ? "sos-mini-tough" : "sos-mini-avg";
   const groups = positions.map(position => {
+    if (profiles) {
+      const players = roster.slice().sort((a, b) => (profiles[b.id]?.score || 0) - (profiles[a.id]?.score || 0)).filter(player => player.position === position);
+      const depth = Math.max(1, Math.ceil(getPositionStarterDemand(position)));
+      const unitScore = list => list.filter(player => player.position === position).map(player => profiles[player.id]?.score || 0).sort((a, b) => b - a).slice(0, depth).reduce((sum, value) => sum + value, 0);
+      const points = unitScore(roster);
+      const unitAverage = state.managers.reduce((sum, team) => sum + unitScore(activePlayers(team)), 0) / state.managers.length;
+      const unitGrade = getRelativeTeamGrade(points, unitAverage);
+      return `<section class="team-grade-unit"><div class="draft-panel-heading"><h3>${escape(position)} unit</h3><span class="badge badge-blue">${escape(unitGrade.letter)}</span></div><p class="comparison-note">Top ${depth}: ${points.toFixed(1)} weighted pts/game · league ${unitAverage.toFixed(1)}</p><div class="team-grade-players">${players.map(player => {
+        const profile = profiles[player.id];
+        if (!profile) return `<article class="team-grade-player">${renderPlayerProfile(player, "No rest-of-season projection")}<span class="grade-pill">—</span></article>`;
+        const seasonText = profile.seasonPpg === null ? "No games yet" : `${profile.seasonPpg.toFixed(1)} season (${profile.games} gp)`;
+        const sosLetter = profile.sos ? getSeasonSosLetter(profile.sos.avgRank) : "";
+        const rankText = profile.rank ? `${position}${profile.rank}` : "Unranked";
+        return `<article class="team-grade-player">${renderPlayerProfile(player, `${rankText} · ${profile.rosPpg.toFixed(1)} ROS proj · ${seasonText}`)}<span class="team-grade-tags">${sosLetter ? `<span class="sos-mini-pill ${sosClass(sosLetter)}" title="Remaining schedule vs ${escape(position)}">SOS ${escape(sosLetter)}</span>` : ""}<span class="grade-pill" title="${escape(`${rankText} by weighted value; about ${Math.round(profile.demandLine)} ${position}s start in this league`)}">${escape(profile.letter)}</span></span></article>`;
+      }).join("")}</div></section>`;
+    }
     const players = roster.filter(player => player.position === position).sort((a, b) => b.projectedPoints - a.projectedPoints);
     const peers = leaguePlayers.filter(player => player.position === position);
     const playerAverage = peers.reduce((sum, player) => sum + player.projectedPoints, 0) / peers.length;
     const positionAverage = peers.reduce((sum, player) => sum + player.projectedPoints, 0) / state.managers.length;
     const points = players.reduce((sum, player) => sum + player.projectedPoints, 0);
     const positionGrade = getRelativeTeamGrade(points, positionAverage);
-    return `<section class="team-grade-unit"><div class="draft-panel-heading"><h3>${escape(position)} unit</h3><span class="badge badge-blue">${escape(positionGrade.letter)}</span></div><p class="comparison-note">${points.toFixed(1)} roster pts · ${positionAverage.toFixed(1)} league unit average</p><div class="team-grade-players">${players.map(player => {
+    return `<section class="team-grade-unit"><div class="draft-panel-heading"><h3>${escape(position)} unit</h3><span class="badge badge-blue">${escape(seasonLoading ? "…" : positionGrade.letter)}</span></div><p class="comparison-note">${points.toFixed(1)} roster pts · ${positionAverage.toFixed(1)} league unit average</p><div class="team-grade-players">${players.map(player => {
       const individual = getRelativeTeamGrade(player.projectedPoints, playerAverage);
       const assigned = lineup.filled.some(starter => starter?.id === player.id);
-      return `<article class="team-grade-player">${renderPlayerProfile(player, `${player.projectedPoints.toFixed(1)} projected · ${assigned ? "Optimized starter" : "Depth"}`)}<span class="grade-pill" title="Relative to league-rostered players at this position">${escape(individual.letter)}</span></article>`;
+      return `<article class="team-grade-player">${renderPlayerProfile(player, `${player.projectedPoints.toFixed(1)} projected · ${assigned ? "Optimized starter" : "Depth"}`)}<span class="grade-pill" title="Relative to league-rostered players at this position">${escape(seasonLoading ? "…" : individual.letter)}</span></article>`;
     }).join("")}</div></section>`;
   }).join("");
-  container.innerHTML = `<section class="gm-briefing"><div class="draft-eyebrow">WEEK ${state.week}${state.activeLeague.isDemo ? " · FICTIONAL DEMO" : ""}</div><h3>${escape(manager.teamName)}</h3><div class="team-grade-letter">Grade ${grade.letter}</div><p>Strength index: <strong>${grade.index.toFixed(1)}</strong> (league average = 100) · Projected rank: #${report.rank} of ${report.teamCount} (ties share a rank)</p><p>Optimized lineup: <strong>${lineup.total.toFixed(1)} pts</strong> · League average: ${average.toFixed(1)} pts</p><p class="comparison-note">${escape(getProjectionSourceNote())}</p></section>
-    <p class="comparison-note">Roster units include active starters and depth. Player grades compare weekly projections with league-rostered players at the same position; unit grades compare total position depth. They are separate from the optimized team grade above.</p>
+  container.innerHTML = `<section class="gm-briefing"><div class="draft-eyebrow">WEEK ${state.week} LINEUP${state.activeLeague.isDemo ? " · FICTIONAL DEMO" : ""}</div><h3>${escape(manager.teamName)}</h3><div class="team-grade-letter">Grade ${grade.letter}</div><p>Strength index: <strong>${grade.index.toFixed(1)}</strong> (league average = 100) · Projected rank: #${report.rank} of ${report.teamCount} (ties share a rank)</p><p>Optimized lineup: <strong>${lineup.total.toFixed(1)} pts</strong> · League average: ${average.toFixed(1)} pts</p><p class="comparison-note">${escape(getProjectionSourceNote())}</p></section>
+    <p class="comparison-note team-grade-basis">${escape(basis)}</p>
     <div class="team-grade-units">${groups}</div>
-    <details class="tool-disclosure"><summary>Why this grade?</summary><p class="comparison-note">Index = optimized weekly points ÷ league average × 100. A: 110 or higher; B: 100–under 110; C: 90–under 100; D: 80–under 90; F: under 80. Grades use unrounded values. This is a relative weekly projection grade, not a season result, dynasty valuation, championship probability, or draft grade. Player grades use the same thresholds against average league-rostered points at their position. Unit grades compare the sum of your position's points to the average team sum; extra depth increases unit grades. Zero benchmarks are Unrated.</p><p class="comparison-note">Uses active rosters and configured starter slots. IR and taxi players are excluded. Kickoff locks are intentionally ignored to compare roster strength, not recommend legal lineup changes. Zero projections remain zero; they can mean missing provider coverage. FLEX contributions depend on optimizer allocation.</p>
+    <details class="tool-disclosure"><summary>Why this grade?</summary><p class="comparison-note">Index = optimized weekly points ÷ league average × 100. A: 110 or higher; B: 100–under 110; C: 90–under 100; D: 80–under 90; F: under 80. Grades use unrounded values. The headline grade is this week's lineup strength, not a season result, dynasty valuation, championship probability, or draft grade.</p><p class="comparison-note">Season player grades: weighted pts/game = 60% rest-of-season projected points per scheduled game (league scoring, byes excluded) + 40% this season's points per game played, then adjusted up to ±8% for remaining schedule (positional defense ranks). Players are ranked against every NFL player at their position. The letter compares that rank to how many of that position start across this league (QB in superflex counts most): A top quarter, B top 60%, C startable, D just below, F deeper or no projected games. Unit grades compare your top starters' weighted value with the league average. Without live current-season data, player grades fall back to this week's projection vs league-rostered peers.</p><p class="comparison-note">Uses active rosters and configured starter slots. IR and taxi players are excluded. Kickoff locks are intentionally ignored to compare roster strength, not recommend legal lineup changes. Zero projections remain zero; they can mean missing provider coverage. FLEX contributions depend on optimizer allocation.</p>
     <div class="table-wrap"><table class="comparison-table"><caption>Optimized starter-group contributions</caption><thead><tr><th scope="col">Starter group</th><th scope="col">Assigned players</th><th scope="col">Your pts</th><th scope="col">League avg</th><th scope="col">Gap</th><th scope="col">Grade</th></tr></thead><tbody>${rows}</tbody></table></div></details>
     <section class="comparison-card"><h3>Improvement priorities</h3><ul class="team-grade-priorities">${priorities.map(item => `<li>${escape(item)}</li>`).join("")}</ul><p class="comparison-note">A low grade does not imply a trade is necessary. Validate projections and availability first; use Player Compare for roster-specific scenarios.</p></section>`;
 }

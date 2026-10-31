@@ -34,10 +34,20 @@ demo, unsupported-format and missing-schedule forecasts are explicitly unavailab
 No future player injury, bye or news adjustment is implied.
 
 Team Grade displays photo-led active-roster position units and individual
-weekly projection grades. Individual benchmarks are league-rostered players
-at the same position; unit benchmarks are average team position totals.
-Extra bench depth affects unit grades, not optimized-lineup team grades.
-IR/taxi remain excluded. The full method and starter breakdown are collapsed.
+player grades. For live current-season leagues, player grades blend 60%
+rest-of-season projected points per scheduled game (Sleeper weekly projections
+from the current week through the league's final playoff week, league scoring,
+byes excluded) with 40% this season's league-scored points per game played,
+then apply up to a ±8% remaining-schedule adjustment (positional defense
+ranks). Players are ranked against every NFL player at their position; the
+letter compares that rank with how many players at that position start across
+the league (A top quarter, B top 60%, C startable, D up to 1.5x the line, F
+deeper or no projected games). Unit grades compare a roster's top starters'
+weighted value with the league average. Demo, snapshot, Yahoo, historical, or
+failed projection loads fall back to weekly projections vs league-rostered
+peers with a visible note. The headline grade remains this week's optimized
+lineup. IR/taxi remain excluded. The full method and starter breakdown are
+collapsed.
 
 Optimizer shows unchanged starters expanded when no upgrades/open slots remain,
 plus photo-led kickoff flags with team, position, projection, opponent, timing

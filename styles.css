@@ -165,6 +165,7 @@ button:active { transform:translateY(1px); }
 .team-grade-players { display:flex; flex-direction:column; gap:8px; margin-top:12px; }
 .team-grade-player { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:8px; background:var(--bg-panel); border-radius:8px; }
 .team-grade-player .grade-pill { color:var(--accent); }
+.team-grade-tags { display:flex; align-items:center; gap:6px; flex-shrink:0; }
 .decision-checklist .visual-player-profile { margin:5px 0; }
 .faab-claim-row .visual-player-profile strong { white-space:normal; }
 .opt-row.is-unchanged { grid-template-columns:64px minmax(0,1fr); min-height:0; padding:0; }
