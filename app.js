@@ -55,8 +55,10 @@ function activateTab(tabId, { navigate = false, focus = false } = {}) {
   if (tabId === "tab-draft") {
     ensureWeeklyMatchups().then(() => { if (targetPage.classList.contains("active")) renderDraftRoom(); });
   }
+  if (tabId === "tab-power") ensurePowerTrajectory();
   rememberWorkspaceSelection();
   document.querySelectorAll("[data-companion-tab]").forEach(button => button.setAttribute("aria-pressed", String(button.dataset.companionTab === tabId)));
+  updateCompanionProviderControls();
   return targetPage;
 }
 
@@ -760,9 +762,21 @@ function setCompanionMode(enabled) {
   document.body.classList.toggle("companion-mode", enabled);
   document.getElementById("companionBar").hidden = !enabled;
   document.getElementById("companionToggle").setAttribute("aria-pressed", String(enabled));
-  document.getElementById("companionToggle").textContent = enabled ? "Exit companion" : "Desktop companion";
   if (enabled && !["tab-inbox", "tab-opt", "tab-waiver", "tab-draft"].includes(document.querySelector(".tab-page.active")?.id)) activateTab("tab-inbox");
-  document.getElementById("companionStatus").textContent = "Arrange the provider and Fantasy FO windows side by side. This mode changes the layout, not provider access. No actions are submitted.";
+  updateCompanionProviderControls();
+  document.getElementById("companionStatus").textContent = "Open the provider page, then arrange it beside Fantasy FO. Your browser may open a tab instead; no league actions are submitted here.";
+}
+
+function updateCompanionProviderControls() {
+  const enabled = document.body.classList.contains("companion-mode");
+  const url = getProviderLeagueUrl();
+  const provider = state.activeLeague?.provider === "sleeper" ? "Sleeper" : "ESPN";
+  document.getElementById("companionToggle").textContent = enabled ? "Exit side-by-side" : url ? `Open ${provider} beside FO` : "Side-by-side tools";
+  const link = document.getElementById("companionOpenLeague");
+  link.textContent = url ? `Open ${provider} page` : "Connect a provider first";
+  if (url) link.href = url;
+  else link.removeAttribute("href");
+  link.setAttribute("aria-disabled", String(!url));
 }
 
 function openCompanionProvider() {
@@ -770,7 +784,7 @@ function openCompanionProvider() {
   const status = document.getElementById("companionStatus");
   if (!url) { status.textContent = "Connect a real Sleeper or ESPN league first. Imported Yahoo and CBS do not have a verified league-opening link here."; return; }
   const providerWindow = window.open(url, "_blank", "noopener,noreferrer,popup,width=900,height=850");
-  status.textContent = "Your browser may open a window or tab. If nothing appeared, allow pop-ups for Fantasy FO. Arrange it beside this window; provider sign-in stays there.";
+  status.textContent = "Your browser may open a window or tab. If nothing appeared, use the Open provider page link above or allow pop-ups. Arrange it beside Fantasy FO; sign-in stays with your provider.";
   return providerWindow;
 }
 
@@ -951,6 +965,11 @@ function playerSurname(name) {
   return surname.map(part => /^junior$|^jr\.?$/i.test(part) ? "Jr." : /^senior$|^sr\.?$/i.test(part) ? "Sr." : part).join(" ");
 }
 
+function renderPlayerProfile(player, detail = "") {
+  if (!player) return '<span class="comparison-note">Player unavailable</span>';
+  return `<div class="visual-player-profile">${renderComparisonPortrait(player)}<div><strong>${draftEscapeHtml(player.name)}</strong><small>${draftEscapeHtml(`${player.position} · ${player.team || "FA"} · ${player.injuryStatus || "Status unknown"}`)}</small>${detail ? `<small>${draftEscapeHtml(detail)}</small>` : ""}</div></div>`;
+}
+
 function teamLogoUrl(team) {
   if (!team || team === "FA" || String(team).startsWith("via ")) return "";
   let k = team.toLowerCase().trim();
@@ -999,7 +1018,7 @@ function normalizeGameDaySchedule(data, now = Date.now()) {
       if (!team) return;
       byTeam[team] = {
         status, kickoff: startsAt || null, eventId: String(event.id || event.name || team),
-        eventName: event.name || "NFL game",
+        eventName: event.name || "NFL game", isHome: competitor.homeAway === "home" ? true : competitor.homeAway === "away" ? false : null,
         opponent: (competition.competitors || []).find(other => other !== competitor)?.team?.abbreviation || ""
       };
     });
@@ -1141,7 +1160,13 @@ function renderGameDayChecklist(manager) {
     if (container.hidden) continue;
     const limit = id === "gmChecklist" ? 3 : report.items.length;
     container.innerHTML = `<div class="draft-panel-heading"><h3>Before kickoff${report.items.length ? ` · ${report.items.length} to check` : ""}</h3>${id === "gmChecklist" ? '<button type="button" class="btn-builder-action" data-gm-open="lineup">Review lineup</button>' : ""}</div>
-      ${report.reason ? `<p class="comparison-note">${draftEscapeHtml(report.reason)}</p>` : report.items.length ? `<ul class="decision-checklist">${report.items.slice(0, limit).map(item => `<li><strong>${draftEscapeHtml(item.title)}</strong><span>${draftEscapeHtml(item.action)}${item.kickoff ? ` · ${new Date(item.kickoff).toLocaleString()}` : ""}</span></li>`).join("")}</ul>${report.items.length > limit ? `<p class="comparison-note">${report.items.length - limit} more in Lineup Optimizer.</p>` : ""}` : '<p class="comparison-note">No starter flags.</p>'}
+      ${report.reason ? `<p class="comparison-note">${draftEscapeHtml(report.reason)}</p>` : report.items.length ? `<ul class="decision-checklist">${report.items.slice(0, limit).map(item => {
+        const player = state.players[item.playerId];
+        const update = player ? getPlayerStatusUpdate(player) : null;
+        const game = player ? getPlayerGameDayStatus(player) : null;
+        const matchup = game?.opponent ? `${game.isHome === true ? "vs" : game.isHome === false ? "at" : "Opponent"} ${game.opponent}` : "Opponent unverified";
+        return `<li>${player ? renderPlayerProfile(player, `${Number.isFinite(player.projectedPoints) ? `${player.projectedPoints.toFixed(1)} projected · ` : ""}${matchup}`) : ""}<strong>${draftEscapeHtml(item.title)}</strong><span>${draftEscapeHtml(item.action)}${item.kickoff ? ` · ${new Date(item.kickoff).toLocaleString()}` : ""}</span>${item.replacementId ? renderPlayerProfile(state.players[item.replacementId], "Available lineup alternative; verify provider rules") : ""}${update ? `<small>${draftEscapeHtml(update.label)}${update.url ? ` · <a href="${draftEscapeHtml(update.url)}" target="_blank" rel="noopener">Player updates</a>` : ""}</small>` : ""}</li>`;
+      }).join("")}</ul>${report.items.length > limit ? `<p class="comparison-note">${report.items.length - limit} more in Lineup Optimizer.</p>` : ""}` : '<p class="comparison-note">No starter flags.</p>'}
       ${report.nextKickoff || report.unknown ? `<p class="comparison-note">${report.nextKickoff ? `Next kickoff: ${new Date(report.nextKickoff).toLocaleString()}. ` : ""}${report.unknown ? `${report.unknown} kickoff${report.unknown === 1 ? "" : "s"} unverified.` : ""}</p>` : ""}
       <details class="gm-action-details"><summary>Player status sources &amp; limits</summary><ul class="decision-checklist">${(manager.starters || []).map(id => state.players[id]).filter(player => player && !["Healthy", ""].includes(player.injuryStatus || "")).slice(0, 5).map(player => {
         const update = getPlayerStatusUpdate(player);
@@ -2591,6 +2616,49 @@ function renderPowerTab() {
   drawPowerChart();
 }
 
+const powerTrajectoryForecasts = new Map();
+const powerTrajectoryLoads = new Set();
+
+function getPowerTrajectoryKey() {
+  return `${getLeagueRecordsKey()}:${state.currentNflSelection?.week || state.currentNflWeek}:${state.workspaceSnapshot || "live"}`;
+}
+
+async function ensurePowerTrajectory() {
+  const key = getPowerTrajectoryKey();
+  const league = state.activeLeague;
+  if (powerTrajectoryForecasts.has(key) || powerTrajectoryLoads.has(key)) { renderPowerTrajectory(); return; }
+  powerTrajectoryLoads.add(key);
+  renderPowerTrajectory();
+  try {
+    if (!league || league.provider !== "sleeper" || league.isDemo || state.workspaceSnapshot) {
+      throw new Error("Connect a live current-season Sleeper league for schedule-based trajectories. Imported snapshots, ESPN and demo forecasts are not supported.");
+    }
+    const input = await FFOPlayoffs.loadSleeper({ ...league }, fetchJson);
+    const report = FFOPlayoffs.simulate(input);
+    powerTrajectoryForecasts.set(key, { report });
+  } catch (error) {
+    powerTrajectoryForecasts.set(key, { error: `Trajectory unavailable: ${error.message}` });
+  } finally {
+    powerTrajectoryLoads.delete(key);
+    if (getPowerTrajectoryKey() === key) renderPowerTrajectory();
+  }
+}
+
+function renderPowerTrajectory() {
+  const status = document.getElementById("powerTrajectoryStatus");
+  const results = document.getElementById("powerTrajectoryResults");
+  if (!status || !results) return;
+  const key = getPowerTrajectoryKey();
+  const entry = powerTrajectoryForecasts.get(key);
+  status.textContent = powerTrajectoryLoads.has(key) ? "Verifying remaining opponents and completed scores…" : entry?.error ||
+    (entry?.report ? `Actual through Week ${entry.report.completedWeeks} · Forecast through Week ${entry.report.regularWeeks} · Solid = completed, dashed = forecast · ${entry.report.iterations.toLocaleString()} trials` : "Open this view to load a schedule-verified trajectory.");
+  results.innerHTML = entry?.report ? `<div class="table-wrap"><table class="comparison-table"><caption>All teams · remaining-season forecasts, not official standings</caption><thead><tr><th>Team</th><th>Current standing</th><th>Expected final standing rank</th><th>Current win equivalents</th><th>Expected final wins</th></tr></thead><tbody>${[...entry.report.teams].sort((a, b) => a.trajectory.at(-1).rank - b.trajectory.at(-1).rank).map(team => {
+    const actual = team.trajectory[entry.report.completedWeeks - 1], final = team.trajectory.at(-1);
+    return `<tr><th scope="row">${draftEscapeHtml(team.name)}</th><td>#${actual.rank}</td><td>${final.rank.toFixed(1)}</td><td>${actual.wins.toFixed(1)}</td><td>${final.wins.toFixed(1)}</td></tr>`;
+  }).join("")}</tbody></table></div>` : "";
+  drawPowerChart();
+}
+
 function drawPowerChart() {
   const canvas = document.getElementById("powerCanvas");
   if (!canvas) return;
@@ -2604,43 +2672,38 @@ function drawPowerChart() {
   if (!state.managers.length) return;
   const mode = parseInt(document.getElementById("powerChartMode")?.value || "0", 10);
 
-  if (mode === 0) {
+  if (mode === 0 || mode === 1) {
+    const report = powerTrajectoryForecasts.get(getPowerTrajectoryKey())?.report;
     ctx.fillStyle = "#F2F4F8"; ctx.font = "700 12px -apple-system, sans-serif";
-    ctx.fillText(`WEEK 1 TO WEEK ${state.week} POWER RANKINGS TRAJECTORY (TOP 6 TEAMS)`, 20, 26);
-    const plot = { l: 65, t: 44, w: W - 265, h: H - 72 };
-    const cols = ["#30D158", "#0A84FF", "#64D2FF", "#FFD60A", "#FF9F0A", "#FF453A"];
-    const tot = state.managers.length, show = Math.min(tot, 6), wks = Math.max(2, state.week);
-    for (let i = 0; i < show; i++) {
-      const m = state.managers[i], c = cols[i % cols.length];
-      ctx.strokeStyle = c; ctx.lineWidth = 2.2; ctx.beginPath();
-      m.history.forEach((rk, wIdx) => {
-        const x = plot.l + (wIdx / (wks - 1)) * plot.w;
-        const y = plot.t + ((rk - 1) / Math.max(1, tot - 1)) * plot.h;
-        if (wIdx === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-      });
-      ctx.stroke();
-      ctx.fillStyle = c; ctx.fillRect(plot.l + plot.w + 16, plot.t + i * 27, 10, 10);
-      ctx.fillStyle = "#F2F4F8"; ctx.font = "700 10px -apple-system, sans-serif";
-      const d = m.week1Rank - m.currentRank;
-      const tr = d > 0 ? `+${d}` : (d < 0 ? `${d}` : "0");
-      ctx.fillText(`#${m.currentRank} ${m.teamName.split(" (")[0].slice(0, 14)} (${tr})`, plot.l + plot.w + 32, plot.t + i * 27 + 9);
+    ctx.fillText(mode === 0 ? "STANDING RANK · SEASON TRAJECTORY" : "WIN EQUIVALENTS · SEASON TRAJECTORY", 16, 24);
+    if (!report) { ctx.font = "12px -apple-system, sans-serif"; ctx.fillText("Verified trajectory not available. See status above.", 16, 52); return; }
+    const narrow = W < 600;
+    const plot = { l: 38, t: narrow ? 105 : 44, w: W - (narrow ? 60 : 230), h: H - (narrow ? 139 : 82) };
+    const colors = ["#30D158", "#0A84FF", "#64D2FF", "#FFD60A", "#FF9F0A", "#FF453A"];
+    const selectedId = String(state.managers[Number(document.getElementById("teamSelect")?.value || 0)]?.rosterId);
+    const teams = [...report.teams].sort((a, b) => a.trajectory.at(-1).rank - b.trajectory.at(-1).rank);
+    const shown = teams.slice(0, 6);
+    const selected = teams.find(team => team.id === selectedId);
+    if (selected && !shown.includes(selected)) shown[shown.length - 1] = selected;
+    const x = week => plot.l + (week - 1) / (report.regularWeeks - 1) * plot.w;
+    const y = value => mode === 0 ? plot.t + (value - 1) / (teams.length - 1) * plot.h : plot.t + (1 - value / report.regularWeeks) * plot.h;
+    ctx.font = "10px -apple-system, sans-serif"; ctx.fillStyle = "#B5C0BA";
+    for (let week = 1; week <= report.regularWeeks; week++) {
+      if (!narrow || week === 1 || week === report.regularWeeks || week === report.completedWeeks) ctx.fillText(`W${week}`, x(week) - 8, plot.t + plot.h + 20);
     }
-  } else if (mode === 1) {
-    ctx.fillStyle = "#F2F4F8"; ctx.font = "700 12px -apple-system, sans-serif";
-    ctx.fillText("SEASONAL PROJECTION — CURRENT WINS (GREEN) VS. PROJECTED FINAL WINS (BLUE)", 20, 26);
-    const count = Math.min(8, state.managers.length);
-    const plot = { l: 195, t: 42, w: W - 355, h: H - 54 };
-    const rowH = plot.h / count;
-    for (let i = 0; i < count; i++) {
-      const m = state.managers[i], y = plot.t + i * rowH;
-      ctx.fillStyle = "#F2F4F8"; ctx.font = "700 11px -apple-system, sans-serif";
-      ctx.fillText(`#${i+1}  ${m.teamName.split(" (")[0].slice(0, 18)}`, 18, y + rowH * 0.5);
-      const pw = Math.min(1, m.projW / 14) * plot.w, aw = Math.min(1, m.wins / 14) * plot.w;
-      ctx.fillStyle = "#0A84FF"; ctx.fillRect(plot.l, y + rowH * 0.22, pw, rowH * 0.56);
-      if (m.wins > 0) { ctx.fillStyle = "#30D158"; ctx.fillRect(plot.l, y + rowH * 0.22, aw, rowH * 0.56); }
-      ctx.fillStyle = "#F2F4F8"; ctx.font = "700 10px -apple-system, sans-serif";
-      ctx.fillText(`Proj: ${m.projW}-${m.projL}  |  Playoff: ${m.playoffPct.toFixed(0)}%`, plot.l + pw + 10, y + rowH * 0.65);
-    }
+    for (const value of mode === 0 ? [1, teams.length] : [0, report.regularWeeks]) ctx.fillText(`${mode === 0 ? "#" : ""}${value}`, 8, y(value) + 4);
+    ctx.strokeStyle = "#B5C0BA"; ctx.setLineDash([3, 4]); ctx.beginPath(); ctx.moveTo(x(report.completedWeeks), plot.t); ctx.lineTo(x(report.completedWeeks), plot.t + plot.h); ctx.stroke();
+    shown.forEach((team, index) => {
+      const color = colors[index];
+      for (const projected of [false, true]) {
+        const points = team.trajectory.filter(point => projected ? point.week >= report.completedWeeks : !point.projected);
+        ctx.strokeStyle = color; ctx.lineWidth = team.id === selectedId ? 3 : 2; ctx.setLineDash(projected ? [5, 4] : []);
+        ctx.beginPath(); points.forEach((point, index) => { const px = x(point.week), py = y(mode === 0 ? point.rank : point.wins); if (index) ctx.lineTo(px, py); else ctx.moveTo(px, py); }); ctx.stroke();
+      }
+      ctx.setLineDash([]); ctx.fillStyle = color; ctx.font = "700 10px -apple-system, sans-serif";
+      ctx.fillText(team.name.slice(0, narrow ? 19 : 24), narrow ? 16 + index % 2 * W / 2 : plot.l + plot.w + 12, narrow ? 44 + Math.floor(index / 2) * 18 : plot.t + index * 28);
+    });
+    ctx.setLineDash([]);
   } else {
     ctx.fillStyle = "#F2F4F8"; ctx.font = "700 12px -apple-system, sans-serif";
     ctx.fillText("SKILL VS. LUCK MATRIX — LINEUP EFFICIENCY (%) VS. POINTS AGAINST", 20, 24);
@@ -3653,6 +3716,7 @@ function renderOptimizerTab(idx) {
   if (unchangedRows.children.length) {
     const details = document.createElement("details");
     details.className = "tool-disclosure optimizer-unchanged";
+    details.open = subCnt === 0 && openSlotCount === 0;
     const summary = document.createElement("summary");
     summary.textContent = `${unchangedRows.children.length} unchanged starters`;
     details.append(summary, unchangedRows);
@@ -3806,7 +3870,7 @@ function renderFaabPlanner() {
         ? `W${claim.outcome.week}: ${Number(claim.outcome.addedPoints).toFixed(1)} actual · no drop baseline`
         : `W${claim.outcome.week}: ${Number(claim.outcome.addedPoints).toFixed(1)} vs ${Number(claim.outcome.comparisonPoints).toFixed(1)} ${claim.outcome.comparisonType === "actual" ? "actual alt" : "baseline proj"} (${claim.outcome.edge > 0 ? "+" : ""}${Number(claim.outcome.edge).toFixed(1)} pts)`
       : claim.status === "acquired" ? `Acquired W${claim.claimedWeek} · outcome pending final scores` : "Plan only · not submitted to provider";
-    return `<div class="faab-claim-row"><div><strong>${index + 1}. ${draftEscapeHtml(player?.name || claim.playerName || "Unknown player")}</strong><span>${draftEscapeHtml(player?.position || claim.position || "")}${player ? ` · ${Number(player.projectedPoints || 0).toFixed(1)} projected` : ""}</span><small class="faab-claim-outcome">${draftEscapeHtml(outcome)}</small></div><label>Drop alternative<select data-faab-drop="${index}"><option value="">No bench drop</option>${dropOptions}</select></label><label>Bid $<input type="number" min="0" max="${faabState.budget}" value="${Math.max(0, Number(claim.bid) || 0)}" data-faab-bid="${index}" /></label><div class="faab-claim-actions"><button type="button" class="btn-builder-action" data-faab-move="${index}" data-faab-direction="-1" aria-label="Move claim up" ${index === 0 ? "disabled" : ""}>Up</button><button type="button" class="btn-builder-action" data-faab-move="${index}" data-faab-direction="1" aria-label="Move claim down" ${index === faabState.claims.length - 1 ? "disabled" : ""}>Down</button><button type="button" class="btn-builder-action" data-faab-acquired="${index}">${claim.status === "acquired" ? "Undo acquired" : "Mark acquired locally"}</button><button type="button" class="btn-builder-action" data-remove-faab="${index}" aria-label="Remove claim for ${draftEscapeHtml(player?.name || claim.playerName || "player")}">Remove</button></div></div>`;
+    return `<div class="faab-claim-row"><div>${player ? renderPlayerProfile(player, `${index + 1}. Claim priority · ${Number(player.projectedPoints || 0).toFixed(1)} projected`) : `<strong>${index + 1}. ${draftEscapeHtml(claim.playerName || "Unknown player")}</strong>`}<small class="faab-claim-outcome">${draftEscapeHtml(outcome)}</small></div><label>Drop alternative<select data-faab-drop="${index}"><option value="">No bench drop</option>${dropOptions}</select></label><label>Bid $<input type="number" min="0" max="${faabState.budget}" value="${Math.max(0, Number(claim.bid) || 0)}" data-faab-bid="${index}" /></label><div class="faab-claim-actions"><button type="button" class="btn-builder-action" data-faab-move="${index}" data-faab-direction="-1" aria-label="Move claim up" ${index === 0 ? "disabled" : ""}>Up</button><button type="button" class="btn-builder-action" data-faab-move="${index}" data-faab-direction="1" aria-label="Move claim down" ${index === faabState.claims.length - 1 ? "disabled" : ""}>Down</button><button type="button" class="btn-builder-action" data-faab-acquired="${index}">${claim.status === "acquired" ? "Undo acquired" : "Mark acquired locally"}</button><button type="button" class="btn-builder-action" data-remove-faab="${index}" aria-label="Remove claim for ${draftEscapeHtml(player?.name || claim.playerName || "player")}">Remove</button></div></div>`;
   }).join("") : `<div class="draft-empty">Queue a free agent below to plan bids.</div>`;
   const planStatus = document.getElementById("faabPlanStatus");
   if (planStatus) {
@@ -3923,16 +3987,22 @@ function renderWaiverNeeds(manager, needs) {
   if (!targetsPanel) return;
   const targets = [];
   const seen = new Set();
+  const playable = player => Number.isFinite(player.projectedPoints) && player.projectedPoints > 0 &&
+    !["Out", "IR", "PUP", "Suspended", "Doubtful"].includes(player.injuryStatus) && player.byeWeek !== state.week;
   needs.slice(0, 4).forEach(need => {
     const candidates = state.waiverTargets.filter(player => {
       const eligible = need.position === "FLEX" ? ["RB", "WR", "TE"].includes(player.position) : player.position === need.position;
-      return eligible && !seen.has(player.id);
+      return eligible && playable(player) && !seen.has(player.id);
     }).sort((a, b) => ((b.vorpScore || 0) - (a.vorpScore || 0)) || ((b.projectedPoints || 0) - (a.projectedPoints || 0))).slice(0, 2);
     candidates.forEach(player => { seen.add(player.id); targets.push({ player, need }); });
   });
+  if (!targets.length) {
+    const depth = [...state.waiverTargets].sort((a, b) => Number(playable(b)) - Number(playable(a)));
+    depth.slice(0, 3).forEach(player => targets.push({ player, need: null }));
+  }
   targetsPanel.innerHTML = targets.length ? targets.map(({ player, need }) => {
-    const fit = need.urgent ? "Priority fit" : "Depth fit";
-    return `<div class="waiver-fit-item"><div><span class="waiver-fit-label">${draftEscapeHtml(fit)} · ${draftEscapeHtml(need.position)} need</span><strong>${draftEscapeHtml(player.name)}</strong><span>${draftEscapeHtml(player.position)} · ${draftEscapeHtml(player.team || "FA")} · ${Number(player.projectedPoints || 0).toFixed(1)} projected · ${Number(player.vorpScore || 0).toFixed(1)} VORP</span></div><button class="btn-builder-action" type="button" data-waiver-fit-player="${draftEscapeHtml(player.id)}">${faabState.claims.some(claim => claim.playerId === player.id) ? "Queued" : `Queue $${getSuggestedFaabBid(player)}`}</button></div>`;
+    const fit = !playable(player) ? "Future depth · unavailable this week" : need?.urgent ? "Priority fit" : "Depth fit";
+    return `<div class="waiver-fit-item"><div><span class="waiver-fit-label">${draftEscapeHtml(fit)}${need ? ` · ${draftEscapeHtml(need.position)} need` : " · Available option"}</span>${renderPlayerProfile(player, `${Number(player.projectedPoints || 0).toFixed(1)} projected · ${Number(player.vorpScore || 0).toFixed(1)} VORP`)}</div><button class="btn-builder-action" type="button" data-waiver-fit-player="${draftEscapeHtml(player.id)}">${faabState.claims.some(claim => claim.playerId === player.id) ? "Queued" : `Queue $${getSuggestedFaabBid(player)}`}</button></div>`;
   }).join("") : `<div class="draft-empty">No matching available players found for these needs.</div>`;
 }
 
@@ -3979,7 +4049,7 @@ function renderWaiversTab() {
     tr.tabIndex = -1;
     tr.innerHTML = `
       <td><span class="pos-pill" style="${posBadgeStyle(fa.position)}">${fa.position}</span></td>
-      <td><div class="player-cell"><img class="avatar" src="${avatarUrl(fa)}" onerror="this.style.display='none'" /><div><div style="font-weight:700;font-size:14px;color:var(--text-main);"><img class="team-logo-sm" src="${teamLogoUrl(fa.team)}" onerror="this.style.display='none'"/>${fa.name}</div><div style="font-size:11px;color:var(--text-muted);">${fa.position} #${fa.posRank} • Snap: ${fa.snapSharePct.toFixed(0)}%</div></div></div></td>
+      <td>${renderPlayerProfile(fa, `${fa.position} #${fa.posRank} · Snap: ${fa.snapSharePct.toFixed(0)}%`)}</td>
       <td style="font-weight:700;">${fa.team}</td>
       <td style="font-weight:700;color:${hCol};">${fa.injuryStatus}</td>
       <td style="color:${isBye ? 'var(--bad)' : 'var(--text-muted)'};font-weight:${isBye ? '700' : '400'};">${fa.byeWeek > 0 ? (isBye ? `Wk ${fa.byeWeek} (BYE)` : `Wk ${fa.byeWeek}`) : "--"}</td>
@@ -4559,7 +4629,7 @@ async function renderPortfolioClaimPlan(forceRefresh = false) {
     const queued = readFaabStateForLeague(item.league).claims.some(claim => String(claim.playerId) === String(item.player.id));
     const faabRemaining = Math.max(0, readFaabStateForLeague(item.league).budget - readFaabStateForLeague(item.league).claims.reduce((sum, claim) => sum + Math.max(0, Number(claim.bid) || 0), 0));
     const waiverLabel = item.waiverPriority ? `Waiver #${item.waiverPriority}` : "Waiver priority unavailable";
-    return `<article class="portfolio-claim-group"><div class="portfolio-claim-group-heading"><strong>${draftEscapeHtml(item.league.name)} · ${draftEscapeHtml(item.roster.name)}</strong><span>${draftEscapeHtml(waiverLabel)} · $${faabRemaining} FAAB · ${draftEscapeHtml(item.need.label)}</span></div><div class="portfolio-claim-row"><div><strong>${draftEscapeHtml(item.player.name)} · ${draftEscapeHtml(item.player.position)}</strong><small>${Number(item.player.projectedPoints || 0).toFixed(1)} projected · +${Number(item.player.vorpScore || 0).toFixed(1)} VORP</small></div><span class="portfolio-claim-drop">${item.drop ? `Drop candidate: ${draftEscapeHtml(item.drop.name)} (${Number(item.drop.projectedPoints || 0).toFixed(1)} projected)` : "No unlocked bench drop candidate"}</span><button type="button" class="btn-builder-action" data-portfolio-claim="${draftEscapeHtml(item.player.id)}" data-portfolio-league="${item.leagueIndex}" data-portfolio-drop="${draftEscapeHtml(item.drop?.id || "")}" data-portfolio-bid="${item.bid}" ${queued ? "disabled" : ""}>${queued ? "Already queued" : `Queue $${item.bid}`}</button></div></article>`;
+    return `<article class="portfolio-claim-group"><div class="portfolio-claim-group-heading"><strong>${draftEscapeHtml(item.league.name)} · ${draftEscapeHtml(item.roster.name)}</strong><span>${draftEscapeHtml(waiverLabel)} · $${faabRemaining} FAAB · ${draftEscapeHtml(item.need.label)}</span></div><div class="portfolio-claim-row">${renderPlayerProfile(item.player, `${Number(item.player.projectedPoints || 0).toFixed(1)} projected · +${Number(item.player.vorpScore || 0).toFixed(1)} VORP`)}<span class="portfolio-claim-drop">${item.drop ? `Drop candidate: ${draftEscapeHtml(item.drop.name)} (${Number(item.drop.projectedPoints || 0).toFixed(1)} projected)` : "No unlocked bench drop candidate"}</span><button type="button" class="btn-builder-action" data-portfolio-claim="${draftEscapeHtml(item.player.id)}" data-portfolio-league="${item.leagueIndex}" data-portfolio-drop="${draftEscapeHtml(item.drop?.id || "")}" data-portfolio-bid="${item.bid}" ${queued ? "disabled" : ""}>${queued ? "Already queued" : `Queue $${item.bid}`}</button></div></article>`;
   }).join("") : `<div class="draft-empty">No available players currently match tracked roster gaps or depth needs.</div>`;
 }
 
@@ -7292,6 +7362,7 @@ function renderDraftGrades(settings, simulation, rankedPlayers) {
 
 function renderDraftRoom() {
   restoreDraftSession();
+  updateCompanionProviderControls();
   const settings = getActiveDraftSettings();
   renderDraftTrackingControls();
   document.getElementById("draftSetupSummary").textContent = `${settings.teams} teams / Pick ${settings.slot} / ${settings.scoring.toUpperCase()}`;
@@ -7946,8 +8017,8 @@ function normalizeLeagueSchedule(league, data, week, managers = state.managers) 
   return { games, issues: [...new Set(issues)] };
 }
 
-function getScheduleTeamProjection(manager, week, projections) {
-  const slots = (state.activeLeague?.rosterPositions || []).filter(slot => !["BN", "IR", "TAXI"].includes(slot));
+function getScheduleTeamProjection(manager, week, projections, starterSlots = state.activeLeague?.rosterPositions || []) {
+  const slots = starterSlots.filter(slot => !["BN", "IR", "TAXI"].includes(slot));
   if (!manager || !slots.length || slots.some(slot => !["QB", "RB", "WR", "TE", "K", "DEF"].some(pos => isPosEligible(pos, slot)))) return null;
   const ids = getPlannerRosterIds(manager);
   const candidates = [];
@@ -7978,10 +8049,18 @@ function getScheduleTeamProjection(manager, week, projections) {
   return lineup.reduce((sum, candidate) => sum + candidate.score, 0);
 }
 
-function renderScheduleTeam(manager, id) {
+function getScheduleFeaturedPlayers(manager, week, projections) {
+  if (!manager || !projections) return [];
+  return getPlannerRosterIds(manager).map(id => state.players[id]).filter(player => player && !player.isPick)
+    .map(player => ({ player, points: getScheduleTeamProjection({ ...manager, players: [player.id], reserve: [], taxi: [] }, week, projections, [player.position]) }))
+    .filter(entry => entry.points !== null && entry.points > 0)
+    .sort((a, b) => b.points - a.points || a.player.name.localeCompare(b.player.name)).slice(0, 3);
+}
+
+function renderScheduleTeam(manager, id, week, projections) {
   const name = manager?.teamName || `Team ${id}`;
-  const players = (manager?.starters || []).map(playerId => state.players[playerId]).filter(player => player && !player.isPick).slice(0, 3);
-  return `<div class="schedule-team"><span class="team-initials" aria-hidden="true">${draftEscapeHtml(name.split(/\s+/).slice(0, 2).map(part => part[0]).join(""))}</span><div><strong>${draftEscapeHtml(name)}</strong><div class="schedule-core">${players.map(player => `<span title="${draftEscapeHtml(player.name)}">${renderComparisonPortrait(player)}</span>`).join("")}</div></div></div>`;
+  const players = getScheduleFeaturedPlayers(manager, week, projections);
+  return `<div class="schedule-team"><span class="team-initials" aria-hidden="true">${draftEscapeHtml(name.split(/\s+/).slice(0, 2).map(part => part[0]).join(""))}</span><div><strong>${draftEscapeHtml(name)}</strong><div class="schedule-core">${players.map(({player, points}) => `<span title="${draftEscapeHtml(`${player.name} · ${points.toFixed(1)} projected`)}">${renderComparisonPortrait(player)}<small>${points.toFixed(1)}</small></span>`).join("")}</div>${players.length ? '<small>Top projected roster players</small>' : '<small>Player projections unavailable</small>'}</div></div>`;
 }
 
 async function loadLeagueSchedule(force = false) {
@@ -8065,7 +8144,7 @@ async function loadLeagueSchedule(force = false) {
       const a = projections ? getScheduleTeamProjection(home, week, projections) : null;
       const b = projections && game.awayId !== null ? getScheduleTeamProjection(away, week, projections) : null;
       const lean = a !== null && b !== null ? a === b ? "Even projection" : `${name(a > b ? game.homeId : game.awayId)} projected edge · ${Math.abs(a - b).toFixed(1)} pts` : "Projection unavailable";
-      return `<article class="league-matchup-card">${renderScheduleTeam(home, game.homeId)}<div class="schedule-projections"><span>${a === null ? "—" : a.toFixed(1)} <small>projected</small></span><small>VS</small><span>${b === null ? "—" : b.toFixed(1)} <small>projected</small></span></div>${game.awayId === null ? "<strong>No opponent assigned</strong>" : renderScheduleTeam(away, game.awayId)}<p class="schedule-lean${a === null || b === null ? " is-unavailable" : ""}">${draftEscapeHtml(lean)}</p>${game.note ? `<small>${draftEscapeHtml(game.note)}</small>` : ""}</article>`;
+      return `<article class="league-matchup-card">${renderScheduleTeam(home, game.homeId, week, projections)}<div class="schedule-projections"><span>${a === null ? "—" : a.toFixed(1)} <small>projected</small></span><small>VS</small><span>${b === null ? "—" : b.toFixed(1)} <small>projected</small></span></div>${game.awayId === null ? "<strong>No opponent assigned</strong>" : renderScheduleTeam(away, game.awayId, week, projections)}<p class="schedule-lean${a === null || b === null ? " is-unavailable" : ""}">${draftEscapeHtml(lean)}</p>${game.note ? `<small>${draftEscapeHtml(game.note)}</small>` : ""}</article>`;
     }).join("")}</div><details class="gm-secondary"><summary>Projection method</summary><p class="comparison-note">Week ${week} optimized active-roster projections, not your submitted lineup or win probability. Uses that week's Sleeper projections and supported scoring counters; ESPN totals use the reception preset, not all custom bonuses. Unknown schedules, missing player projections or unfilled starter slots withhold the total. Current Out/Doubtful players are excluded only in the selected current week; IR/PUP/Suspended remain excluded without a verified return date. No future recovery forecast is made.</p></details>` : `<p class="draft-empty">No published matchup available${mine ? " for your selected team" : ""}. Future playoff opponents may not be assigned yet.</p>`;
   } catch (error) {
     if (!current()) return;
@@ -8191,9 +8270,28 @@ function renderTeamGrades() {
   }
   const { manager, grade, lineup, average, breakdown, priorities } = report;
   const rows = breakdown.map(item => `<tr><th scope="row">${escape(item.slot)} × ${item.count}</th><td>${escape(item.players.map(player => player?.name || "Open slot").join(", "))}</td><td>${item.points.toFixed(1)}</td><td>${item.average.toFixed(1)}</td><td>${item.gap > 0 ? "+" : ""}${item.gap.toFixed(1)}</td><td>${item.letter}</td></tr>`).join("");
+  const activePlayers = roster => getPlannerRosterIds(roster).map(id => state.players[id]).filter(player => player && !player.isPick);
+  const roster = activePlayers(manager);
+  const leaguePlayers = state.managers.flatMap(activePlayers);
+  const positions = [...new Set(roster.map(player => player.position))];
+  const groups = positions.map(position => {
+    const players = roster.filter(player => player.position === position).sort((a, b) => b.projectedPoints - a.projectedPoints);
+    const peers = leaguePlayers.filter(player => player.position === position);
+    const playerAverage = peers.reduce((sum, player) => sum + player.projectedPoints, 0) / peers.length;
+    const positionAverage = peers.reduce((sum, player) => sum + player.projectedPoints, 0) / state.managers.length;
+    const points = players.reduce((sum, player) => sum + player.projectedPoints, 0);
+    const positionGrade = getRelativeTeamGrade(points, positionAverage);
+    return `<section class="team-grade-unit"><div class="draft-panel-heading"><h3>${escape(position)} unit</h3><span class="badge badge-blue">${escape(positionGrade.letter)}</span></div><p class="comparison-note">${points.toFixed(1)} roster pts · ${positionAverage.toFixed(1)} league unit average</p><div class="team-grade-players">${players.map(player => {
+      const individual = getRelativeTeamGrade(player.projectedPoints, playerAverage);
+      const assigned = lineup.filled.some(starter => starter?.id === player.id);
+      return `<article class="team-grade-player">${renderPlayerProfile(player, `${player.projectedPoints.toFixed(1)} projected · ${assigned ? "Optimized starter" : "Depth"}`)}<span class="grade-pill" title="Relative to league-rostered players at this position">${escape(individual.letter)}</span></article>`;
+    }).join("")}</div></section>`;
+  }).join("");
   container.innerHTML = `<section class="gm-briefing"><div class="draft-eyebrow">WEEK ${state.week}${state.activeLeague.isDemo ? " · FICTIONAL DEMO" : ""}</div><h3>${escape(manager.teamName)}</h3><div class="team-grade-letter">Grade ${grade.letter}</div><p>Strength index: <strong>${grade.index.toFixed(1)}</strong> (league average = 100) · Projected rank: #${report.rank} of ${report.teamCount} (ties share a rank)</p><p>Optimized lineup: <strong>${lineup.total.toFixed(1)} pts</strong> · League average: ${average.toFixed(1)} pts</p><p class="comparison-note">${escape(getProjectionSourceNote())}</p></section>
-    <section class="comparison-card"><h3>Why this grade?</h3><p class="comparison-note">Index = optimized weekly points ÷ league average × 100. A: 110 or higher; B: 100–under 110; C: 90–under 100; D: 80–under 90; F: under 80. Grades use unrounded values. This is a relative weekly projection grade, not a season result, dynasty valuation, championship probability, or draft grade.</p><p class="comparison-note">Uses each team's active roster and configured starter slots. IR and taxi players are excluded. Kickoff locks are intentionally ignored to compare roster strength, not recommend legal lineup changes. Zero projections remain zero; they can mean missing provider coverage. Slot-group grades use the same thresholds against that group's league average; a zero average is Unrated. FLEX contributions depend on the optimizer's allocation and are not independent positional depth grades.</p></section>
-    <div class="table-wrap"><table class="comparison-table"><caption>Optimized starter-group contributions</caption><thead><tr><th scope="col">Starter group</th><th scope="col">Assigned players</th><th scope="col">Your pts</th><th scope="col">League avg</th><th scope="col">Gap</th><th scope="col">Grade</th></tr></thead><tbody>${rows}</tbody></table></div>
+    <p class="comparison-note">Roster units include active starters and depth. Player grades compare weekly projections with league-rostered players at the same position; unit grades compare total position depth. They are separate from the optimized team grade above.</p>
+    <div class="team-grade-units">${groups}</div>
+    <details class="tool-disclosure"><summary>Why this grade?</summary><p class="comparison-note">Index = optimized weekly points ÷ league average × 100. A: 110 or higher; B: 100–under 110; C: 90–under 100; D: 80–under 90; F: under 80. Grades use unrounded values. This is a relative weekly projection grade, not a season result, dynasty valuation, championship probability, or draft grade. Player grades use the same thresholds against average league-rostered points at their position. Unit grades compare the sum of your position's points to the average team sum; extra depth increases unit grades. Zero benchmarks are Unrated.</p><p class="comparison-note">Uses active rosters and configured starter slots. IR and taxi players are excluded. Kickoff locks are intentionally ignored to compare roster strength, not recommend legal lineup changes. Zero projections remain zero; they can mean missing provider coverage. FLEX contributions depend on optimizer allocation.</p>
+    <div class="table-wrap"><table class="comparison-table"><caption>Optimized starter-group contributions</caption><thead><tr><th scope="col">Starter group</th><th scope="col">Assigned players</th><th scope="col">Your pts</th><th scope="col">League avg</th><th scope="col">Gap</th><th scope="col">Grade</th></tr></thead><tbody>${rows}</tbody></table></div></details>
     <section class="comparison-card"><h3>Improvement priorities</h3><ul class="team-grade-priorities">${priorities.map(item => `<li>${escape(item)}</li>`).join("")}</ul><p class="comparison-note">A low grade does not imply a trade is necessary. Validate projections and availability first; use Player Compare for roster-specific scenarios.</p></section>`;
 }
 
@@ -8485,6 +8583,8 @@ function renderPlayerComparison(refreshChoices = true) {
 
 function renderAllViews(teamIdx) {
   renderCurrentWeekLabel();
+  updateCompanionProviderControls();
+  if (document.getElementById("tab-power")?.classList.contains("active")) ensurePowerTrajectory();
   renderDecisionDataStatus();
   renderRosterTab(teamIdx); renderPowerTab();
   renderTradeBuilderSide(true); renderTradeBuilderSide(false);
@@ -8796,6 +8896,7 @@ function bindControlEvents() {
     if (document.getElementById("tab-inbox")?.classList.contains("active")) renderGMInbox();
     if (document.getElementById("tab-compare")?.classList.contains("active")) renderPlayerComparison();
     if (document.getElementById("tab-grades")?.classList.contains("active")) renderTeamGrades();
+    if (document.getElementById("tab-power")?.classList.contains("active")) drawPowerChart();
     if (document.getElementById("tab-planner")?.classList.contains("active")) renderRosterPlanner();
   });
   weekSelect?.addEventListener("change", async e => {
@@ -8834,8 +8935,15 @@ function bindControlEvents() {
   document.getElementById("tradeTargetPlayer")?.addEventListener("change", () => document.getElementById("tradeTargetResults").replaceChildren());
   document.getElementById("tradeTargetPackage")?.addEventListener("change", () => document.getElementById("tradeTargetResults").replaceChildren());
   document.getElementById("tradeTargetGenerate")?.addEventListener("click", generateTargetTradeOffers);
-  document.getElementById("companionToggle")?.addEventListener("click", () => setCompanionMode(!document.body.classList.contains("companion-mode")));
-  document.getElementById("companionOpenLeague")?.addEventListener("click", openCompanionProvider);
+  document.getElementById("companionToggle")?.addEventListener("click", () => {
+    const enabled = !document.body.classList.contains("companion-mode");
+    setCompanionMode(enabled);
+    if (enabled && getProviderLeagueUrl()) openCompanionProvider();
+  });
+  document.getElementById("companionOpenLeague")?.addEventListener("click", event => {
+    if (!getProviderLeagueUrl()) { event.preventDefault(); openCompanionProvider(); return; }
+    document.getElementById("companionStatus").textContent = "Opening the provider page. Arrange it beside Fantasy FO using your browser or operating system's split-screen controls.";
+  });
   document.querySelectorAll("[data-companion-tab]").forEach(button => button.addEventListener("click", () => activateTab(button.dataset.companionTab, { navigate: true, focus: true })));
   document.getElementById("waiverPos")?.addEventListener("change", renderWaiversTab);
   document.getElementById("waiverChartMode")?.addEventListener("change", drawWaiverChart);

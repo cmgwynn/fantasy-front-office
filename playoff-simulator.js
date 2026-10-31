@@ -57,10 +57,26 @@
       else { home.ties++; away.ties++; }
     }
     const schedule = [...input.schedule].sort((a, b) => a.week - b.week || a.homeId.localeCompare(b.homeId));
+    const rank = (a, b) => (b.wins + b.ties * 0.5) - (a.wins + a.ties * 0.5) || b.pf - a.pf || a.id.localeCompare(b.id);
+    const trajectories = new Map(input.teams.map(team => [team.id, []]));
+    function recordWeek(teams, week, projected) {
+      [...teams.values()].sort(rank).forEach((team, index) => {
+        const points = trajectories.get(team.id);
+        let point = points.find(point => point.week === week);
+        if (!point) {
+          point = { week, projected, rank: 0, wins: 0 };
+          points.push(point);
+        }
+        point.rank += index + 1;
+        point.wins += team.wins + team.ties * 0.5;
+      });
+    }
     for (const game of schedule.filter(game => game.week <= input.completedWeeks)) {
       addGame(history, game, game.homeScore, game.awayScore);
       history.get(game.homeId).scores.push(game.homeScore);
       history.get(game.awayId).scores.push(game.awayScore);
+      const lastInWeek = schedule.filter(item => item.week === game.week).at(-1);
+      if (lastInWeek === game) recordWeek(history, game.week, false);
     }
     const models = new Map([...history].map(([id, team]) => {
       const mean = team.pf / team.scores.length;
@@ -77,14 +93,19 @@
       qualified: 0, bye: 0, finalists: 0, champion: 0, wins: 0, winNext: 0, qualifyWithWin: 0 }]));
     const nextGames = schedule.filter(game => game.week === input.completedWeeks + 1);
     const remaining = schedule.filter(game => game.week > input.completedWeeks);
-    const rank = (a, b) => (b.wins + b.ties * 0.5) - (a.wins + a.ties * 0.5) || b.pf - a.pf || a.id.localeCompare(b.id);
+    const remainingWeeks = Array.from({ length: input.regularWeeks - input.completedWeeks },
+      (_, index) => ({ week: input.completedWeeks + index + 1,
+        games: remaining.filter(game => game.week === input.completedWeeks + index + 1) }));
     for (let trial = 0; trial < iterations; trial++) {
       const teams = new Map([...history].map(([id, team]) => [id, { ...team }]));
       const nextWinners = new Set();
-      for (const game of remaining) {
-        const a = draw(game.homeId), b = draw(game.awayId);
-        addGame(teams, game, a, b);
-        if (game.week === input.completedWeeks + 1 && a !== b) nextWinners.add(a > b ? game.homeId : game.awayId);
+      for (const { week, games } of remainingWeeks) {
+        for (const game of games) {
+          const a = draw(game.homeId), b = draw(game.awayId);
+          addGame(teams, game, a, b);
+          if (game.week === input.completedWeeks + 1 && a !== b) nextWinners.add(a > b ? game.homeId : game.awayId);
+        }
+        recordWeek(teams, week, true);
       }
       const ranked = [...teams.values()].sort(rank);
       const field = ranked.slice(0, input.playoffTeams).map((team, index) => ({ id: team.id, seed: index + 1 }));
@@ -124,6 +145,10 @@
       playoffTeams: input.playoffTeams, reseed: input.reseed,
       teams: [...totals.values()].map(team => ({
         ...team, mean: models.get(team.id).mean, deviation: models.get(team.id).deviation,
+        trajectory: trajectories.get(team.id).map(point => ({
+          ...point, rank: point.rank / (point.projected ? iterations : 1),
+          wins: point.wins / (point.projected ? iterations : 1)
+        })),
         nextOpponentId: (() => {
           const game = nextGames.find(game => game.homeId === team.id || game.awayId === team.id);
           return game.homeId === team.id ? game.awayId : game.homeId;

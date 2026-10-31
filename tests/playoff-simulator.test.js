@@ -58,6 +58,31 @@ test("symmetric teams are approximately equally likely champions, including byes
   }
 });
 
+test("season trajectories conserve weekly wins and rank sums and match final estimates", () => {
+  const input = fixture(4, 4);
+  input.schedule.filter(game => game.week <= 2 && game.homeId === "1").forEach(game => { game.homeScore = 2000; });
+  const report = simulate(input, 1000, 71);
+  for (let week = 1; week <= 4; week++) {
+    const points = report.teams.map(team => team.trajectory[week - 1]);
+    assert.ok(points.every(point => point.week === week && point.projected === (week > 2)));
+    assert.ok(Math.abs(points.reduce((sum, point) => sum + point.rank, 0) - 10) < 1e-10);
+    assert.ok(Math.abs(points.reduce((sum, point) => sum + point.wins, 0) - week * 2) < 1e-10);
+  }
+  const favorite = report.teams.find(team => team.id === "1");
+  assert.equal(favorite.trajectory[0].rank, 1);
+  assert.equal(favorite.trajectory[0].wins, 1);
+  assert.equal(favorite.trajectory[3].rank, 1);
+  assert.equal(favorite.trajectory[3].wins, 4);
+  for (const team of report.teams) {
+    assert.equal(team.trajectory.at(-1).wins, team.expectedWinEquivalents);
+    team.trajectory.forEach((point, index) => {
+      assert.ok(point.rank >= 1 && point.rank <= 4);
+      if (index) assert.ok(point.wins >= team.trajectory[index - 1].wins &&
+        point.wins - team.trajectory[index - 1].wins <= 1);
+    });
+  }
+});
+
 test("weekly actual ties, negative points, and future provider scores do not get replaced or leak", () => {
   const input = fixture(4, 4);
   input.schedule.filter(game => game.week <= 2).forEach(game => { game.homeScore = -5; game.awayScore = -5; });

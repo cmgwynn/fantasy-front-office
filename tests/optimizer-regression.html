@@ -20,7 +20,7 @@
   <h1>Optimizer Regression Checks</h1>
   <p id="summary" role="status">Loading the app runtime...</p>
   <ol id="results"></ol>
-  <iframe id="appFrame" src="../index.html?v=20261031-current-week-1&amp;resume=0" title="Optimizer test runtime"></iframe>
+  <iframe id="appFrame" src="../index.html?v=20261031-player-trajectory-1&amp;resume=0" title="Optimizer test runtime"></iframe>
   <script>
     async function runOptimizerFixtures() {
       const results = [];
@@ -495,6 +495,19 @@
             getScheduleTeamProjection(projectionManager, state.week, { fixture_plan_QB: { pass_yd: 100, pass_td: 3 } }) === 4);
           check("Schedule projection cannot substitute preset points for missing custom-scoring counters",
             getScheduleTeamProjection(projectionManager, state.week, { fixture_plan_QB: { pts_std: 30 } }) === null);
+          state.activeLeague.scoringSettings = { rec: 1 };
+          const featureIds = ["fixture_plan_QB", "fixture_plan_RB", "fixture_plan_WR", "fixture_plan_TE"];
+          const featureByes = featureIds.map(id => state.players[id].importedPlanningBye);
+          try {
+            featureIds.forEach(id => state.players[id].importedPlanningBye = 12);
+            const featureManager = { ...planManager, players: featureIds };
+            const featureFeed = Object.fromEntries(featureIds.map((id, index) => [id, { pts_ppr: [23, 5, 30, 20][index] }]));
+            check("Schedule highlights top projected players, not the first three roster entries",
+              getScheduleFeaturedPlayers(featureManager, state.week, featureFeed).map(entry => entry.player.id).join() === "fixture_plan_WR,fixture_plan_QB,fixture_plan_TE");
+            check("Schedule featured players exclude reserves and never borrow cached player points",
+              !getScheduleFeaturedPlayers({ ...featureManager, reserve: ["fixture_plan_WR"] }, state.week, featureFeed).some(entry => entry.player.id === "fixture_plan_WR") &&
+              getScheduleFeaturedPlayers(featureManager, state.week, {}).length === 0);
+          } finally { featureIds.forEach((id, index) => state.players[id].importedPlanningBye = featureByes[index]); }
         } finally {
           state.activeLeague = projectionLeagueBefore;
           state.players.fixture_plan_QB.importedPlanningBye = projectionByeBefore;
@@ -863,6 +876,11 @@
         check("Game-day checklist names an out starter without suggesting that player as coverage",
           injuryChecklist.items.some(item => item.playerId === "fixture_claim_rb" && item.title.endsWith("Out")) &&
           injuryChecklist.items.every(item => item.replacementId !== "fixture_claim_rb"));
+        renderGameDayChecklist(injuryManager);
+        check("Kickoff checks include flagged-player portraits, metadata and status source links",
+          document.querySelector("#optimizerChecklist .visual-player-profile img") &&
+          document.getElementById("optimizerChecklist").textContent.includes("projected") &&
+          document.getElementById("optimizerChecklist").textContent.includes("Opponent unverified"));
         state.players.fixture_claim_rb.injuryStatus = "Healthy";
         const tradeImpact = buildTradeLineupImpact(state.managers[0], state.managers[1], ["fixture_drop_wr"], ["fixture_owned_rb"]);
         check("Trade model measures both eligible starting lineups, not just asset values",
@@ -927,6 +945,22 @@
           check("Claim priority cannot move past either end",
             !moveFaabClaim(0, -1) && !moveFaabClaim(faabState.claims.length - 1, 1));
           renderFaabPlanner();
+          check("Waiver bid queue displays portraits for known player profiles",
+            document.querySelectorAll("#faabClaims .visual-player-profile img").length === 3);
+          const waiverTargetsBefore = state.waiverTargets;
+          try {
+            state.waiverTargets = [state.players.fixture_claim_rb, state.players.fixture_unlocked_rb];
+            renderWaiverNeeds(state.managers[0], []);
+            check("Waiver depth options still show portraits when there are no urgent position needs",
+              document.querySelectorAll("#waiverNeedTargets .visual-player-profile img").length === 2 &&
+              document.getElementById("waiverNeedTargets").textContent.includes("Available option"));
+            const oldHealth = state.players.fixture_claim_rb.injuryStatus;
+            state.players.fixture_claim_rb.injuryStatus = "Out";
+            renderWaiverNeeds(state.managers[0], [{ position: "RB", urgent: true, causes: [], rostered: 0 }]);
+            check("Waiver profiles never label an unavailable player as immediate priority coverage",
+              ![...document.querySelectorAll(".waiver-fit-item")].some(item => item.textContent.includes(state.players.fixture_claim_rb.name) && item.textContent.includes("Priority fit")));
+            state.players.fixture_claim_rb.injuryStatus = oldHealth;
+          } finally { state.waiverTargets = waiverTargetsBefore; }
           check("Waiver screen shows over-budget amount and explicit unverified provider data",
             document.getElementById("faabBudgetSummary").textContent.includes("$7 over budget") &&
             document.getElementById("faabPlanStatus").textContent.includes("deadline are not verified"));
@@ -1151,9 +1185,9 @@
             buildGameDayChecklist(state.managers[0]).items.every(item => !item.replacementId));
           state.players.fixture_judkins.injuryStatus = "Healthy";
           renderOptimizerTab(0);
-          check("Optimizer collapses unchanged starters without repeating their player cards",
+          check("Optimizer keeps unchanged starters visible when no upgrade is needed without duplicate cards",
             document.querySelectorAll("#optRows > .opt-row").length === 0 &&
-            !document.querySelector("#optRows > details").open &&
+            document.querySelector("#optRows > details").open &&
             document.querySelectorAll("#optRows .opt-player-card").length === 2);
           state.managers[0].players.push("fixture_bench_rb");
           const replacementAdvice = buildWeeklyRecommendations([]).filter(item => item.type === "Start / sit");
@@ -1370,9 +1404,18 @@
         state.managers[0].teamName = "<img src=x onerror=alert(1)>";
         renderTeamGrades();
         check("Team grades escape provider names and explain their model",
-          !document.querySelector("#teamGradeResults img") &&
+          !document.querySelector('#teamGradeResults img[src="x"]') &&
           document.getElementById("teamGradeResults").textContent.includes("<img src=x") &&
           document.getElementById("teamGradeResults").textContent.includes("Kickoff locks are intentionally ignored"));
+        check("Team grades show portrait-led roster units and individual grades with collapsed method",
+          document.querySelectorAll("#teamGradeResults .team-grade-player img").length > 0 &&
+          document.querySelectorAll("#teamGradeResults .team-grade-player .grade-pill").length > 0 &&
+          !document.querySelector("#teamGradeResults details").open);
+        const qbGradeUnit = [...document.querySelectorAll(".team-grade-unit")].find(unit => unit.querySelector("h3").textContent === "QB unit");
+        check("Player and unit grades use their distinct league-rostered benchmarks",
+          qbGradeUnit.querySelector(".grade-pill").textContent === "B" &&
+          qbGradeUnit.querySelector(".badge").textContent === "A" &&
+          qbGradeUnit.textContent.includes("5.0 league unit average"));
         state.managers[0].teamName = gradeName;
         state.managers = [state.managers[0]];
         check("Team grades require a league comparison baseline",
@@ -1391,8 +1434,42 @@
           getProviderLeagueUrl({ provider: "espn", leagueId: "456", season: "2026" }).includes("leagueId=456&seasonId=2026") &&
           getProviderLeagueUrl({ provider: "yahoo", leagueId: "123" }) === null &&
           getProviderLeagueUrl({ provider: "sleeper", leagueId: "123", isDemo: true }) === null);
+        const trajectoryStateBefore = { league: state.activeLeague, snapshot: state.workspaceSnapshot };
+        try {
+          state.activeLeague = { ...claimLeague, provider: "sleeper", leagueId: "trajectory-fixture" };
+          state.workspaceSnapshot = 0;
+          const teams = Array.from({ length: 4 }, (_, index) => ({id: String(index + 1), name: `Trajectory ${index + 1}`}));
+          const input = { teams, completedWeeks: 2, regularWeeks: 4, playoffTeams: 4, reseed: false,
+            schedule: [1,2,3,4].flatMap(week => [{week, homeId:"1",awayId:"4",homeScore:100,awayScore:90},{week,homeId:"2",awayId:"3",homeScore:110,awayScore:105}]) };
+          const key = getPowerTrajectoryKey();
+          powerTrajectoryForecasts.set(key, { report: FFOPlayoffs.simulate(input, 100) });
+          renderPowerTrajectory();
+          check("Power trajectory renders both final standing ranks and cumulative wins from complete schedule evidence",
+            document.querySelectorAll("#powerTrajectoryResults tbody tr").length === 4 &&
+            document.getElementById("powerTrajectoryStatus").textContent.includes("Forecast through Week 4") &&
+            document.getElementById("powerTrajectoryResults").textContent.includes("Expected final wins"));
+          powerTrajectoryForecasts.delete(key);
+          state.workspaceSnapshot = 12345;
+          await ensurePowerTrajectory();
+          check("Power trajectory never reuses a live forecast for an imported snapshot",
+            document.getElementById("powerTrajectoryStatus").textContent.includes("Trajectory unavailable") &&
+            !document.querySelector("#powerTrajectoryResults tbody"));
+          powerTrajectoryForecasts.delete(getPowerTrajectoryKey());
+        } finally {
+          state.activeLeague = trajectoryStateBefore.league;
+          state.workspaceSnapshot = trajectoryStateBefore.snapshot;
+          renderPowerTrajectory();
+        }
         const companionTabBefore = document.querySelector(".tab-page.active").id;
+        const companionOpenBefore = window.open;
+        let companionOpenedUrl = "";
+        window.open = url => { companionOpenedUrl = url; return null; };
         document.getElementById("companionToggle").click();
+        window.open = companionOpenBefore;
+        check("Header side-by-side action requests the actual connected Sleeper URL in its click",
+          companionOpenedUrl === `https://sleeper.com/leagues/${encodeURIComponent(state.activeLeague.leagueId)}` &&
+          document.getElementById("companionOpenLeague").href === companionOpenedUrl &&
+          document.getElementById("companionOpenLeague").target === "_blank");
         check("Desktop companion toggle activates compact mode with its own navigation",
           document.body.classList.contains("companion-mode") && !document.getElementById("companionBar").hidden);
         document.querySelector('[data-companion-tab="tab-waiver"]').click();

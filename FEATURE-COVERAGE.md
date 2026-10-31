@@ -24,6 +24,36 @@ a league to use roster-based features.
 
 ## Current release
 
+Power Rankings now includes solid completed-week standing trajectories and
+dashed rest-of-regular-season standing-rank/cumulative-win forecasts. Both use
+the existing validated Sleeper schedule simulation: actual opponents, actual
+completed scores, 5,000 reproducible trials. Expected standing ranks are mean
+trial ranks, not the separate legacy power-score ranking. All teams appear in
+the final summary; chart highlights six including the selected roster. Imported,
+demo, unsupported-format and missing-schedule forecasts are explicitly unavailable.
+No future player injury, bye or news adjustment is implied.
+
+Team Grade displays photo-led active-roster position units and individual
+weekly projection grades. Individual benchmarks are league-rostered players
+at the same position; unit benchmarks are average team position totals.
+Extra bench depth affects unit grades, not optimized-lineup team grades.
+IR/taxi remain excluded. The full method and starter breakdown are collapsed.
+
+Optimizer shows unchanged starters expanded when no upgrades/open slots remain,
+plus photo-led kickoff flags with team, position, projection, opponent, timing
+and observed status/source links. No undocumented Sleeper news endpoint is used:
+status observations and external player updates are not a verified news feed.
+Waiver fit suggestions, bid queue and player table also use visible portraits.
+Fit cards prioritize playable current-week candidates; unavailable profiles are
+marked future depth rather than immediate priority coverage.
+Schedule portraits now highlight the highest three positive verified projections
+from each active roster for the actual displayed schedule week, not roster order.
+
+The desktop header's "Open Sleeper beside FO" (or ESPN) action activates compact
+mode and requests a separate provider window in the same user gesture. Browsers
+may open a tab or block pop-ups; the bar supplies a native provider-page link
+and arrangement guidance. No iframe embedding or automatic window tiling.
+
 The header week dropdown marks the verified live NFL week as "Week 8 · Current"
 (using the feed's actual week). It adds no button or header row and preserves
 the selected planning week. Historical league seasons and failed NFL-state syncs
