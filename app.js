@@ -1009,12 +1009,12 @@ function renderGameDayChecklist(manager) {
     if (container.hidden) continue;
     const limit = id === "gmChecklist" ? 3 : report.items.length;
     container.innerHTML = `<div class="draft-panel-heading"><h3>Before kickoff${report.items.length ? ` · ${report.items.length} to check` : ""}</h3>${id === "gmChecklist" ? '<button type="button" class="btn-builder-action" data-gm-open="lineup">Review lineup</button>' : ""}</div>
-      ${report.reason ? `<p class="comparison-note">${draftEscapeHtml(report.reason)}</p>` : report.items.length ? `<ul class="decision-checklist">${report.items.slice(0, limit).map(item => `<li><strong>${draftEscapeHtml(item.title)}</strong><span>${draftEscapeHtml(item.action)}${item.kickoff ? ` · ${new Date(item.kickoff).toLocaleString()}` : ""}</span></li>`).join("")}</ul>${report.items.length > limit ? `<p class="comparison-note">${report.items.length - limit} more in Lineup Optimizer.</p>` : ""}` : '<p class="comparison-note">No empty, ineligible, bye, or injury-flagged starter slots detected. Recheck official active lists.</p>'}
-      <p class="comparison-note">${report.nextKickoff ? `Next roster kickoff: ${new Date(report.nextKickoff).toLocaleString()}. ` : ""}${report.unknown ? `${report.unknown} player kickoff${report.unknown === 1 ? "" : "s"} unverified. ` : ""}Updates require refresh; provider lock rules and official inactive lists take precedence.</p>
+      ${report.reason ? `<p class="comparison-note">${draftEscapeHtml(report.reason)}</p>` : report.items.length ? `<ul class="decision-checklist">${report.items.slice(0, limit).map(item => `<li><strong>${draftEscapeHtml(item.title)}</strong><span>${draftEscapeHtml(item.action)}${item.kickoff ? ` · ${new Date(item.kickoff).toLocaleString()}` : ""}</span></li>`).join("")}</ul>${report.items.length > limit ? `<p class="comparison-note">${report.items.length - limit} more in Lineup Optimizer.</p>` : ""}` : '<p class="comparison-note">No starter flags.</p>'}
+      ${report.nextKickoff || report.unknown ? `<p class="comparison-note">${report.nextKickoff ? `Next kickoff: ${new Date(report.nextKickoff).toLocaleString()}. ` : ""}${report.unknown ? `${report.unknown} kickoff${report.unknown === 1 ? "" : "s"} unverified.` : ""}</p>` : ""}
       <details class="gm-action-details"><summary>Player status sources &amp; limits</summary><ul class="decision-checklist">${(manager.starters || []).map(id => state.players[id]).filter(player => player && !["Healthy", ""].includes(player.injuryStatus || "")).slice(0, 5).map(player => {
         const update = getPlayerStatusUpdate(player);
         return `<li><strong>${draftEscapeHtml(player.name)} · ${draftEscapeHtml(player.injuryStatus || "Unknown")}</strong><span>${draftEscapeHtml(update.label)}${update.url ? ` · <a href="${update.url}" target="_blank" rel="noopener">Check player source</a>` : ""}</span></li>`;
-      }).join("")}</ul><p class="comparison-note">Provider status observations, not medical advice or a news feed. No licensed role/news feed or closed-browser push service is configured.</p></details>`;
+      }).join("")}</ul><p class="comparison-note">Reload for updates. Check official active lists and provider lock rules before kickoff. Flags cover empty, ineligible, bye and injury-flagged starters. Provider observations are not a licensed news feed; no closed-browser push alerts.</p></details>`;
   }
 }
 
@@ -5191,6 +5191,8 @@ function buildPortfolioPressureRecommendations() {
       priority: urgent ? 106 : onBye ? 90 : 66 + leagues.length,
       level: urgent ? "urgent" : "high", type: "Portfolio exposure", playerId: player.id,
       title: urgent ? `${player.name} risk is concentrated` : (onBye ? `${player.name} is on bye across leagues` : `${player.name} is a shared portfolio anchor`),
+      shortTitle: `${player.name}${urgent ? ` · ${player.injuryStatus}` : onBye ? " · Bye" : " exposure"}`,
+      shortValue: `${leagues.length} of ${tracked.length} rosters`,
       detail: `${leagues.length}/${tracked.length} tracked rosters · ${leagues.join(", ")}${urgent ? ` · ${player.injuryStatus}` : ""}`,
       value: urgent ? "Review every lineup" : (onBye ? "Check replacement coverage" : "Monitor shared exposure"),
       confidence: urgent || onBye ? "High" : "Medium", actionKind: "watch"
@@ -5428,9 +5430,13 @@ function renderInboxSchedule(manager) {
     const unknown = baseline.filled - baseline.known;
     const byes = report.ids.map(id => state.players[id]).filter(player => getPlannerAvailability(player, week, true).kind === "bye");
     const label = baseline.gaps.length ? `Need ${baseline.gaps.join(", ")}` : unknown ? "Verify schedule" : "Slots covered";
-    return `<article class="schedule-week${baseline.gaps.length ? " has-gap" : ""}"><span>Week ${week}</span><strong>${draftEscapeHtml(label)}</strong><small>${byes.length ? `Bye: ${draftEscapeHtml(byes.map(player => player.name).join(", "))}` : "No known byes"}${unknown ? ` · ${unknown} unverified slot${unknown === 1 ? "" : "s"}` : ""}</small></article>`;
+    return `<article class="schedule-week${baseline.gaps.length ? " has-gap" : ""}"><span>Week ${week}</span><strong>${draftEscapeHtml(label)}</strong><small>${byes.length ? `${byes.length} on bye` : "No known byes"}${unknown ? ` · ${unknown} unverified slot${unknown === 1 ? "" : "s"}` : ""}</small></article>`;
   }).join("");
-  container.innerHTML = `<div class="draft-panel-heading"><h3>Plan before the bye</h3><button type="button" class="btn-builder-action" data-gm-open="planner">Open schedule &amp; find coverage</button></div><div class="schedule-weeks">${cards}</div><details class="gm-action-details"><summary>Coverage assumptions</summary><p>Slot coverage, not projected points. Current injuries are held out; unknown schedules are unverified. Check provider eligibility before making a move.</p></details>`;
+  const byeDetails = report.rows.map(({ week }) => {
+    const names = report.ids.map(id => state.players[id]).filter(player => getPlannerAvailability(player, week, true).kind === "bye").map(player => player.name);
+    return names.length ? `<li><strong>Week ${week}</strong><span>${draftEscapeHtml(names.join(", "))}</span></li>` : "";
+  }).join("");
+  container.innerHTML = `<div class="draft-panel-heading"><h3>Upcoming weeks</h3><button type="button" class="btn-builder-action" data-gm-open="planner">View schedule</button></div><div class="schedule-weeks">${cards}</div><details class="gm-action-details"><summary>Byes &amp; coverage details</summary>${byeDetails ? `<ul class="decision-checklist">${byeDetails}</ul>` : ""}<p>Slot coverage, not projected points. Current injuries are held out; unknown schedules are unverified. Check provider eligibility before making a move.</p></details>`;
 }
 
 async function renderGMInbox(forceRefresh = false) {
@@ -5533,25 +5539,28 @@ async function renderGMInbox(forceRefresh = false) {
     const counts = [`${injuryCount} concentrated injury risk${injuryCount === 1 ? "" : "s"}`, `${byeCount} shared bye conflict${byeCount === 1 ? "" : "s"}`, `${gapCount} roster depth gap${gapCount === 1 ? "" : "s"}`].filter((label, index) => [injuryCount, byeCount, gapCount][index] > 0);
     pressureList.innerHTML = `<div class="portfolio-pressure-summary"><strong>${pressure.length} portfolio signal${pressure.length === 1 ? "" : "s"}</strong><span>${draftEscapeHtml(counts.join(" · "))}</span><small>${draftEscapeHtml(pressure.slice(0, 3).map(item => item.title).join(" · "))}</small></div>`;
   } else pressureList.innerHTML = `<p class="draft-empty">No cross-league concentration or base-position gaps detected in the tracked rosters.</p>`;
-  const renderAction = (item, isClosed) => {
-    const key = getGmRecommendationKey(item);
-    const record = feedback[key] || {};
-    const action = item.actionKind || (item.type === "Waiver" ? "waivers" : item.type.toLowerCase().includes("trade") ? "trade" : "lineup");
-    const confidence = getConfidenceLabel(item, feedback, leagueKey, adviceSnapshots);
-    const controls = record.status === "done"
-      ? `<span class="gm-action-state">Done</span><button type="button" class="btn-builder-action" data-gm-feedback="true" data-gm-type="${draftEscapeHtml(item.type)}" data-gm-value="1" data-gm-id="${draftEscapeHtml(key)}">Helpful</button><button type="button" class="btn-builder-action" data-gm-feedback="true" data-gm-type="${draftEscapeHtml(item.type)}" data-gm-value="0" data-gm-id="${draftEscapeHtml(key)}">Missed</button>`
-      : record.status === "dismissed"
-        ? `<span class="gm-action-state">Dismissed</span><button type="button" class="btn-builder-action" data-gm-state="open" data-gm-id="${draftEscapeHtml(key)}">Reopen</button>`
-        : `<button type="button" class="btn-builder-action" data-gm-state="done" data-gm-type="${draftEscapeHtml(item.type)}" data-gm-id="${draftEscapeHtml(key)}">Mark done</button><button type="button" class="btn-builder-action" data-gm-state="dismissed" data-gm-type="${draftEscapeHtml(item.type)}" data-gm-id="${draftEscapeHtml(key)}">Dismiss</button>`;
-    const tradeData = action === "trade" ? `data-gm-opponent="${draftEscapeHtml(item.opponentRosterId || "")}"` : "";
-    const compare = item.comparisonPlayerId && item.playerId ? `<button type="button" class="btn-builder-action" data-compare-a="${draftEscapeHtml(item.comparisonPlayerId)}" data-compare-b="${draftEscapeHtml(item.playerId)}">Compare players</button>` : "";
-    const review = `<button type="button" data-gm-open="${draftEscapeHtml(action)}" data-gm-player="${draftEscapeHtml(item.playerId || "")}" ${tradeData}>${action === "trade" ? "Build trade" : action === "waivers" ? "Review pickup" : action === "watch" ? "Watch player" : action === "portfolio" ? "Review portfolio" : "Review lineup"}</button>`;
-    return `<article class="gm-action-card ${item.level || "normal"}"><div class="gm-action-topline"><span class="recommendation-priority ${item.level || "normal"}">${item.level === "urgent" ? "Urgent · " : ""}${draftEscapeHtml(item.type)}</span><span class="gm-action-value">${draftEscapeHtml(item.value || "Review")}</span></div><h3>${draftEscapeHtml(item.title)}</h3><div class="gm-action-controls">${isClosed ? "" : review}</div><details class="gm-action-details"><summary>Details &amp; options</summary><p>${draftEscapeHtml(item.detail)}</p><span class="gm-confidence">${draftEscapeHtml(confidence)}</span><div class="gm-action-controls">${compare}${controls}</div></details></article>`;
-  };
   list.innerHTML = visibleRecommendations.length
-    ? visibleRecommendations.map(item => renderAction(item, false)).join("")
+    ? visibleRecommendations.map(item => renderGmInboxAction(item, false, feedback, leagueKey, adviceSnapshots)).join("")
     : `<p class="draft-empty">${activeRecommendations.length ? "No open actions match this filter." : "No immediate lineup or pickup flags. Check upcoming coverage below."}</p>`;
-  if (completedList) completedList.innerHTML = closedRecommendations.length ? closedRecommendations.map(item => renderAction(item, true)).join("") : `<p class="draft-empty">No completed or dismissed actions this week.</p>`;
+  if (completedList) completedList.innerHTML = closedRecommendations.length ? closedRecommendations.map(item => renderGmInboxAction(item, true, feedback, leagueKey, adviceSnapshots)).join("") : `<p class="draft-empty">No completed or dismissed actions this week.</p>`;
+}
+
+function renderGmInboxAction(item, isClosed, feedback, leagueKey, adviceSnapshots) {
+  const key = getGmRecommendationKey(item);
+  const record = feedback[key] || {};
+  const action = item.actionKind || (item.type === "Waiver" ? "waivers" : item.type.toLowerCase().includes("trade") ? "trade" : "lineup");
+  const confidence = getConfidenceLabel(item, feedback, leagueKey, adviceSnapshots);
+  const controls = record.status === "done"
+    ? `<span class="gm-action-state">Done</span><button type="button" class="btn-builder-action" data-gm-feedback="true" data-gm-type="${draftEscapeHtml(item.type)}" data-gm-value="1" data-gm-id="${draftEscapeHtml(key)}">Helpful</button><button type="button" class="btn-builder-action" data-gm-feedback="true" data-gm-type="${draftEscapeHtml(item.type)}" data-gm-value="0" data-gm-id="${draftEscapeHtml(key)}">Missed</button>`
+    : record.status === "dismissed"
+      ? `<span class="gm-action-state">Dismissed</span><button type="button" class="btn-builder-action" data-gm-state="open" data-gm-id="${draftEscapeHtml(key)}">Reopen</button>`
+      : `<button type="button" class="btn-builder-action" data-gm-state="done" data-gm-type="${draftEscapeHtml(item.type)}" data-gm-id="${draftEscapeHtml(key)}">Mark done</button><button type="button" class="btn-builder-action" data-gm-state="dismissed" data-gm-type="${draftEscapeHtml(item.type)}" data-gm-id="${draftEscapeHtml(key)}">Dismiss</button>`;
+  const tradeData = action === "trade" ? `data-gm-opponent="${draftEscapeHtml(item.opponentRosterId || "")}"` : "";
+  const compare = item.comparisonPlayerId && item.playerId ? `<button type="button" class="btn-builder-action" data-compare-a="${draftEscapeHtml(item.comparisonPlayerId)}" data-compare-b="${draftEscapeHtml(item.playerId)}">Compare players</button>` : "";
+  const review = `<button type="button" class="gm-review-button" data-gm-open="${draftEscapeHtml(action)}" data-gm-player="${draftEscapeHtml(item.playerId || "")}" ${tradeData}>${action === "trade" ? "Build trade" : action === "waivers" ? "Review pickup" : action === "watch" ? "Watch player" : action === "portfolio" ? "Review portfolio" : "Review lineup"}</button>`;
+  const player = state.players[item.playerId];
+  const photo = player ? `<span class="gm-move-photo" aria-hidden="true">${draftEscapeHtml(player.name.charAt(0))}<img src="${draftEscapeHtml(avatarUrl(player))}" alt="" loading="lazy" onerror="this.hidden=true"></span>` : "";
+  return `<article class="gm-action-card ${item.level || "normal"}"><div class="gm-move-main">${photo}<div class="gm-move-copy"><span class="recommendation-priority ${item.level || "normal"}">${item.level === "urgent" ? '<span class="gm-urgency">Urgent</span>' : ""}<span class="gm-move-type">${draftEscapeHtml(item.type)}</span></span><h3>${draftEscapeHtml(item.shortTitle || item.title)}</h3><span class="gm-action-value">${draftEscapeHtml(item.shortValue || item.value || "Review")}${item.type === "Start / sit" ? " projected gain" : ""}</span></div></div>${isClosed ? "" : review}<details class="gm-action-details"><summary>Details</summary><p>${draftEscapeHtml(item.detail)}</p><span class="gm-confidence">${draftEscapeHtml(confidence)}</span><div class="gm-action-controls">${compare}${controls}</div></details></article>`;
 }
 
 function handleGMInboxClick(event) {

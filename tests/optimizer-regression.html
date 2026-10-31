@@ -20,7 +20,7 @@
   <h1>Optimizer Regression Checks</h1>
   <p id="summary" role="status">Loading the app runtime...</p>
   <ol id="results"></ol>
-  <iframe id="appFrame" src="../index.html?v=20261031-visual-hierarchy-1&amp;resume=0" title="Optimizer test runtime"></iframe>
+  <iframe id="appFrame" src="../index.html?v=20261031-inbox-moves-1&amp;resume=0" title="Optimizer test runtime"></iframe>
   <script>
     async function runOptimizerFixtures() {
       const results = [];
@@ -278,6 +278,38 @@
           document.querySelectorAll("#tab-inbox > details.gm-secondary:not([open])").length === 4 &&
           document.getElementById("inboxRecap").closest("#tab-inbox") &&
           !document.getElementById("tab-newsletter"));
+        const movePreview = document.createElement("div");
+        movePreview.innerHTML = renderGmInboxAction({ type: "Start / sit", level: "normal",
+          title: "Start <Receiver> over Backup", value: "+1.2 pts", detail: "Projected lineup improvement.",
+          playerId: "", comparisonPlayerId: "" }, false, {}, "layout-fixture", []);
+        check("Inbox move rows show one review action, a labeled impact and escaped title",
+          movePreview.querySelectorAll("[data-gm-open]").length === 1 &&
+          movePreview.querySelector(".gm-action-value").textContent === "+1.2 pts projected gain" &&
+          movePreview.querySelector("h3").textContent === "Start <Receiver> over Backup" &&
+          !movePreview.querySelector("receiver"));
+        check("Inbox move explanations and feedback stay collapsed",
+          !movePreview.querySelector("details").open &&
+          movePreview.querySelector("details [data-gm-state='done']") &&
+          movePreview.querySelector("details [data-gm-state='dismissed']"));
+        const closedMove = { type: "Waiver", title: "Add receiver", value: "+2 pts", detail: "Roster improvement.", playerId: "add", comparisonPlayerId: "drop" };
+        const closedKey = getGmRecommendationKey(closedMove);
+        movePreview.innerHTML = renderGmInboxAction(closedMove, true, { [closedKey]: { status: "done" } }, "layout-fixture", []);
+        check("Completed Inbox moves retain comparisons and outcome feedback without another review action",
+          !movePreview.querySelector("[data-gm-open]") &&
+          movePreview.querySelector("[data-compare-a='drop']") &&
+          movePreview.querySelectorAll("[data-gm-feedback]").length === 2);
+        movePreview.innerHTML = renderGmInboxAction(closedMove, true, { [closedKey]: { status: "dismissed" } }, "layout-fixture", []);
+        check("Dismissed Inbox moves retain the reopen action",
+          !movePreview.querySelector("[data-gm-open]") && movePreview.querySelector("[data-gm-state='open']"));
+        const compactMove = { ...closedMove, shortTitle: "Receiver · IR", shortValue: "2 of 4 rosters" };
+        movePreview.innerHTML = renderGmInboxAction(compactMove, false, {}, "layout-fixture", []);
+        check("Concise Inbox labels preserve recommendation identity and full explanations",
+          movePreview.querySelector("h3").textContent === "Receiver · IR" &&
+          movePreview.querySelector(".gm-action-value").textContent === "2 of 4 rosters" &&
+          movePreview.querySelector("details p").textContent === closedMove.detail &&
+          getGmRecommendationKey(compactMove) === closedKey);
+        check("Recommended moves appear before the game-day checklist",
+          document.getElementById("gmInboxList").compareDocumentPosition(document.getElementById("gmChecklist")) & Node.DOCUMENT_POSITION_FOLLOWING);
 
         const beforePlannerLeague = state.activeLeague;
         const beforePlannerManagers = state.managers;

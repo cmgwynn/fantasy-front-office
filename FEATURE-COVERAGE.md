@@ -37,6 +37,17 @@ Redundant category eyebrows are removed. Inbox puts week/roster context below
 its title, retains source caveats in a plain disclosure, and removes the separate
 “Your next moves” introductory card. The action cards remain, without an extra
 outer bordered container. Disconnected visits still explain how to get started.
+Inbox recommendations use a single vertical list, ahead of the game-day
+checklist. Each row shows player imagery when available, move title, impact and
+one review action. Start/sit point differences are explicitly labeled projected
+gains. “Details” keeps explanations, confidence, comparisons, completion
+and dismissal controls collapsed. Category filtering and the top-three/show-all
+behavior remain unchanged; completed advice uses the same row layout.
+Phone rows use smaller portraits, omit repeated category labels (while retaining
+urgent warnings), and put Details and the review button on the same line.
+Portfolio rows show status and affected roster counts instead of vague prose.
+The kickoff check uses a short status with source caveats inside its disclosure.
+Upcoming weeks show bye counts; individual names remain in the coverage details.
 Healthy roster-check status is a plain line rather than another bordered banner;
 warning states retain their existing prominence. The connected phone header
 keeps status, data details and sharing on one line.
