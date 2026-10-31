@@ -24,6 +24,24 @@ a league to use roster-based features.
 
 ## Current release
 
+### Installable web app
+
+`/install` provides Safari/iOS, Android, and desktop installation instructions.
+The primary domain registers a root-scoped service worker, with a standalone
+manifest and original PNG app icons (192/512, maskable, and Apple touch icon).
+Footer Install app uses the browser prompt when offered, otherwise opens help;
+it is hidden in standalone mode. No automatic installation pop-up is shown.
+
+Only the self-contained offline page is stored in the service worker's Cache
+Storage. App HTML/assets and provider requests are not cached by the worker;
+navigation is network-first and HTTP failures stay failures. Network exceptions
+show explicit offline guidance, not stale advice. Existing browser local saves
+are unchanged. Offline fallback is available after a successful online worker
+installation; it is not full offline functionality. App/browser storage may
+differ on Apple devices. This is not an app-store release or cross-device sync.
+Cloudflare `_headers` keeps worker/manifest revalidation enabled and prevents
+hosting analytics or email transformations from altering the cached offline page.
+
 ### Inbox matchup and scoreboard
 
 The dark theme uses slightly brighter green-gray surfaces and muted text.

@@ -3,8 +3,14 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#1A2421" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="Fantasy FO" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+  <link rel="icon" href="icons/app-icon.svg" type="image/svg+xml" />
   <title>Fantasy Front Office</title>
-  <link rel="stylesheet" href="styles.css?v=20261031-scoreboard-style-1" />
+  <link rel="stylesheet" href="styles.css?v=20261031-app-install-1" />
 </head>
 <body>
 
@@ -1007,19 +1013,22 @@
 <footer class="site-footer" aria-label="Site information">
   <span>Fantasy Front Office</span>
   <nav aria-label="Legal and support">
+    <a href="/install" data-install-app>Install app</a>
     <a href="/privacy">Privacy</a>
     <a href="/terms">Terms</a>
     <a href="/contact">Contact</a>
   </nav>
 </footer>
 
-<script src="monetization-config.js?v=20261031-scoreboard-style-1"></script>
-<script src="data-fetch.js?v=20261031-scoreboard-style-1"></script>
-<script src="demo-league.js?v=20261031-scoreboard-style-1"></script>
-<script src="league-records.js?v=20261031-scoreboard-style-1"></script>
-<script src="workspace-backup.js?v=20261031-scoreboard-style-1"></script>
-<script src="playoff-simulator.js?v=20261031-scoreboard-style-1"></script>
-<script src="weekly-matchups.js?v=20261031-scoreboard-style-1"></script>
-<script src="app.js?v=20261031-scoreboard-style-1"></script>
+<p id="appInstallStatus" class="app-install-status" role="status"></p>
+<script src="pwa.js?v=20261031-app-install-1"></script>
+<script src="monetization-config.js?v=20261031-app-install-1"></script>
+<script src="data-fetch.js?v=20261031-app-install-1"></script>
+<script src="demo-league.js?v=20261031-app-install-1"></script>
+<script src="league-records.js?v=20261031-app-install-1"></script>
+<script src="workspace-backup.js?v=20261031-app-install-1"></script>
+<script src="playoff-simulator.js?v=20261031-app-install-1"></script>
+<script src="weekly-matchups.js?v=20261031-app-install-1"></script>
+<script src="app.js?v=20261031-app-install-1"></script>
 </body>
 </html>

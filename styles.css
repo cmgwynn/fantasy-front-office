@@ -84,6 +84,9 @@ button:active { transform:translateY(1px); }
 .site-footer nav { display:flex; flex-wrap:wrap; gap:16px; }
 .site-footer a { display:inline-flex; align-items:center; min-height:44px; color:var(--text-muted); text-decoration:none; }
 .site-footer a:hover { color:var(--text-main); text-decoration:underline; }
+.site-footer [hidden], .info-content [hidden] { display:none; }
+.app-install-status { color:var(--text-muted); font-size:12px; line-height:1.4; }
+.app-install-status:empty { display:none; }
 .info-page { width:100%; max-width:760px; margin:0 auto; }
 .info-header { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:8px; }
 .info-header a, .info-content a { color:var(--accent); text-underline-offset:3px; overflow-wrap:anywhere; }
