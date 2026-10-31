@@ -10,7 +10,7 @@
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
   <link rel="icon" href="icons/app-icon.svg" type="image/svg+xml" />
   <title>Fantasy Front Office</title>
-  <link rel="stylesheet" href="styles.css?v=20261031-draft-companion-1" />
+  <link rel="stylesheet" href="styles.css?v=20261031-visual-workspace-1" />
 </head>
 <body>
 
@@ -24,6 +24,7 @@
         <span id="dataFreshnessLabel" class="data-freshness">Data sources waiting</span>
       </details>
       <button id="shareBtn" class="share-button" type="button">Copy share link</button>
+      <button id="companionToggle" class="share-button" type="button" aria-pressed="false">Desktop companion</button>
     </div>
   </div>
   <div class="workspace-controls">
@@ -64,6 +65,13 @@
   </div>
 </div>
 
+<section id="companionBar" aria-label="Desktop companion" hidden>
+  <nav aria-label="Companion tools">
+    <button type="button" data-companion-tab="tab-inbox">Inbox</button><button type="button" data-companion-tab="tab-opt">Lineup</button><button type="button" data-companion-tab="tab-waiver">Waivers</button><button type="button" data-companion-tab="tab-draft">Draft</button>
+  </nav>
+  <button id="companionOpenLeague" type="button">Open league beside FO</button>
+  <p id="companionStatus" role="status">Arrange the two windows side by side. Provider sign-in stays on its own site.</p>
+</section>
 <div class="body-layout">
   <a class="skip-to-tool" href="#mainContent">Skip to current tool</a>
   <nav class="sidebar" aria-label="Main navigation">
@@ -192,7 +200,7 @@
         <label for="plannerWeeks">Planning window
           <select id="plannerWeeks"><option value="2">2 weeks</option><option value="4" selected>4 weeks</option><option value="6">6 weeks</option></select>
         </label>
-        <label for="plannerHoldInjuries"><input id="plannerHoldInjuries" type="checkbox" checked /> Assume currently unavailable players remain out</label>
+        <input id="plannerHoldInjuries" type="checkbox" checked hidden aria-hidden="true" />
         <label for="plannerSearch">Find an available player<input id="plannerSearch" type="search" placeholder="Search name or position" /></label>
         <label for="plannerAdd">Hypothetical add<select id="plannerAdd"><option value="">No addition</option></select></label>
         <label for="plannerDrop">Hypothetical drop<select id="plannerDrop"><option value="">No drop</option></select></label>
@@ -345,6 +353,15 @@
 
       <!-- SUB-MODE 2: TRADE FINDER & POSITIONAL NEEDS ANALYSIS -->
       <div id="tmode-2" style="display:none; flex-direction:column; gap:12px;">
+        <section class="card-banner trade-target-controls" aria-label="Generate offers for a player">
+          <h3>Acquire a player</h3>
+          <p class="comparison-note">Choose who you want, then generate packages from your roster. Options are model-value comparisons, not acceptance predictions.</p>
+          <label for="tradeTargetSearch">Find a target<input id="tradeTargetSearch" type="search" placeholder="Player name or team" /></label>
+          <label for="tradeTargetPlayer">Player to acquire<select id="tradeTargetPlayer"><option value="">Choose a rostered player</option></select></label>
+          <label for="tradeTargetPackage">Offer size<select id="tradeTargetPackage"><option value="all">One or two players</option><option value="one">One player</option><option value="two">Two-player package</option></select></label>
+          <button id="tradeTargetGenerate" type="button">Generate offers</button>
+          <div id="tradeTargetResults" aria-live="polite"></div>
+        </section>
         <div class="card-banner" style="gap:10px;">
           <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
             <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
@@ -1039,14 +1056,14 @@
 </footer>
 
 <p id="appInstallStatus" class="app-install-status" role="status"></p>
-<script src="pwa.js?v=20261031-draft-companion-1"></script>
-<script src="monetization-config.js?v=20261031-draft-companion-1"></script>
-<script src="data-fetch.js?v=20261031-draft-companion-1"></script>
-<script src="demo-league.js?v=20261031-draft-companion-1"></script>
-<script src="league-records.js?v=20261031-draft-companion-1"></script>
-<script src="workspace-backup.js?v=20261031-draft-companion-1"></script>
-<script src="playoff-simulator.js?v=20261031-draft-companion-1"></script>
-<script src="weekly-matchups.js?v=20261031-draft-companion-1"></script>
-<script src="app.js?v=20261031-draft-companion-1"></script>
+<script src="pwa.js?v=20261031-visual-workspace-1"></script>
+<script src="monetization-config.js?v=20261031-visual-workspace-1"></script>
+<script src="data-fetch.js?v=20261031-visual-workspace-1"></script>
+<script src="demo-league.js?v=20261031-visual-workspace-1"></script>
+<script src="league-records.js?v=20261031-visual-workspace-1"></script>
+<script src="workspace-backup.js?v=20261031-visual-workspace-1"></script>
+<script src="playoff-simulator.js?v=20261031-visual-workspace-1"></script>
+<script src="weekly-matchups.js?v=20261031-visual-workspace-1"></script>
+<script src="app.js?v=20261031-visual-workspace-1"></script>
 </body>
 </html>

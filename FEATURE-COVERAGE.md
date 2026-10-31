@@ -24,6 +24,33 @@ a league to use roster-based features.
 
 ## Current release
 
+Schedule & Coverage uses matchup cards with core-player portraits, per-week
+optimized team projections and projected edges when full coverage is available.
+Projection feeds are keyed by NFL season/week, never borrowed from the selected
+header week's values. Missing schedule/projection/slot coverage withholds totals.
+The repetitive "Published pairing" detail is removed; special ESPN multiweek
+notes remain. Bye coverage uses colored week cards, with the photo availability
+matrix and method details collapsed. Out/Doubtful apply only to the selected
+current week; IR/PUP/Suspended remain excluded without a verified return date.
+There is no public injury-assumption toggle. Questionable remains eligible.
+Older workspace backups still import, but their injury-toggle preference is
+normalized to this fixed UI policy.
+
+Trade Finder starts with an explicit player-acquisition workflow: search another
+roster's player, choose one/two-player offer size and generate up to six packages.
+Packages meet an 85% model-value match, use a 6% two-player consolidation discount
+and show both teams' selected-week lineup changes or explicit unavailability.
+No acceptance probability or automatic transaction is implied. Review hands the
+exact assets/teams to the existing Builder and revalidates ownership first.
+Compact player surnames retain compound names and suffixes (Thomas Jr., St. Brown).
+
+Desktop companion mode is optional and session-only. It replaces the sidebar
+with Inbox/Lineup/Waivers/Draft navigation, adapts for narrow desktop panes, and
+opens the real Sleeper/ESPN league in a separate browser window/tab. The user
+arranges windows; pop-up restrictions are reported. No provider is embedded,
+no login/session is intercepted and CBS/imported Yahoo links are unsupported.
+Touch phones retain the normal layout; no split-screen is forced.
+
 Draft Room has separate practice, manual draft-day, and read-only Sleeper modes.
 Manual mode records every snake pick in order; undo/reset affect only its board.
 Sleeper mode discovers actual league drafts, verifies ordered complete pick

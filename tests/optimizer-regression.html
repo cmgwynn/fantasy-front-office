@@ -20,7 +20,7 @@
   <h1>Optimizer Regression Checks</h1>
   <p id="summary" role="status">Loading the app runtime...</p>
   <ol id="results"></ol>
-  <iframe id="appFrame" src="../index.html?v=20261031-draft-companion-1&amp;resume=0" title="Optimizer test runtime"></iframe>
+  <iframe id="appFrame" src="../index.html?v=20261031-visual-workspace-1&amp;resume=0" title="Optimizer test runtime"></iframe>
   <script>
     async function runOptimizerFixtures() {
       const results = [];
@@ -218,11 +218,12 @@
             await loadLeagueSchedule(true);
             check("League schedule loads provider pairings and selected-week controls",
               document.getElementById("leagueScheduleWeek").value === "8" &&
-              document.querySelectorAll("#leagueScheduleResults tbody tr").length === 2 && requests === 1);
+              document.querySelectorAll("#leagueScheduleResults .league-matchup-card").length === 2 && requests === 1 &&
+              !document.getElementById("leagueScheduleResults").textContent.includes("Published pairing"));
             document.getElementById("leagueScheduleScope").value = "mine";
             await loadLeagueSchedule();
             check("My-team schedule filters without refetching and still names the opponent",
-              requests === 1 && document.querySelectorAll("#leagueScheduleResults tbody tr").length === 1 &&
+              requests === 1 && document.querySelectorAll("#leagueScheduleResults .league-matchup-card").length === 1 &&
               document.getElementById("leagueScheduleResults").textContent.includes("Team B"));
             window.fetch = async () => { throw new Error("Schedule fixture offline"); };
             await loadLeagueSchedule(true);
@@ -458,11 +459,37 @@
         plan = buildRosterPlan(planManager, { addId: "fixture_plan_TE" });
         check("Multiweek free-slot addition improves only affected weeks",
           plan.rows[0].proposed.filled === 3 && plan.rows[1].baseline.filled === 2 && plan.rows[1].proposed.filled === 3);
+        const projectionLeagueBefore = state.activeLeague;
+        const projectionByeBefore = state.players.fixture_plan_QB.importedPlanningBye;
+        try {
+          state.players.fixture_plan_QB.importedPlanningBye = 9;
+          state.activeLeague = { ...state.activeLeague, provider: "sleeper", rosterPositions: ["QB"], scoringSettings: { rec: 1 } };
+          const projectionManager = { ...planManager, players: ["fixture_plan_QB"], reserve: [], taxi: [] };
+          check("Schedule projection scores the supplied week's feed, not player cached points",
+            getScheduleTeamProjection(projectionManager, state.week, { fixture_plan_QB: { pts_ppr: 23.5 } }) === 23.5);
+          check("Schedule projection preserves real zero and withholds missing player coverage",
+            getScheduleTeamProjection(projectionManager, state.week, { fixture_plan_QB: { pts_ppr: 0 } }) === 0 &&
+            getScheduleTeamProjection(projectionManager, state.week, {}) === null);
+          state.activeLeague.scoringSettings = { pass_yd: 0.04, pass_td: 0, rec: 0 };
+          check("Schedule projection respects explicit zero custom scoring",
+            getScheduleTeamProjection(projectionManager, state.week, { fixture_plan_QB: { pass_yd: 100, pass_td: 3 } }) === 4);
+          check("Schedule projection cannot substitute preset points for missing custom-scoring counters",
+            getScheduleTeamProjection(projectionManager, state.week, { fixture_plan_QB: { pts_std: 30 } }) === null);
+        } finally {
+          state.activeLeague = projectionLeagueBefore;
+          state.players.fixture_plan_QB.importedPlanningBye = projectionByeBefore;
+        }
         state.players.fixture_plan_QB.injuryStatus = "Out";
         const heldPlan = buildRosterPlan(planManager);
         const healthyPlan = buildRosterPlan(planManager, { holdInjuries: false });
         check("Multiweek injury exclusions are explicit and reversible",
           heldPlan.rows[0].baseline.filled === 2 && healthyPlan.rows[0].baseline.filled === 3);
+        check("Weekly Out status is not projected indefinitely into future coverage weeks",
+          !getPlannerAvailability(state.players.fixture_plan_QB, state.week + 1, true).heldOut &&
+          document.getElementById("plannerHoldInjuries").hidden);
+        state.players.fixture_plan_QB.injuryStatus = "IR";
+        check("IR remains unavailable without a verified return date",
+          getPlannerAvailability(state.players.fixture_plan_QB, state.week + 1, true).heldOut);
         state.players.fixture_plan_QB.injuryStatus = "Questionable";
         check("Questionable players remain eligible with their current status visible", buildRosterPlan(planManager).rows[0].baseline.filled === 3);
         plan = buildRosterPlan({ ...planManager, reserve: ["fixture_plan_RB"], taxi: ["fixture_plan_WR"] });
@@ -510,7 +537,8 @@
         const plannerTeamValue = document.getElementById("teamSelect").value;
         document.getElementById("teamSelect").innerHTML = '<option value="0">Planner fixture</option>';
         renderRosterPlanner();
-        check("Planner UI renders coverage and explicit hypothetical limitations", document.querySelectorAll("#plannerResults tbody tr").length === 7 &&
+        check("Planner UI renders coverage and explicit hypothetical limitations", document.querySelectorAll("#plannerResults .coverage-week-card").length === 4 &&
+          document.querySelectorAll("#plannerResults tbody tr").length === 3 &&
           document.getElementById("plannerResults").textContent.includes("Scenarios are not saved"));
         document.getElementById("teamSelect").innerHTML = plannerTeamOptions;
         document.getElementById("teamSelect").value = plannerTeamValue;
@@ -1332,6 +1360,57 @@
         state.managers = priorGradeManagers;
         const planSettings = { type: "redraft", teams: 12, slot: 6, rounds: 3, scoring: "ppr", rosterFormat: "standard", dynastyYears: 3, keeperSlots: 0, keeperYears: 1 };
         const receptionPlayer = { ...state.players.fixture_drop_wr, receptionsPerGame: 5 };
+        check("Compact surname labels retain compound surnames and suffixes",
+          playerSurname("Brian Thomas Junior") === "Thomas Jr." &&
+          playerSurname("Brian Thomas Jr.") === "Thomas Jr." &&
+          playerSurname("Jaxon Smith-Njigba") === "Smith-Njigba" &&
+          playerSurname("Amon-Ra St. Brown") === "St. Brown" &&
+          playerSurname("Marvin Harrison II") === "Harrison II");
+        check("Companion provider links stay on real provider sites and reject unsupported/demo leagues",
+          getProviderLeagueUrl({ provider: "sleeper", leagueId: "123" }, "tab-inbox") === "https://sleeper.com/leagues/123" &&
+          getProviderLeagueUrl({ provider: "espn", leagueId: "456", season: "2026" }).includes("leagueId=456&seasonId=2026") &&
+          getProviderLeagueUrl({ provider: "yahoo", leagueId: "123" }) === null &&
+          getProviderLeagueUrl({ provider: "sleeper", leagueId: "123", isDemo: true }) === null);
+        const companionTabBefore = document.querySelector(".tab-page.active").id;
+        document.getElementById("companionToggle").click();
+        check("Desktop companion toggle activates compact mode with its own navigation",
+          document.body.classList.contains("companion-mode") && !document.getElementById("companionBar").hidden);
+        document.querySelector('[data-companion-tab="tab-waiver"]').click();
+        check("Desktop companion tabs activate real tools and reflect the current view",
+          document.getElementById("tab-waiver").classList.contains("active") &&
+          document.querySelector('[data-companion-tab="tab-waiver"]').getAttribute("aria-pressed") === "true");
+        activateTab("tab-trade");
+        check("Opening a full tool exits compact mode instead of stranding its navigation",
+          !document.body.classList.contains("companion-mode") && document.getElementById("companionBar").hidden);
+        activateTab(companionTabBefore);
+        const targetManagersBefore = state.managers;
+        const targetValueBefore = state.players.fixture_claim_rb.baseValue;
+        const giveValueBefore = state.players.fixture_drop_wr.baseValue;
+        const otherValueBefore = state.players.fixture_owned_qb.baseValue;
+        try {
+          state.players.fixture_claim_rb.baseValue = 2000;
+          state.players.fixture_drop_wr.baseValue = 2000;
+          state.players.fixture_owned_qb.baseValue = 100;
+          state.managers = [
+            { ...targetManagersBefore[0], rosterId: 1, players: ["fixture_drop_wr", "fixture_owned_qb"], reserve: [], taxi: [] },
+            { ...targetManagersBefore[1], rosterId: 2, players: ["fixture_claim_rb"], reserve: [], taxi: [] }
+          ];
+          const offers = buildTargetTradeOffers(0, "fixture_claim_rb", "one");
+          check("Targeted trade packages contain the exact target and only the sending team's assets",
+            offers.offers.length === 1 && offers.offers[0].getIds.join() === "fixture_claim_rb" &&
+            offers.offers[0].giveIds.join() === "fixture_drop_wr" && offers.offers[0].match === 100);
+          check("Targeted trade package-size filtering supports two-player offers",
+            buildTargetTradeOffers(0, "fixture_claim_rb", "two").offers.length === 1 &&
+            buildTargetTradeOffers(0, "fixture_claim_rb", "two").offers.every(offer => offer.giveIds.length === 2));
+          check("Targeted trade generator rejects unowned targets and targets already on your roster",
+            Boolean(buildTargetTradeOffers(0, "fixture_drop_wr").reason) &&
+            Boolean(buildTargetTradeOffers(0, "missing_target").reason));
+        } finally {
+          state.managers = targetManagersBefore;
+          state.players.fixture_claim_rb.baseValue = targetValueBefore;
+          state.players.fixture_drop_wr.baseValue = giveValueBefore;
+          state.players.fixture_owned_qb.baseValue = otherValueBefore;
+        }
         check("Draft reception presets change rankings by the exact modeled PPR points",
           Math.abs(scoreDraftPlayer(receptionPlayer, planSettings, {}, 6) - scoreDraftPlayer(receptionPlayer, { ...planSettings, scoring: "standard" }, {}, 6) - 500) < 0.000001);
         const tePlayer = { ...receptionPlayer, position: "TE" };

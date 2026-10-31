@@ -419,6 +419,46 @@ canvas.chart-canvas { width:100%; height:300px; background:var(--bg-card); borde
 #analyticsTable .team-logo-sm, #analyticsTable .avatar[src*="/team_logos/"] { background:transparent; border-radius:0; padding:0; object-fit:contain; }
 .analytics-chart-help { color:var(--text-muted); font-size:10px; line-height:1.4; }
 .draft-companion-controls { display:flex; flex-direction:column; gap:10px; }
+.league-matchup-cards, .coverage-week-cards, .trade-target-offers { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr)); gap:12px; }
+.league-matchup-card, .coverage-week-card, .trade-target-offer { padding:16px; border:1px solid var(--border); border-radius:12px; background:linear-gradient(135deg,var(--accent-bg),var(--bg-panel) 65%,var(--score-blue-bg)); display:flex; flex-direction:column; gap:10px; min-width:0; }
+.schedule-team { display:flex; align-items:center; gap:10px; min-width:0; }
+.schedule-team strong { overflow-wrap:anywhere; }
+.schedule-team .team-initials { width:40px; height:40px; flex:0 0 40px; display:grid; place-items:center; border-radius:12px; background:var(--accent-bg); color:var(--accent); font-weight:800; }
+.schedule-team img { width:34px; height:34px; object-fit:contain; }
+.schedule-core { display:flex; gap:4px; margin-top:5px; }
+.schedule-core .compare-portrait { width:30px; height:30px; flex-basis:30px; border-radius:8px; }
+.schedule-core .compare-portrait img { width:100%; height:100%; object-fit:cover; }
+.schedule-core .compare-portrait:has(img) > span, .planner-matrix .compare-portrait:has(img) > span { visibility:hidden; }
+.schedule-projections { display:flex; justify-content:space-between; align-items:center; gap:8px; color:var(--score-blue); font-size:20px; font-weight:800; }
+.schedule-projections small { font-size:12px; color:var(--text-muted); font-weight:500; }
+.schedule-lean { padding:7px 10px; border-radius:8px; color:var(--good); background:var(--good-bg); font-size:13px; }
+.schedule-lean.is-unavailable { color:var(--text-muted); background:var(--bg-panel); }
+.coverage-week-card.has-gaps { border-color:var(--warn); background:linear-gradient(135deg,var(--warn-bg),var(--bg-panel)); }
+.coverage-week-card h3 { color:var(--accent); }
+.coverage-week-card.has-gaps h3 { color:var(--warn); }
+.planner-matrix th .schedule-team { text-align:left; }
+.planner-matrix .compare-portrait { width:36px; height:36px; flex-basis:36px; }
+.trade-target-controls { display:flex; flex-direction:column; gap:10px; }
+.trade-target-controls label { display:flex; flex-direction:column; gap:5px; }
+#companionBar[hidden] { display:none; }
+#companionBar { padding:12px; border:1px solid var(--accent); border-radius:10px; background:var(--bg-panel); display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+#companionBar nav { display:flex; gap:6px; flex-wrap:wrap; }
+#companionBar button[aria-pressed="true"] { color:var(--accent); border-color:var(--accent); background:var(--accent-bg); }
+#companionBar p { width:100%; color:var(--text-muted); font-size:12px; }
+@media (pointer:coarse) and (max-width:767px) { #companionToggle, #companionBar { display:none; } }
+@media (pointer:fine), (min-width:768px) {
+  body.companion-mode { padding:10px; }
+  .companion-mode .sidebar, .companion-mode #shareBtn, .companion-mode .sidebar-heading { display:none; }
+  .companion-mode .body-layout { display:block; }
+  .companion-mode .top-nav { padding:10px; gap:8px; }
+  .companion-mode .title-label { font-size:14px; }
+  .companion-mode .header-status-group { flex-wrap:wrap; }
+  .companion-mode .league-fields { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr) 70px; }
+  .companion-mode .draft-workspace { grid-template-columns:minmax(0,1fr); }
+  .companion-mode .draft-summary { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .companion-mode .gm-secondary, .companion-mode #gmScoreboard, .companion-mode #gmOutcomes, .companion-mode #inboxRecap, .companion-mode #waiverCanvas { display:none; }
+  .companion-mode .table-wrap { max-width:100%; overflow:auto; }
+}
 .draft-companion-controls label { display:flex; flex-direction:column; gap:5px; }
 #draftLiveControls:not([hidden]) { display:flex; gap:8px; flex-wrap:wrap; align-items:end; }
 #draftLiveControls label { flex:1 1 220px; min-width:0; }
