@@ -20,7 +20,7 @@
   <h1>Optimizer Regression Checks</h1>
   <p id="summary" role="status">Loading the app runtime...</p>
   <ol id="results"></ol>
-  <iframe id="appFrame" src="../index.html?v=20261031-starter-advice-1&amp;resume=0" title="Optimizer test runtime"></iframe>
+  <iframe id="appFrame" src="../index.html?v=20261031-mobile-tools-1&amp;resume=0" title="Optimizer test runtime"></iframe>
   <script>
     async function runOptimizerFixtures() {
       const results = [];
@@ -861,6 +861,11 @@
           const reorderedAdvice = buildWeeklyRecommendations();
           check("Inbox does not suggest starting one existing starter over another after RB/FLEX reordering",
             !reorderedAdvice.some(item => item.type === "Start / sit"));
+          renderOptimizerTab(0);
+          check("Optimizer collapses unchanged starters without repeating their player cards",
+            document.querySelectorAll("#optRows > .opt-row").length === 0 &&
+            !document.querySelector("#optRows > details").open &&
+            document.querySelectorAll("#optRows .opt-player-card").length === 2);
           state.managers[0].players.push("fixture_bench_rb");
           const replacementAdvice = buildWeeklyRecommendations().filter(item => item.type === "Start / sit");
           check("Inbox follows RB/FLEX reshuffling to recommend only the real bench-to-starter replacement",
@@ -868,6 +873,14 @@
             replacementAdvice[0].playerId === "fixture_bench_rb" &&
             replacementAdvice[0].comparisonPlayerId === "fixture_judkins" &&
             replacementAdvice[0].projectedGain === 4.5);
+          renderOptimizerTab(0);
+          check("Optimizer shows real changes before unchanged starters and preserves full lineup totals",
+            document.querySelectorAll("#optRows > .opt-row").length === 1 &&
+            document.querySelector("#optRows > .opt-row").textContent.includes("Quinshon Judkins") &&
+            document.querySelector("#optRows > .opt-row").textContent.includes("+4.5") &&
+            document.getElementById("optCurTot").textContent.includes("23.5 projected") &&
+            document.getElementById("optBestTot").textContent.includes("28.0 projected") &&
+            document.querySelector("#optRows").lastElementChild.tagName === "DETAILS");
           state.activeLeague = { ...state.activeLeague, rosterPositions: ["RB", "RB", "FLEX"] };
           addPlayer("fixture_third_rb", "Third RB", "RB", 10);
           state.managers[0].players.push("fixture_third_rb");
@@ -883,6 +896,14 @@
           state.managers = starterAdviceContext.managers;
           state.waiverTargets = starterAdviceContext.waivers;
         }
+        check("Draft settings, strategy, grades and history are available behind native disclosures",
+          !document.getElementById("draftSetup").open &&
+          document.getElementById("draftPlan").parentElement.tagName === "DETAILS" &&
+          document.getElementById("draftGrades").parentElement.tagName === "DETAILS" &&
+          document.getElementById("draftBoardGrid").closest("details") &&
+          !document.getElementById("draftBoardGrid").closest("details").open);
+        check("Wide data tables can be reached with the keyboard",
+          document.querySelector(".table-wrap[tabindex='0'][role='region']"));
         const demoProjection = { ...state.players.fixture_claim_rb, isDemo: true, byeWeek: state.week };
         check("Demo projections ignore real NFL byes",
           computeLeagueProj(demoProjection, { pts_ppr: 12 }, {}) === 12);

@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Fantasy Front Office</title>
-  <link rel="stylesheet" href="styles.css?v=20261031-starter-advice-1" />
+  <link rel="stylesheet" href="styles.css?v=20261031-mobile-tools-1" />
 </head>
 <body>
 
@@ -245,9 +245,9 @@
         <div style="display:flex; align-items:center; gap:8px;">
           <label style="font-size:12px; color:var(--text-muted);">Chart View:</label>
           <select id="powerChartMode" style="min-width:360px;">
-            <option value="0">View 1: Weekly Power Rank Trajectory (Week 1 → Current Week)</option>
-            <option value="1">View 2: Seasonal Projections — Projected Final Wins & Playoff Odds</option>
-            <option value="2">View 3: Manager Efficiency vs. Points Against (Skill vs Luck)</option>
+            <option value="0">Weekly rank trend</option>
+            <option value="1">Projected wins &amp; playoff odds</option>
+            <option value="2">Efficiency vs. points against</option>
           </select>
         </div>
       </div>
@@ -405,8 +405,7 @@
 
     <!-- TAB 4: OPTIMIZER -->
     <div id="tab-opt" class="tab-page">
-      <div class="tool-intro"><h2>Lineup Optimizer</h2><p>Find projected points on your bench. Review changes here; set your lineup in your league.</p></div>
-      <section id="optimizerChecklist" class="comparison-card" aria-label="Game-day checklist" hidden></section>
+      <div class="tool-intro"><h2>Lineup Optimizer</h2><p>Review upgrades, then set your lineup in your league.</p></div>
       <div class="optimizer-heading">
         <div id="optHeader">Current vs. optimal lineup</div>
         <div class="optimizer-heading-actions">
@@ -420,6 +419,7 @@
         <span id="optBestTot" style="color:var(--good);">OPTIMUM LINEUP: 0.00 pts</span>
       </div>
       <div id="optRows" style="display:flex; flex-direction:column; gap:8px;"></div>
+      <section id="optimizerChecklist" class="comparison-card" aria-label="Game-day checklist" hidden></section>
     </div>
 
     <!-- TAB 5: WAIVERS -->
@@ -428,13 +428,13 @@
       <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
         <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
           <select id="waiverPos" style="width:185px;">
-            <option value="ALL">ALL (VORP Ranked)</option><option value="QB">QB</option><option value="RB">RB</option>
+            <option value="ALL">All positions</option><option value="QB">QB</option><option value="RB">RB</option>
             <option value="WR">WR</option><option value="TE">TE</option><option value="FLEX">FLEX (RB/WR/TE)</option><option value="DEF">DEF</option><option value="K">K</option>
           </select>
           <select id="waiverChartMode" style="min-width:310px;">
-            <option value="0">Chart 1: VORP-Adjusted Pickup Score (Normalizes Positions)</option>
-            <option value="1">Chart 2: Role Usage & Opportunity Volume Leaders</option>
-            <option value="2">Chart 3: Breakout Trend — Week Proj vs. Season Avg PPG</option>
+            <option value="0">Pickup value</option>
+            <option value="1">Usage &amp; opportunity</option>
+            <option value="2">Weekly projection vs. season</option>
           </select>
         </div>
       </div>
@@ -836,8 +836,10 @@
         </div>
         <span id="draftSeasonBadge" class="badge badge-blue">2026 Season</span>
       </div>
-      <p class="tool-intro-copy">Practice your draft and compare roster fits. Mock picks stay here, not in your league.</p>
+      <p class="tool-intro-copy">Practice only. No picks are sent to your league.</p>
 
+      <details id="draftSetup" class="tool-disclosure">
+      <summary>Draft settings <span id="draftSetupSummary"></span></summary>
       <section class="draft-settings">
         <label>Draft format
           <select id="draftType">
@@ -908,6 +910,7 @@
           <button id="draftStartBtn" type="button">Start / Reset Draft</button>
         </div>
       </section>
+      </details>
 
       <div id="draftNotice" class="draft-notice" aria-live="polite"></div>
 
@@ -918,9 +921,15 @@
         <div><span>Available</span><strong id="draftAvailableCount">0</strong></div>
       </div>
 
+      <div class="draft-tools">
+      <details class="tool-disclosure"><summary>Strategy</summary>
       <section id="draftPlan" class="gm-briefing" aria-label="Personalized draft plan" aria-live="polite"></section>
+      </details>
+      <details class="tool-disclosure"><summary>Grades</summary>
       <section id="draftGrades" class="comparison-card" aria-label="Mock draft grades" aria-live="polite"></section>
+      </details>
 
+      <details class="tool-disclosure"><summary>Board</summary>
       <section class="draft-board-panel draft-board-panel-full">
         <div class="draft-panel-heading">
           <div><h3>Draft Board</h3><span id="draftTakenCount" class="draft-subtitle">No picks made</span></div>
@@ -930,6 +939,8 @@
           <div id="draftBoardGrid" class="draft-grid"></div>
         </div>
       </section>
+      </details>
+      </div>
 
       <div class="draft-workspace">
         <section class="draft-board-panel">
@@ -993,13 +1004,13 @@
   <div id="monetizationDisclosure" class="monetization-disclosure" hidden></div>
 </footer>
 
-<script src="monetization-config.js?v=20261031-starter-advice-1"></script>
-<script src="data-fetch.js?v=20261031-starter-advice-1"></script>
-<script src="demo-league.js?v=20261031-starter-advice-1"></script>
-<script src="league-records.js?v=20261031-starter-advice-1"></script>
-<script src="workspace-backup.js?v=20261031-starter-advice-1"></script>
-<script src="playoff-simulator.js?v=20261031-starter-advice-1"></script>
-<script src="weekly-matchups.js?v=20261031-starter-advice-1"></script>
-<script src="app.js?v=20261031-starter-advice-1"></script>
+<script src="monetization-config.js?v=20261031-mobile-tools-1"></script>
+<script src="data-fetch.js?v=20261031-mobile-tools-1"></script>
+<script src="demo-league.js?v=20261031-mobile-tools-1"></script>
+<script src="league-records.js?v=20261031-mobile-tools-1"></script>
+<script src="workspace-backup.js?v=20261031-mobile-tools-1"></script>
+<script src="playoff-simulator.js?v=20261031-mobile-tools-1"></script>
+<script src="weekly-matchups.js?v=20261031-mobile-tools-1"></script>
+<script src="app.js?v=20261031-mobile-tools-1"></script>
 </body>
 </html>

@@ -51,6 +51,22 @@ Upcoming weeks show bye counts; individual names remain in the coverage details.
 Start/sit advice compares players entering and leaving the starting lineup,
 following any RB/FLEX or repeated-slot reshuffling. Moving two existing starters
 between slots is not an action and cannot create an artificial projected gain.
+
+Mobile tool controls wrap within the content width, including Waivers, Power
+Rankings, Matchup Simulator and tracked-roster selectors. Wide tables retain
+local horizontal scrolling and keyboard focus rather than widening the page.
+Phone controls use 44px touch targets; supporting copy uses a consistent 12px
+baseline. Chart selector labels are shortened without changing their modes.
+
+The Optimizer puts lineup changes and open slots first. Unchanged starters are
+collapsed and shown once each; projection totals and actual scores still cover
+the whole lineup. RB/FLEX reshuffling is followed to identify the outgoing player.
+Draft settings, strategy, grades and full board are collapsed so available picks
+are reached sooner. The Draft Room and available-player table no longer create
+nested vertical scrollers; the optional full board retains its bounded scroll.
+On phones, position, team and age sit beneath each draft player's name instead
+of occupying separate columns. Draft behavior, filters and saved settings remain
+unchanged.
 Healthy roster-check status is a plain line rather than another bordered banner;
 warning states retain their existing prominence. The connected phone header
 keeps status, data details and sharing on one line.

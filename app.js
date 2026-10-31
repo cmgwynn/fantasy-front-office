@@ -3409,15 +3409,18 @@ function getOptimizerActualPoints() {
   return scores;
 }
 
-function renderOptimizerPlayerCard(player, side, scores, scorePhase) {
+function renderOptimizerPlayerCard(player, side, scores, scorePhase, unchanged = false) {
   const actualPoints = scores.get(String(player.id));
   const kickoff = getPlayerGameDayStatus(player);
+  const kickoffLabel = !kickoff.locked && kickoff.kickoff
+    ? new Date(kickoff.kickoff).toLocaleString(undefined, { weekday: "short", hour: "numeric", minute: "2-digit", timeZoneName: "short" })
+    : kickoff.label;
   const actual = scorePhase === "UPCOMING"
     ? `<span class="opt-actual-score unavailable">Actual -- <small>UPCOMING</small></span>`
     : actualPoints === undefined
       ? `<span class="opt-actual-score unavailable">Actual -- <small>No score data</small></span>`
     : `<span class="opt-actual-score">Actual ${actualPoints.toFixed(1)} <small>${scorePhase === "THIS WEEK" ? "SO FAR" : "FINAL"}</small></span>`;
-  return `<div class="opt-player-card ${side}"><img class="avatar" src="${avatarUrl(player)}" onerror="this.style.display='none'" /><div class="opt-player-details"><b><img class="team-logo-sm" src="${teamLogoUrl(player.team)}" onerror="this.style.display='none'"/>${draftEscapeHtml(player.name)}</b><span>${draftEscapeHtml(player.position)} · ${draftEscapeHtml(player.team)}</span><small class="optimizer-kickoff-status ${kickoff.locked ? "locked" : kickoff.status}">${draftEscapeHtml(kickoff.label)}</small></div><div class="opt-score-stack"><strong>Proj ${Number(player.projectedPoints || 0).toFixed(1)}</strong>${actual}</div></div>`;
+  return `<div class="opt-player-card ${side}"><img class="avatar" src="${avatarUrl(player)}" alt="" onerror="this.style.display='none'" /><div class="opt-player-details"><b><img class="team-logo-sm" src="${teamLogoUrl(player.team)}" alt="" onerror="this.style.display='none'"/>${draftEscapeHtml(player.name)}</b><span>${unchanged ? "Starting" : side === "current" ? "Current" : "Suggested"} / ${draftEscapeHtml(player.position)} / ${draftEscapeHtml(player.team)}</span><small class="optimizer-kickoff-status ${kickoff.locked ? "locked" : kickoff.status}">${draftEscapeHtml(kickoffLabel)}</small></div><div class="opt-score-stack"><strong>Proj ${Number(player.projectedPoints || 0).toFixed(1)}</strong>${actual}</div></div>`;
 }
 
 function renderOptimizerTab(idx) {
@@ -3432,9 +3435,12 @@ function renderOptimizerTab(idx) {
   const currentPlayers = [...new Set((tm.starters || []).filter(id => id && id !== "0").map(String))].map(id => state.players[id]).filter(Boolean);
   const currentIds = new Set(currentPlayers.map(player => String(player.id)));
   const optimalIds = new Set(opt.filled.filter(Boolean).map(player => String(player.id)));
+  const optimalSlots = new Map(opt.filled.flatMap((player, index) => player ? [[String(player.id), index]] : []));
   const usedCurrent = new Set();
   const replacementCandidates = currentPlayers.filter(player => !optimalIds.has(String(player.id)));
   const scores = getOptimizerActualPoints();
+  const unchangedRows = document.createElement("div");
+  unchangedRows.className = "optimizer-unchanged-list";
   const scorePhase = state.week < state.currentNflWeek ? "FINAL" : (state.week === state.currentNflWeek ? "THIS WEEK" : "UPCOMING");
   let subCnt = 0, openSlotCount = 0;
 
@@ -3443,9 +3449,13 @@ function renderOptimizerTab(idx) {
     let cPl = null;
     if (currentIds.has(String(oPl.id)) && !usedCurrent.has(String(oPl.id))) cPl = oPl;
     if (!cPl) {
-      const candidates = replacementCandidates.filter(player => !usedCurrent.has(String(player.id)) && isPosEligible(player.position, slot));
+      let outgoing = state.players[tm.starters[index]];
+      while (outgoing && optimalSlots.has(String(outgoing.id))) {
+        outgoing = state.players[tm.starters[optimalSlots.get(String(outgoing.id))]];
+      }
+      const candidates = replacementCandidates.filter(player => !usedCurrent.has(String(player.id)));
       candidates.sort((a, b) => Number(a.projectedPoints || 0) - Number(b.projectedPoints || 0));
-      cPl = candidates[0] || null;
+      cPl = outgoing && !usedCurrent.has(String(outgoing.id)) ? outgoing : candidates[0] || null;
     }
     if (cPl) usedCurrent.add(String(cPl.id));
     cPl ||= emptyPlayer("Empty Slot", slot);
@@ -3457,10 +3467,28 @@ function renderOptimizerTab(idx) {
 
     const row = document.createElement("div");
     row.className = "opt-row" + (isSev ? " sev" : (isSub ? " warn" : ""));
-    const slotMessage = oPl.id === "0" ? `Open ${draftEscapeHtml(slot)}` : (isSub ? `${draftEscapeHtml(slot)}<br>+${lost.toFixed(1)} projected` : `✓ ${draftEscapeHtml(slot)}${currentIds.has(String(oPl.id)) ? "<br>Already starting" : ""}`);
-    row.innerHTML = `${renderOptimizerPlayerCard(cPl, "current", scores, scorePhase)}<div class="opt-slot-result ${oPl.id === "0" ? "suboptimal" : isSev ? "severe" : isSub ? "suboptimal" : "optimal"}">${slotMessage}</div>${renderOptimizerPlayerCard(oPl, "optimal", scores, scorePhase)}`;
-    rowsEl.appendChild(row);
+    const unchanged = oPl.id !== "0" && oPl.id === cPl.id;
+    row.classList.toggle("is-unchanged", unchanged);
+    const slotMessage = oPl.id === "0" ? `Open ${draftEscapeHtml(slot)}` : (isSub ? `${draftEscapeHtml(slot)}<br>+${lost.toFixed(1)} projected` : `✓ ${draftEscapeHtml(slot)}`);
+    row.innerHTML = unchanged
+      ? `<span class="opt-slot-result optimal">${slotMessage}</span>${renderOptimizerPlayerCard(oPl, "optimal", scores, scorePhase, true)}`
+      : `${renderOptimizerPlayerCard(cPl, "current", scores, scorePhase)}<div class="opt-slot-result ${oPl.id === "0" ? "suboptimal" : isSev ? "severe" : isSub ? "suboptimal" : "optimal"}">${slotMessage}</div>${renderOptimizerPlayerCard(oPl, "optimal", scores, scorePhase)}`;
+    (unchanged ? unchangedRows : rowsEl).appendChild(row);
   });
+  if (!rowsEl.children.length) {
+    const message = document.createElement("p");
+    message.className = "comparison-note";
+    message.textContent = "No projected upgrades. Your starters are already selected.";
+    rowsEl.appendChild(message);
+  }
+  if (unchangedRows.children.length) {
+    const details = document.createElement("details");
+    details.className = "tool-disclosure optimizer-unchanged";
+    const summary = document.createElement("summary");
+    summary.textContent = `${unchangedRows.children.length} unchanged starters`;
+    details.append(summary, unchangedRows);
+    rowsEl.appendChild(details);
+  }
 
   const currentProjected = currentPlayers.reduce((sum, player) => sum + Number(player.projectedPoints || 0), 0);
   const optimalProjected = opt.filled.reduce((sum, player) => sum + Number(player?.projectedPoints || 0), 0);
@@ -6274,8 +6302,8 @@ function restoreDraftSession() {
     });
     const notice = document.getElementById("draftNotice");
     if (notice) notice.textContent = draftState.userPicks.length
-      ? `Resumed your saved draft with ${draftState.userPicks.length} pick${draftState.userPicks.length === 1 ? "" : "s"}. Opponent picks are simulated.`
-      : "Draft settings restored. Opponent picks before your slot are simulated; you have not made a pick yet.";
+      ? `Resumed ${draftState.userPicks.length} pick${draftState.userPicks.length === 1 ? "" : "s"}. Opponents are simulated.`
+      : "Settings restored. Opponents are simulated.";
   } catch (error) {
     const notice = document.getElementById("draftNotice");
     if (notice) notice.textContent = `Saved draft could not be loaded: ${error.message}`;
@@ -6759,6 +6787,7 @@ function renderDraftGrades(settings, simulation, rankedPlayers) {
 function renderDraftRoom() {
   restoreDraftSession();
   const settings = draftState.settings;
+  document.getElementById("draftSetupSummary").textContent = `${settings.teams} teams / Pick ${settings.slot} / ${settings.scoring.toUpperCase()}`;
   updateDraftSlotOptions();
   updateDraftTypeSettings();
   const seasonBadge = document.getElementById("draftSeasonBadge");
@@ -6811,7 +6840,7 @@ function renderDraftRoom() {
       entries.forEach(({ player, score }, index) => {
         const row = document.createElement("tr");
         const adp = getDraftAdp(player);
-        row.innerHTML = `<td class="draft-rank">${index + 1}</td><td class="draft-name"><span class="draft-player-cell"><img src="${draftEscapeHtml(avatarUrl(player))}" alt="" loading="lazy" onerror="this.style.visibility='hidden'" /><span>${draftEscapeHtml(player.name)}</span></span></td><td><span class="pos-pill">${draftEscapeHtml(player.position)}</span></td><td>${draftEscapeHtml(player.team || "FA")}</td><td>${adp.rank === null ? "--" : `${adp.rank.toFixed(1)} <span class="draft-adp-source">${adp.source}</span>`}</td><td>${player.age || "--"}</td><td>${Number(player.seasonPpg || player.projectedPoints || 0).toFixed(1)}</td><td><button class="draft-pick-btn" type="button" data-draft-pick="${draftEscapeHtml(player.id)}" title="Draft ${draftEscapeHtml(player.name)}">Draft</button></td>`;
+        row.innerHTML = `<td class="draft-rank">${index + 1}</td><td class="draft-name"><span class="draft-player-cell"><img src="${draftEscapeHtml(avatarUrl(player))}" alt="" loading="lazy" onerror="this.style.visibility='hidden'" /><span>${draftEscapeHtml(player.name)}<small class="draft-mobile-meta">${draftEscapeHtml(player.position)} / ${draftEscapeHtml(player.team || "FA")} / Age ${player.age || "--"}</small></span></span></td><td><span class="pos-pill">${draftEscapeHtml(player.position)}</span></td><td>${draftEscapeHtml(player.team || "FA")}</td><td>${adp.rank === null ? "--" : `${adp.rank.toFixed(1)} <span class="draft-adp-source">${adp.source}</span>`}</td><td>${player.age || "--"}</td><td>${Number(player.seasonPpg || player.projectedPoints || 0).toFixed(1)}</td><td><button class="draft-pick-btn" type="button" data-draft-pick="${draftEscapeHtml(player.id)}" title="Draft ${draftEscapeHtml(player.name)}">Draft</button></td>`;
         row.dataset.draftScore = String(Math.round(score));
         body.appendChild(row);
       });
@@ -7875,6 +7904,11 @@ function renderAllViews(teamIdx) {
 
 // 10. Form Control Bindings & Boot
 function bindControlEvents() {
+  document.querySelectorAll(".table-wrap").forEach(wrapper => {
+    wrapper.tabIndex = 0;
+    wrapper.setAttribute("role", "region");
+    wrapper.setAttribute("aria-label", "Scrollable data table");
+  });
   ensureDynamicTradeControls();
   const weekSelect = document.getElementById("weekSelect");
   document.getElementById("recordsQuestion")?.addEventListener("change", renderLeagueRecords);
