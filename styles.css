@@ -105,12 +105,8 @@ button:active { transform:translateY(1px); }
 .tool-intro p, .tool-intro-copy { max-width:860px; color:var(--text-muted); font-size:12px; line-height:1.55; }
 .tool-intro-copy { margin-top:-4px; }
 .analytics-header + .tool-intro-copy { margin-top:-6px; }
-.workspace-actions { display:flex; flex-wrap:wrap; gap:8px; }
-.workspace-confirm { display:flex; align-items:center; gap:10px; line-height:1.5; }
 .workspace-banner { padding:12px 16px; border:1px solid var(--border); border-radius:12px; background:var(--accent-bg); color:var(--text-main); font-size:12px; line-height:1.5; margin-bottom:16px; }
-.workspace-banner[hidden], #workspaceRestorePreview[hidden] { display:none; }
-#workspaceRestorePreview { padding:14px; border:1px solid var(--border); border-radius:12px; line-height:1.7; overflow-wrap:anywhere; }
-#workspaceImportFile { display:block; width:100%; margin-top:8px; }
+.workspace-banner[hidden] { display:none; }
 @media (prefers-reduced-motion:reduce) { .nav-chevron { transition:none; } }
 
 .content-stack {

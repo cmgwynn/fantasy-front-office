@@ -51,7 +51,6 @@ document.addEventListener("click", e => {
       case "tab-power": drawPowerChart(); break;
       case "tab-grades": renderTeamGrades(); break;
       case "tab-planner": renderRosterPlanner(); break;
-      case "tab-workspace": refreshWorkspaceStatus(); break;
       case "tab-waiver": drawWaiverChart(); break;
       case "tab-analytics": drawSingleAnalyticsChart(); break;
       case "tab-compare":
@@ -7187,7 +7186,6 @@ function renderAllViews(teamIdx) {
 
 // 10. Form Control Bindings & Boot
 function bindControlEvents() {
-  bindWorkspaceControls();
   ensureDynamicTradeControls();
   const weekSelect = document.getElementById("weekSelect");
   document.getElementById("recordsQuestion")?.addEventListener("change", renderLeagueRecords);
@@ -7503,8 +7501,6 @@ function bindControlEvents() {
   window.addEventListener("resize", () => { drawPowerChart(); drawWaiverChart(); drawSingleAnalyticsChart(); });
 }
 
-let pendingWorkspaceBackup = null;
-let workspacePreviewVersion = 0;
 const WORKSPACE_SNAPSHOT_KEY = "resume";
 
 function workspaceDatabase(action, value, key = WORKSPACE_SNAPSHOT_KEY) {
@@ -7579,7 +7575,6 @@ function restoreConnectionInput(restoreProvider = false) {
 }
 
 function reportReloadWorkspaceError(message) {
-  document.getElementById("workspaceStatus").textContent = message;
   const banner = document.getElementById("workspaceSnapshotBanner");
   banner.textContent = message;
   banner.hidden = false;
@@ -7694,19 +7689,6 @@ function buildWorkspaceBackup() {
   return FFOWorkspace.parseBackup(JSON.stringify(backup));
 }
 
-async function refreshWorkspaceStatus() {
-  const label = document.getElementById("workspaceSavedStatus");
-  try {
-    const saved = await workspaceDatabase("read");
-    if (saved) {
-      FFOWorkspace.validateBackup(saved);
-      label.textContent = `Device snapshot: ${saved.snapshot.activeLeague.name} / Week ${saved.snapshot.week} / saved ${new Date(saved.savedAt).toLocaleString()}. Manual save; newer changes are not automatically captured.`;
-    } else label.textContent = "No device snapshot. Save one to resume it on the next visit.";
-  } catch (error) {
-    label.textContent = `Device snapshot unavailable: ${error.message}`;
-  }
-}
-
 function applyWorkspaceSnapshot(backup) {
   FFOWorkspace.validateBackup(backup);
   Object.assign(state, backup.snapshot);
@@ -7769,84 +7751,11 @@ function applyWorkspaceSnapshot(backup) {
   renderRosterPlanner(false);
   activateTab(document.querySelector(`.nav-btn[data-tab="${backup.ui.tab}"]`) ? backup.ui.tab : "tab-inbox");
   const banner = document.getElementById("workspaceSnapshotBanner");
-  banner.textContent = `Saved workspace / ${new Date(backup.savedAt).toLocaleString()}. This is a snapshot, not live data. Reconnect or re-import to update. Manage saved snapshots in Home > Workspace & Backups.`;
+  banner.textContent = `Saved league / ${new Date(backup.savedAt).toLocaleString()}. This is a snapshot, not live data. Reconnect or re-import to update.`;
   banner.hidden = false;
   updateDynamicSeasonLabels();
   renderDataFreshness();
   setStatus(`Ready | Saved workspace / ${state.activeLeague.name} / Week ${state.week}`);
-}
-
-async function previewWorkspaceFile(file) {
-  const version = ++workspacePreviewVersion;
-  pendingWorkspaceBackup = null;
-  const preview = document.getElementById("workspaceRestorePreview");
-  const status = document.getElementById("workspaceStatus");
-  preview.hidden = true;
-  document.getElementById("workspaceRestoreConfirm").checked = false;
-  document.getElementById("restoreWorkspaceBtn").disabled = true;
-  if (!file) { status.textContent = "No backup selected. Current workspace is unchanged."; return; }
-  try {
-    if (file.size > FFOWorkspace.MAX_BYTES) throw new Error("Backup exceeds the 25 MB limit.");
-    const backup = FFOWorkspace.parseBackup(await file.text());
-    if (version !== workspacePreviewVersion) return;
-    pendingWorkspaceBackup = backup;
-    preview.textContent = `${backup.snapshot.activeLeague.name} / ${backup.snapshot.activeLeague.season} / Week ${backup.snapshot.week}. ${backup.snapshot.managers.length} rosters, ${Object.keys(backup.snapshot.players).length.toLocaleString()} players, ${backup.records.games.length} completed games, ${Object.keys(backup.storage).length} saved-plan entries. Saved ${new Date(backup.savedAt).toLocaleString()}. Restore replaces all recognized local plans, including entries absent from this file.`;
-    preview.hidden = false;
-    status.textContent = "Backup validated. Review the preview and confirm replacement to enable Restore.";
-  } catch (error) {
-    if (version === workspacePreviewVersion) status.textContent = `Backup rejected: ${error.message} Current workspace is unchanged.`;
-  }
-}
-
-function bindWorkspaceControls() {
-  document.getElementById("workspaceImportFile").addEventListener("change", event => previewWorkspaceFile(event.target.files?.[0]));
-  document.getElementById("workspaceRestoreConfirm").addEventListener("change", event => {
-    document.getElementById("restoreWorkspaceBtn").disabled = !event.target.checked || !pendingWorkspaceBackup;
-  });
-  document.getElementById("restoreWorkspaceBtn").addEventListener("click", async event => {
-    const status = document.getElementById("workspaceStatus");
-    if (!pendingWorkspaceBackup || !document.getElementById("workspaceRestoreConfirm").checked) {
-      status.textContent = "Choose a valid backup and confirm replacement first.";
-      return;
-    }
-    event.currentTarget.disabled = true;
-    try {
-      await reloadWorkspaceWrite;
-      await FFOWorkspace.restoreBackup(pendingWorkspaceBackup, localStorage, backup => workspaceDatabase("restore", backup));
-      localStorage.removeItem(WORKSPACE_SELECTION_KEY);
-      location.replace(location.pathname);
-    } catch (error) {
-      status.textContent = error.message;
-      document.getElementById("restoreWorkspaceBtn").disabled = false;
-    }
-  });
-  document.getElementById("saveWorkspaceBtn").addEventListener("click", async () => {
-    try {
-      await workspaceDatabase("write", buildWorkspaceBackup());
-      await refreshWorkspaceStatus();
-      document.getElementById("workspaceStatus").textContent = "Workspace saved on this device. Download a backup too for protection against browser data clearing.";
-    } catch (error) { document.getElementById("workspaceStatus").textContent = `Workspace could not be saved: ${error.message}`; }
-  });
-  document.getElementById("exportWorkspaceBtn").addEventListener("click", () => {
-    try {
-      const backup = buildWorkspaceBackup();
-      const url = URL.createObjectURL(new Blob([JSON.stringify(backup)], { type: "application/json" }));
-      const link = document.createElement("a");
-      link.href = url; link.download = `front-office-workspace-${backup.savedAt.slice(0, 10)}.json`;
-      link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
-      document.getElementById("workspaceStatus").textContent = "Backup download requested. It contains private league details; keep it safe. Device snapshot is unchanged.";
-    } catch (error) { document.getElementById("workspaceStatus").textContent = `Backup could not be exported: ${error.message}`; }
-  });
-  document.getElementById("clearWorkspaceBtn").addEventListener("click", async () => {
-    try {
-      await workspaceDatabase("remove");
-      await reloadWorkspaceWrite;
-      await workspaceDatabase("remove", undefined, RELOAD_WORKSPACE_KEY);
-      localStorage.removeItem(WORKSPACE_SELECTION_KEY);
-      await refreshWorkspaceStatus();
-      document.getElementById("workspaceStatus").textContent = "Snapshot resume stopped. Current league and local plans are unchanged. Connecting or importing again enables reload retention.";
-    } catch (error) { document.getElementById("workspaceStatus").textContent = `Snapshot could not be removed: ${error.message}`; }
-  });
 }
 
 async function bootWorkspace() {
@@ -7866,8 +7775,7 @@ async function bootWorkspace() {
     backup = reloadBackup || await workspaceDatabase("read");
     if (backup) FFOWorkspace.validateBackup(backup);
   } catch (error) {
-    const message = `Saved workspace could not resume: ${error.message} The saved copy has not been deleted; use Workspace & Backups to review or stop resuming it.`;
-    document.getElementById("workspaceStatus").textContent = message;
+    const message = `Saved league could not resume: ${error.message} The saved copy has not been deleted. Reconnect your provider to load your league.`;
     const banner = document.getElementById("workspaceSnapshotBanner");
     banner.textContent = message; banner.hidden = false;
     await initApp();
@@ -7884,13 +7792,11 @@ async function bootWorkspace() {
     try {
       if (reloadBackup) await resumeReloadWorkspace(backup);
       else applyWorkspaceSnapshot(backup);
-      await refreshWorkspaceStatus();
     } catch (error) {
-      const message = `Saved workspace could not render: ${error.message}. Your saved copy and plans were retained. Stop resuming the snapshot or reconnect to recover.`;
-      document.getElementById("workspaceStatus").textContent = message;
+      const message = `Saved league could not render: ${error.message}. Your saved copy and plans were retained. Reconnect your provider to recover.`;
       const banner = document.getElementById("workspaceSnapshotBanner");
       banner.textContent = message; banner.hidden = false;
-      activateTab("tab-workspace");
+      activateTab("tab-inbox");
       setStatus("Saved workspace needs attention.");
     }
     return;

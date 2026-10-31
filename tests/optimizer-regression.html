@@ -20,7 +20,7 @@
   <h1>Optimizer Regression Checks</h1>
   <p id="summary" role="status">Loading the app runtime...</p>
   <ol id="results"></ol>
-  <iframe id="appFrame" src="../index.html?v=20261031-navigation-clarity-1&amp;resume=0" title="Optimizer test runtime"></iframe>
+  <iframe id="appFrame" src="../index.html?v=20261031-remove-backups-1&amp;resume=0" title="Optimizer test runtime"></iframe>
   <script>
     async function runOptimizerFixtures() {
       const results = [];
@@ -261,22 +261,9 @@
           if (previousSelectionText === null) localStorage.removeItem(WORKSPACE_SELECTION_KEY);
           else localStorage.setItem(WORKSPACE_SELECTION_KEY, previousSelectionText);
         }
-        const storageBeforePreview = JSON.stringify(FFOWorkspace.captureStorage(localStorage));
-        await previewWorkspaceFile({ size: 2, text: async () => "{}" });
-        check("Invalid backup previews cannot enable restore or change saved plans", !pendingWorkspaceBackup &&
-          document.getElementById("restoreWorkspaceBtn").disabled && document.getElementById("workspaceStatus").textContent.includes("rejected") &&
-          JSON.stringify(FFOWorkspace.captureStorage(localStorage)) === storageBeforePreview);
-        const fixtureText = JSON.stringify(fixtureBackup);
-        await previewWorkspaceFile({ size: fixtureText.length, text: async () => fixtureText });
-        check("Valid workspace backup previews require explicit confirmation before restore",
-          pendingWorkspaceBackup?.version === 1 && !document.getElementById("workspaceRestorePreview").hidden &&
-          document.getElementById("restoreWorkspaceBtn").disabled && !document.getElementById("workspaceRestoreConfirm").checked);
-        document.getElementById("workspaceRestoreConfirm").checked = true;
-        document.getElementById("workspaceRestoreConfirm").dispatchEvent(new Event("change"));
-        check("Backup confirmation enables restore only after validation", !document.getElementById("restoreWorkspaceBtn").disabled);
-        await previewWorkspaceFile(null);
-        check("Clearing a backup resets confirmation and prevents stale restore", !pendingWorkspaceBackup &&
-          document.getElementById("restoreWorkspaceBtn").disabled && !document.getElementById("workspaceRestoreConfirm").checked);
+        check("Manual backup interface is removed while automatic reload storage remains available",
+          !document.getElementById("tab-workspace") && !document.getElementById("restoreWorkspaceBtn") &&
+          typeof saveReloadWorkspace === "function");
         state.provider = backupProvider;
         state.week = backupWeek;
         state.activeLeague = backupLeague;

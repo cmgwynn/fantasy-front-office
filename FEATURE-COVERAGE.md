@@ -40,7 +40,7 @@ uses a responsive scatter plot with labels for the top 10 players in the current
 sort; the sortable table below retains the full plotted-player values.
 All existing tools remain accessible; no analytics were removed.
 
-### Workspace snapshots and backups
+### Automatic league remembering
 
 Normal refreshes automatically retain the last loaded league, selected roster
 (by provider roster ID, not array order), selected week, and current section.
@@ -62,49 +62,17 @@ usernames and ESPN league-ID lists are kept separately in this browser's local
 storage and restored on reload/provider changes. An intentionally emptied field
 stays empty. These values are not passwords or sign-in sessions and are not
 exported in workspace backups. Storage/validation failures are shown explicitly.
-Clearing browser storage removes these values; Stop resuming snapshot leaves
-them intact. `?resume=0` also disables account-field reads and writes for tests.
+Clearing browser storage removes these values. `?resume=0` also disables
+account-field reads and writes for tests.
 
-Open **Home > Workspace & Backups**. **Save on this device** commits a manual
-snapshot to IndexedDB and resumes it on a later unlinked visit. It captures one
-active league, loaded player/model data, completed results, selected roster,
-week, view, and multiweek add/drop scenario. Resume uses that snapshot without
-automatic league/schedule refresh and shows a persistent non-live-data banner.
-Local draft, FAAB, newsletter, Inbox, watchlist, portfolio-selection, and pick'em
-saves retain their latest device changes on ordinary resume.
-
-**Download backup** exports the same versioned snapshot plus all recognized
-local app saves as JSON. It does not update the device snapshot. Backups contain
-private league/manager details; keep files private. No provider cookies,
-credentials, notification permissions, other sites' local storage, or cloud
-account are included. Other leagues' local saves are included, but not their
-live rosters. Unsaved trade/bracket scenarios and external schedule caches are
-not included.
-
-Restore validates the format/version, 25 MB byte limit, data shape, roster/player
-references, completed results, and recognized saved-plan keys before showing a
-preview. Plain-text snapshot data is supported; markup, unsafe object keys,
-malformed JSON, invalid settings, and unsupported versions are rejected.
-Restoring requires a separate replacement checkbox and button. It replaces
-**all recognized local app saves**, including removing entries absent from the
-backup, while preserving unrelated browser data. Local-plan writes roll back
-if a write or the IndexedDB commit fails; rollback failure is explicitly
-reported. The page reloads only after the snapshot transaction commits.
-
-**Stop resuming snapshot** removes both device resume copies and reload
-selection, not the current
-session, local plans, downloaded backups, or NFL caches. Loading/importing a
-league again enables reload retention. Explicit league/user links and conflicting
-provider links take precedence over snapshot resume. `?resume=0`
-also bypasses resume without deleting it; the browser test harness uses this
-to avoid loading personal snapshots. Errors preserve the saved copy and are
-shown in Workspace and the snapshot banner.
-
-Snapshots are manual, not autosave or synced accounts. Reconnect/re-import for
-fresh provider data. Browser eviction/clearing can remove the device copy;
-download a file as an independent backup. Export rejects invalid existing
-recognized saves rather than silently omitting them. Restoring a valid backup
-can replace corrupt local saves.
+The Workspace & Backups tab and its manual save, download, and restore controls
+have been removed. Automatic league/roster/week/view retention and local draft,
+FAAB, Inbox, newsletter, and watchlist saves remain. Existing stored snapshots
+are retained for compatibility, including a manual snapshot made before the
+tab was removed. Old saved selections targeting the removed tab open GM Inbox.
+Errors and non-live data are still identified in the snapshot banner.
+Reconnect or re-import to update a snapshot. Storage remains device-local,
+not cross-device account sync; browser eviction or clearing can remove it.
 
 ### Current week selection
 

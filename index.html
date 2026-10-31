@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Fantasy Front Office</title>
-  <link rel="stylesheet" href="styles.css?v=20261031-navigation-clarity-1" />
+  <link rel="stylesheet" href="styles.css?v=20261031-remove-backups-1" />
 </head>
 <body>
 
@@ -66,7 +66,6 @@
     <select id="mobileTabSelect" class="mobile-nav-select" aria-label="Navigate to section">
       <optgroup label="Overview">
       <option value="tab-inbox" selected>GM Inbox</option>
-      <option value="tab-workspace">Workspace &amp; Backups</option>
       </optgroup>
       <optgroup label="My Team">
       <option value="tab-roster">My Roster</option>
@@ -98,7 +97,6 @@
         <summary><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m3 10 9-7 9 7v10H3Z M9 20v-7h6v7"/></svg><span>Overview<small class="nav-current">GM Inbox</small></span><span class="nav-chevron" aria-hidden="true"></span></summary>
         <div class="nav-group-items">
           <button class="nav-btn active" data-tab="tab-inbox" aria-current="page">GM Inbox</button>
-          <button class="nav-btn" data-tab="tab-workspace">Workspace &amp; Backups</button>
         </div>
       </details>
       <details class="nav-group" name="sidebar-section">
@@ -143,25 +141,6 @@
 
   <div class="content-stack">
     <div id="workspaceSnapshotBanner" class="workspace-banner" role="status" hidden></div>
-    <div id="tab-workspace" class="tab-page">
-      <div><div class="draft-eyebrow">ON YOUR DEVICE</div><h2>Workspace &amp; Backups</h2><p class="comparison-note">Your provider, account username or league IDs, current league, roster, week, and section are remembered on this browser for page refreshes. Connected leagues reload provider data where access is available; imports resume their snapshot. Account fields are stored separately from backups, without passwords, sign-ins, or cookies. Manual backups provide a separate recovery copy; no cloud upload.</p></div>
-      <section class="comparison-card">
-        <h3>Pick up where you left off</h3>
-        <p class="comparison-note">Save the active league, roster data, current view, and multiweek scenario. Snapshots resume on this browser without fetching fresh data; local draft/FAAB/newsletter/Inbox/watchlist/pick'em saves keep their latest device changes. Downloaded backups also capture those local plans for explicit restoration. Reconnect to update your league.</p>
-        <div class="workspace-actions"><button id="saveWorkspaceBtn" type="button">Save on this device</button><button id="exportWorkspaceBtn" type="button" class="btn-builder-action">Download backup</button><button id="clearWorkspaceBtn" type="button" class="btn-builder-action">Stop resuming snapshot</button></div>
-        <p id="workspaceSavedStatus" class="comparison-note">No device snapshot checked yet.</p>
-      </section>
-      <section class="comparison-card">
-        <h3>Restore a backup</h3>
-        <p class="comparison-note">Choose an original Fantasy Front Office JSON backup (up to 25 MB). Nothing changes until you review the preview and confirm. Restore replaces this app's saved local plans with the backup's set, including plans for other leagues; unrelated browser data stays untouched. Download a current backup first.</p>
-        <label for="workspaceImportFile">Choose backup<input id="workspaceImportFile" type="file" accept=".json,application/json" /></label>
-        <div id="workspaceRestorePreview" hidden></div>
-        <label class="workspace-confirm" for="workspaceRestoreConfirm"><input id="workspaceRestoreConfirm" type="checkbox" /> Replace saved local plans and resume this backup on reload</label>
-        <button id="restoreWorkspaceBtn" type="button" disabled>Restore reviewed backup</button>
-      </section>
-      <p id="workspaceStatus" class="comparison-note" role="status">Backups contain league and manager details. Keep files private and restore only files you trust.</p>
-      <details class="gm-secondary"><summary>What is and isn't included?</summary><p class="comparison-note">One active league snapshot, its completed-result cache, loaded player data, selected roster/week/view, and all recognized local app saves are included. Other leagues' live rosters, provider sign-ins, cookies, notification permissions, live score refresh, external schedule caches, and unsaved trade/bracket scenarios are not. Multiweek scenarios are included; future scores and bye snapshots retain their original uncertainty. Backups preserve the model inputs/results as saved, not verified historical outcomes. Snapshots are manual, not continuous autosave. Browser clearing or storage eviction can remove the device copy; keep a downloaded file too.</p></details>
-    </div>
     <!-- TAB 1: ROSTER -->
     <div id="tab-roster" class="tab-page">
       <div class="tool-intro"><h2>My Roster</h2><p>Review your lineup, bench, record, and roster health for the selected week. Choose your team and week in Current League.</p></div>
@@ -986,12 +965,12 @@
   <div id="monetizationDisclosure" class="monetization-disclosure" hidden></div>
 </footer>
 
-<script src="monetization-config.js?v=20261031-navigation-clarity-1"></script>
-<script src="data-fetch.js?v=20261031-navigation-clarity-1"></script>
-<script src="demo-league.js?v=20261031-navigation-clarity-1"></script>
-<script src="league-records.js?v=20261031-navigation-clarity-1"></script>
-<script src="workspace-backup.js?v=20261031-navigation-clarity-1"></script>
-<script src="playoff-simulator.js?v=20261031-navigation-clarity-1"></script>
-<script src="app.js?v=20261031-navigation-clarity-1"></script>
+<script src="monetization-config.js?v=20261031-remove-backups-1"></script>
+<script src="data-fetch.js?v=20261031-remove-backups-1"></script>
+<script src="demo-league.js?v=20261031-remove-backups-1"></script>
+<script src="league-records.js?v=20261031-remove-backups-1"></script>
+<script src="workspace-backup.js?v=20261031-remove-backups-1"></script>
+<script src="playoff-simulator.js?v=20261031-remove-backups-1"></script>
+<script src="app.js?v=20261031-remove-backups-1"></script>
 </body>
 </html>
