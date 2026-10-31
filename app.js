@@ -219,7 +219,7 @@ const state = {
   season: String(new Date().getFullYear()),
   week: 1, weekSelectionExplicit: false, userId: "", leagues: [], activeLeague: null,
   provider: "", portfolioRosterSelections: {}, managerTendencies: [],
-  currentMatchups: [], livePlayerPoints: {}, currentNflWeek: 0, gameDayByTeam: {}, gameDayScheduleKey: "", gameDayScheduleCheckedAt: 0, gameDayScheduleAvailable: false, historicalRows: [], historicalSeasons: [], weeklyReportText: "",
+  currentMatchups: [], currentMatchupsKey: "", currentMatchupsCheckedAt: 0, livePlayerPoints: {}, currentNflWeek: 0, gameDayByTeam: {}, gameDayScheduleKey: "", gameDayScheduleCheckedAt: 0, gameDayScheduleAvailable: false, historicalRows: [], historicalSeasons: [], weeklyReportText: "",
   players: {}, rawProj: {}, rawStats: {}, managers: [],
   tradeSideA: [], tradeSideB: [], dbTrades: [], waiverTargets: [],
   weakestPosByTeam: {}, sosWindowMode: "NEXT4", bracketOverrides: {},
@@ -1253,8 +1253,8 @@ function targetPlayerFromSos(playerId, pos) {
 }
 
 function openMatchupInSimulator(rosterIdA, rosterIdB) {
-  const idxA = state.managers.findIndex(m => m.rosterId === rosterIdA);
-  const idxB = state.managers.findIndex(m => m.rosterId === rosterIdB);
+  const idxA = state.managers.findIndex(m => String(m.rosterId) === String(rosterIdA));
+  const idxB = state.managers.findIndex(m => String(m.rosterId) === String(rosterIdB));
   if (idxA < 0 || idxB < 0) return;
   document.getElementById("simTeamA").value = idxA;
   document.getElementById("simTeamB").value = idxB;
@@ -1825,7 +1825,7 @@ async function importYahooRosterFile(file, { demo = false } = {}) {
     updateProviderControls();
     if (demo) document.getElementById("providerHelp").textContent = "DEMO: fictional teams and players, illustrative projections. Real NFL schedule data does not apply to sample players. Connect a provider to leave the demo.";
     state.leagues = [league];
-    state.currentMatchups = Array.isArray(payload.matchups) ? payload.matchups : [];
+    setCurrentMatchupScores(Array.isArray(payload.matchups) ? payload.matchups : []);
     state.managers = payload.teams.map((team, index) => {
       const playerEntries = (team.players || []).map(player => createYahooPlayer(player, league));
       const ids = playerEntries.map(player => player.id);
@@ -2078,7 +2078,7 @@ async function loadEspnLeague(idx) {
   state.currentNflWeek = Number(data.status?.currentScoringPeriod) || state.currentNflWeek;
   document.getElementById("weekSelect").value = String(state.week);
   state.livePlayerPoints = extractEspnCurrentPoints(data, state.week);
-  state.currentMatchups = (data.schedule || []).filter(matchup => getEspnMatchupWeeks(league, matchup).includes(Number(state.week)));
+  setCurrentMatchupScores((data.schedule || []).filter(matchup => getEspnMatchupWeeks(league, matchup).includes(Number(state.week))), getCurrentMatchupScoreKey(league));
   const members = Object.fromEntries((data.members || []).map(member => [String(member.id), member.displayName || member.firstName || "Manager"]));
   state.managers = (data.teams || []).map(team => {
     const entries = team.roster?.entries || [];
@@ -2158,6 +2158,7 @@ async function loadEspnLeague(idx) {
 
 async function loadLeague(idx) {
   state.activeLeague = state.leagues[idx];
+  renderInboxScoreboard();
   if (!state.activeLeague) return;
   document.querySelector(".league-section")?.setAttribute("open", "");
   if (state.activeLeague.provider === "yahoo") {
@@ -2175,7 +2176,8 @@ async function loadLeague(idx) {
   if (document.getElementById("bracketReseedMode")) document.getElementById("bracketReseedMode").value = "AUTO";
   document.getElementById("tradeFormatBadge").textContent = state.activeLeague.leagueType === 2 ? "DYNASTY MODE" : (state.activeLeague.leagueType === 1 ? "KEEPER MODE" : "REDRAFT MODE");
 
-  const lid = state.activeLeague.leagueId;
+  const scoreLeague = state.activeLeague;
+  const lid = scoreLeague.leagueId;
   delete state.activeLeague.waiverBudget;
   try {
     const lgMeta = await fetchJson(`https://api.sleeper.app/v1/league/${lid}`);
@@ -2196,13 +2198,15 @@ async function loadLeague(idx) {
   }
 
   await fetchWeeklyProjections();
+  const matchupWeek = state.week;
+  const matchupKey = getCurrentMatchupScoreKey(scoreLeague, matchupWeek);
   const [users, rosters, matchups, tradedPicks] = await Promise.all([
     fetchJson(`https://api.sleeper.app/v1/league/${lid}/users`),
     fetchJson(`https://api.sleeper.app/v1/league/${lid}/rosters`),
-    fetchJson(`https://api.sleeper.app/v1/league/${lid}/matchups/${state.week}`),
+    fetchJson(`https://api.sleeper.app/v1/league/${lid}/matchups/${matchupWeek}`),
     fetchJson(`https://api.sleeper.app/v1/league/${lid}/traded_picks`).catch(() => [])
   ]);
-  state.currentMatchups = matchups || [];
+  setCurrentMatchupScores(matchups || [], matchupKey);
 
   const uMap = {};
   (users || []).forEach(u => { uMap[u.user_id] = u.metadata?.team_name ? `${u.metadata.team_name} (${u.display_name})` : u.display_name; });
@@ -4863,7 +4867,7 @@ function savePickemPrediction() {
   renderPickemChallenge();
 }
 
-function getNormalizedCurrentMatchups() {
+function getNormalizedCurrentMatchups(strictScores = false) {
   if (!state.activeLeague) return [];
   if (state.activeLeague.provider === "espn") {
     return (state.currentMatchups || []).map((matchup, index) => {
@@ -4877,8 +4881,8 @@ function getNormalizedCurrentMatchups() {
         id: String(matchup.id || matchup.matchupPeriodId || index),
         homeId, awayId, homeName: homeManager?.teamName || `Team ${homeId}`,
         awayName: awayManager?.teamName || `Team ${awayId}`,
-        homeScore: Number(home.totalPoints ?? home.points) || 0,
-        awayScore: Number(away.totalPoints ?? away.points) || 0
+        homeScore: strictScores ? readInboxMatchupScore(home.totalPoints ?? home.points) : Number(home.totalPoints ?? home.points) || 0,
+        awayScore: strictScores ? readInboxMatchupScore(away.totalPoints ?? away.points) : Number(away.totalPoints ?? away.points) || 0
       };
     }).filter(matchup => matchup.homeId && matchup.awayId);
   }
@@ -4888,7 +4892,8 @@ function getNormalizedCurrentMatchups() {
       id: String(matchup.id || index), homeId: String(matchup.homeId || matchup.home?.teamId || ""),
       awayId: String(matchup.awayId || matchup.away?.teamId || ""),
       homeName: matchup.homeName || matchup.home?.name || "Home team", awayName: matchup.awayName || matchup.away?.name || "Away team",
-      homeScore: Number(matchup.homeScore ?? matchup.home?.points) || 0, awayScore: Number(matchup.awayScore ?? matchup.away?.points) || 0
+      homeScore: strictScores ? readInboxMatchupScore(matchup.homeScore ?? matchup.home?.points) : Number(matchup.homeScore ?? matchup.home?.points) || 0,
+      awayScore: strictScores ? readInboxMatchupScore(matchup.awayScore ?? matchup.away?.points) : Number(matchup.awayScore ?? matchup.away?.points) || 0
     })).filter(matchup => matchup.homeId && matchup.awayId);
   }
 
@@ -4898,14 +4903,15 @@ function getNormalizedCurrentMatchups() {
     if (!groups.has(String(matchup.matchup_id))) groups.set(String(matchup.matchup_id), []);
     groups.get(String(matchup.matchup_id)).push(matchup);
   });
-  return [...groups.entries()].filter(([, teams]) => teams.length >= 2).map(([id, teams]) => {
+  return [...groups.entries()].filter(([, teams]) => strictScores ? teams.length === 2 : teams.length >= 2).map(([id, teams]) => {
     const home = teams[0], away = teams[1];
     const managerFor = rosterId => state.managers.find(manager => String(manager.rosterId) === String(rosterId));
     return {
       id, homeId: String(home.roster_id), awayId: String(away.roster_id),
       homeName: managerFor(home.roster_id)?.teamName || `Team ${home.roster_id}`,
       awayName: managerFor(away.roster_id)?.teamName || `Team ${away.roster_id}`,
-      homeScore: Number(home.points) || 0, awayScore: Number(away.points) || 0
+      homeScore: strictScores ? readInboxMatchupScore(home.custom_points ?? home.points) : Number(home.points) || 0,
+      awayScore: strictScores ? readInboxMatchupScore(away.custom_points ?? away.points) : Number(away.points) || 0
     };
   });
 }
@@ -5522,7 +5528,70 @@ function renderInboxSchedule(manager) {
   container.innerHTML = `<div class="draft-panel-heading"><h3>Upcoming weeks</h3><button type="button" class="btn-builder-action" data-gm-open="planner">View schedule</button></div><div class="schedule-weeks">${cards}</div><details class="gm-action-details"><summary>Byes &amp; coverage details</summary>${byeDetails ? `<ul class="decision-checklist">${byeDetails}</ul>` : ""}<p>Slot coverage, not projected points. Current injuries are held out; unknown schedules are unverified. Check provider eligibility before making a move.</p></details>`;
 }
 
+function getCurrentMatchupScoreKey(league = state.activeLeague, week = state.week) {
+  return `${getLeagueRecordsKey(league)}:${week}`;
+}
+
+function setCurrentMatchupScores(rows, key = getCurrentMatchupScoreKey()) {
+  if (key !== getCurrentMatchupScoreKey()) return;
+  state.currentMatchups = rows;
+  state.currentMatchupsKey = key;
+  state.currentMatchupsCheckedAt = Date.now();
+  markDataSource("matchups");
+}
+
+function readInboxMatchupScore(value) {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function getInboxScoreboardGames() {
+  if (!state.activeLeague || state.currentMatchupsKey !== getCurrentMatchupScoreKey()) return [];
+  const games = getNormalizedCurrentMatchups(true);
+  const counts = new Map();
+  games.forEach(game => [game.homeId, game.awayId].forEach(id => counts.set(id, (counts.get(id) || 0) + 1)));
+  return games.filter(game => game.homeId !== game.awayId && counts.get(game.homeId) === 1 && counts.get(game.awayId) === 1 &&
+    [game.homeId, game.awayId].every(id => state.managers.some(manager => String(manager.rosterId) === id)));
+}
+
+function renderInboxScoreboard() {
+  const container = document.getElementById("gmScoreboard");
+  if (!container) return;
+  const manager = state.managers[Number(document.getElementById("teamSelect")?.value || 0)];
+  container.hidden = !state.activeLeague || !manager;
+  if (container.hidden) { container.replaceChildren(); return; }
+  const games = getInboxScoreboardGames();
+  const mine = games.find(game => [game.homeId, game.awayId].includes(String(manager.rosterId)));
+  const otherGames = games.filter(game => game !== mine);
+  const score = value => value === null ? "—" : value.toFixed(1);
+  const teamName = (id, fallback) => state.managers.find(team => String(team.rosterId) === id)?.teamName || fallback;
+  const row = (game, featured = false) => {
+    const swap = featured && game.awayId === String(manager.rosterId);
+    const a = swap ? "away" : "home", b = swap ? "home" : "away";
+    const aScore = game[`${a}Score`], bScore = game[`${b}Score`];
+    const scored = aScore !== null && bScore !== null;
+    return `<div class="gm-score-game${featured ? " is-featured" : ""}" data-score-home="${draftEscapeHtml(game.homeId)}" data-score-away="${draftEscapeHtml(game.awayId)}">
+      <div class="gm-score-team"><span>${featured ? "Your team" : ""}</span><strong>${draftEscapeHtml(teamName(game[`${a}Id`], game[`${a}Name`]))}</strong><b class="${scored && aScore > bScore ? "is-leading" : ""}">${score(aScore)}</b></div>
+      <span class="gm-score-versus">vs</span>
+      <div class="gm-score-team"><span>${featured ? "Opponent" : ""}</span><strong>${draftEscapeHtml(teamName(game[`${b}Id`], game[`${b}Name`]))}</strong><b class="${scored && bScore > aScore ? "is-leading" : ""}">${score(bScore)}</b></div>
+    </div>`;
+  };
+  const snapshot = state.activeLeague.isDemo ? "Demo scores" : state.workspaceSnapshot || state.activeLeague.provider === "yahoo" ? "Saved/imported scores" : "Provider scores";
+  const checked = state.currentMatchupsCheckedAt ? ` · Loaded ${new Date(state.currentMatchupsCheckedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}` : "";
+  const stale = state.currentMatchupsKey !== getCurrentMatchupScoreKey();
+  const unavailable = stale ? "Scores for this week have not loaded." : "No verified head-to-head pairing is available for your team.";
+  const warning = state.dataErrors.matchups ? ` Score update failed: ${state.dataErrors.matchups}` : "";
+  const espnPeriods = state.activeLeague.espnData?.settings?.scheduleSettings?.matchupPeriods;
+  const espnMappings = state.activeLeague.provider === "espn" ? (state.currentMatchups || []).map(game => espnPeriods?.[game.matchupPeriodId]) : [];
+  const espnUnverified = espnMappings.some(weeks => !Array.isArray(weeks) || !weeks.length || !weeks.every(week => Number.isInteger(week) && week >= 1 && week <= 18));
+  const espnWeeks = espnMappings.some(weeks => Array.isArray(weeks) && weeks.length > 1);
+  container.innerHTML = `<div class="draft-panel-heading"><h3>Week ${state.week} matchup</h3>${mine ? `<button type="button" class="btn-builder-action" data-score-review="${draftEscapeHtml(mine.homeId)}" data-score-opponent="${draftEscapeHtml(mine.awayId)}">Compare lineups</button>` : ""}</div>
+    ${mine ? row(mine, true) : `<p class="draft-empty">${unavailable}</p>`}
+    <p class="gm-score-note">${snapshot}${stale ? "" : checked} · ${espnUnverified ? "Matchup-period totals; week mapping unverified" : espnWeeks ? "Matchup-period totals (multiweek)" : "Points scored, not projections"}. ${draftEscapeHtml(warning)}${mine && (mine.homeScore === null || mine.awayScore === null) ? " Missing scores shown as —." : ""}</p>
+    ${otherGames.length ? `<details class="gm-league-scores"><summary>League scoreboard <span>${otherGames.length} other matchup${otherGames.length === 1 ? "" : "s"}</span></summary>${otherGames.map(game => row(game)).join("")}</details>` : ""}`;
+}
+
 async function renderGMInbox(forceRefresh = false) {
+  renderInboxScoreboard();
   renderDecisionDataStatus();
   const version = ++gmInboxRenderVersion;
   const summary = document.getElementById("gmInboxSummary");
@@ -6954,20 +7023,27 @@ async function refreshLiveMatchups() {
   const league = state.activeLeague;
   if (!league) { updateStatus("Connect a league before refreshing scores."); return; }
   if (league.provider === "yahoo") { updateStatus("Yahoo import is a snapshot. Re-import an updated roster/matchup file to refresh."); return; }
+  const week = state.week;
+  const matchupKey = getCurrentMatchupScoreKey(league, week);
   updateStatus("Refreshing matchup scores...");
   try {
     if (league.provider === "sleeper") {
-      state.currentMatchups = await fetchJson(`https://api.sleeper.app/v1/league/${league.leagueId}/matchups/${state.week}`);
+      const scores = await fetchJson(`https://api.sleeper.app/v1/league/${league.leagueId}/matchups/${week}`);
+      if (matchupKey !== getCurrentMatchupScoreKey()) return;
+      setCurrentMatchupScores(scores, matchupKey);
       renderSuperlatives(state.currentMatchups || []);
     } else if (league.provider === "espn") {
       const data = await fetchEspnLeague(league.leagueId, league.season);
+      if (matchupKey !== getCurrentMatchupScoreKey()) return;
       league.espnData = data;
       state.livePlayerPoints = extractEspnCurrentPoints(data, state.week);
       state.currentNflWeek = Number(data.status?.currentScoringPeriod) || state.currentNflWeek;
-      state.currentMatchups = (data.schedule || []).filter(matchup => getEspnMatchupWeeks(league, matchup).includes(Number(state.week)));
+      setCurrentMatchupScores((data.schedule || []).filter(matchup => getEspnMatchupWeeks(league, matchup).includes(Number(week))), matchupKey);
     }
     await refreshGameDaySchedule(true);
+    if (matchupKey !== getCurrentMatchupScoreKey()) return;
     markDataSource("matchups");
+    renderInboxScoreboard();
     renderMatchupSim();
     renderOptimizerTab(parseInt(document.getElementById("teamSelect")?.value || "0", 10));
     renderWeeklyLeagueReport();
@@ -6975,7 +7051,9 @@ async function refreshLiveMatchups() {
     if (document.getElementById("tab-intel")?.classList.contains("active")) renderLeagueIntelTab();
     updateStatus(`Scores refreshed at ${new Date().toLocaleTimeString()}.`);
   } catch (error) {
+    if (matchupKey !== getCurrentMatchupScoreKey()) return;
     markDataSource("matchups", error);
+    renderInboxScoreboard();
     updateStatus(`Could not refresh live scores: ${error.message}`);
   }
 }
@@ -8134,6 +8212,13 @@ function bindControlEvents() {
   document.getElementById("gmInboxFilter")?.addEventListener("change", () => { gmInboxExpanded = false; renderGMInbox(); });
   document.getElementById("gmShowMoreBtn")?.addEventListener("click", () => { gmInboxExpanded = !gmInboxExpanded; renderGMInbox(); });
   document.getElementById("gmInboxList")?.addEventListener("click", handleGMInboxClick);
+  document.getElementById("gmScoreboard")?.addEventListener("click", event => {
+    const button = event.target.closest("[data-score-review]");
+    if (!button) return;
+    const game = getInboxScoreboardGames().find(item => item.homeId === button.dataset.scoreReview && item.awayId === button.dataset.scoreOpponent);
+    if (!game) { setStatus("This matchup is no longer available. Reload to check current scores."); return; }
+    openMatchupInSimulator(game.homeId, game.awayId);
+  });
   document.getElementById("gmSchedule")?.addEventListener("click", handleGMInboxClick);
   document.getElementById("gmChecklist")?.addEventListener("click", handleGMInboxClick);
   document.getElementById("leagueScheduleWeek")?.addEventListener("change", () => loadLeagueSchedule());
@@ -8219,6 +8304,7 @@ function bindControlEvents() {
   weekSelect?.addEventListener("change", async e => {
     state.weekSelectionExplicit = true;
     state.week = parseInt(e.target.value, 10);
+    renderInboxScoreboard();
     syncLiveEspnSchedule();
     renderSosTab();
     if (state.activeLeague) await loadLeague(document.getElementById("leagueSelect").value);
@@ -8482,7 +8568,7 @@ function buildWorkspaceBackup() {
   if (!state.activeLeague || !state.managers.length) throw new Error("Connect a league before saving a workspace.");
   const snapshot = Object.fromEntries([
     "season", "week", "provider", "managers", "players", "rawProj", "rawStats",
-    "currentMatchups", "livePlayerPoints", "portfolioRosterSelections", "dataFreshness", "dataErrors"
+    "currentMatchups", "currentMatchupsKey", "currentMatchupsCheckedAt", "livePlayerPoints", "portfolioRosterSelections", "dataFreshness", "dataErrors"
   ].map(key => [key, state[key]]));
   snapshot.activeLeague = Object.fromEntries([
     "provider", "isDemo", "leagueId", "name", "season", "totalTeams", "leagueType", "draftRounds",
@@ -8511,6 +8597,8 @@ function buildWorkspaceBackup() {
 function applyWorkspaceSnapshot(backup) {
   FFOWorkspace.validateBackup(backup);
   Object.assign(state, backup.snapshot);
+  state.currentMatchupsKey = backup.snapshot.currentMatchupsKey || "";
+  state.currentMatchupsCheckedAt = backup.snapshot.currentMatchupsCheckedAt || 0;
   state.leagues = [state.activeLeague];
   state.userId = "";
   state.workspaceSnapshot = backup.savedAt;

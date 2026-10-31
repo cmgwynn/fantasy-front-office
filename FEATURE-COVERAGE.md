@@ -24,6 +24,22 @@ a league to use roster-based features.
 
 ## Current release
 
+### Inbox matchup and scoreboard
+
+The selected roster's actual fantasy matchup scores appear above Recommended
+moves. Other head-to-head games are available in a compact League scoreboard
+disclosure. Compare lineups routes to the exact two teams in Matchup Simulator;
+no transaction or refresh control is added.
+
+Scores use the loaded Sleeper, ESPN, or imported Yahoo data for the selected
+league, season, and week. Zero/negative scores are preserved, missing or nonnumeric
+scores show unavailable, Sleeper custom score overrides are respected, and
+ambiguous pairings are excluded rather than inventing an opponent or bye.
+Week changes suppress old scores until matching data loads. Loaded timestamps,
+snapshot/demo labels, score-update errors, and ESPN multiweek matchup-period
+totals are disclosed. These are points scored, not projections, and are not
+claimed to be continuously live or final.
+
 ### Visual hierarchy and connected header
 
 Connected leagues keep league, roster and week selectors visible, with provider

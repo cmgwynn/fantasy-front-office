@@ -843,6 +843,30 @@ button:disabled { cursor:not-allowed; opacity:0.45; }
 .table-wrap { min-width:0; max-width:100%; overscroll-behavior-x:contain; }
 .table-wrap:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
 .is-reviewed-pickup td { background:var(--accent-bg); }
+.gm-scoreboard { padding:10px 12px; gap:0; }
+.gm-scoreboard[hidden] { display:none; }
+.gm-scoreboard .draft-panel-heading { flex-direction:row; align-items:center; margin-bottom:4px; }
+.gm-score-game { display:grid; grid-template-columns:minmax(0,1fr) 24px minmax(0,1fr); align-items:center; gap:8px; padding:10px 0; }
+.gm-score-team { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:4px 8px; align-items:center; min-width:0; }
+.gm-score-team > span { grid-column:1 / -1; color:var(--text-muted); font-size:11px; }
+.gm-score-team > span:empty { display:none; }
+.gm-score-team > strong { font-size:12px; overflow-wrap:anywhere; }
+.gm-score-team > b { font-size:18px; font-variant-numeric:tabular-nums; }
+.gm-score-game.is-featured { padding:6px 0; }
+.gm-score-game.is-featured .gm-score-team > b { font-size:26px; }
+.gm-score-team .is-leading { color:var(--good); }
+.gm-score-versus, .gm-score-note { color:var(--text-muted); font-size:12px; }
+.gm-score-versus { text-align:center; }
+.gm-score-note { line-height:1.4; }
+.gm-league-scores { border-top:1px solid var(--border); margin-top:8px; }
+.gm-league-scores > summary { min-height:44px; padding:12px 0; cursor:pointer; font-size:12px; }
+.gm-league-scores > summary span { color:var(--text-muted); margin-left:8px; }
+.gm-league-scores .gm-score-game { border-top:1px solid var(--border); }
+@media (max-width:620px) {
+  .gm-scoreboard .draft-panel-heading { gap:6px; flex-wrap:wrap; }
+  .gm-score-game.is-featured .gm-score-team { display:flex; flex-direction:column; align-items:flex-start; gap:4px; }
+  .gm-score-game.is-featured .gm-score-team > strong { min-height:32px; line-height:1.35; }
+}
 .tab-page h3 { line-height:1.35; }
 .draft-subtitle, .comparison-note, .tool-intro p, .tool-intro-copy { line-height:1.45; }
 .tool-disclosure > .draft-settings { border:0; background:transparent; padding:8px 0 0; }

@@ -20,7 +20,7 @@
   <h1>Optimizer Regression Checks</h1>
   <p id="summary" role="status">Loading the app runtime...</p>
   <ol id="results"></ol>
-  <iframe id="appFrame" src="../index.html?v=20261031-launch-pages-1&amp;resume=0" title="Optimizer test runtime"></iframe>
+  <iframe id="appFrame" src="../index.html?v=20261031-inbox-scoreboard-1&amp;resume=0" title="Optimizer test runtime"></iframe>
   <script>
     async function runOptimizerFixtures() {
       const results = [];
@@ -310,6 +310,100 @@
           getGmRecommendationKey(compactMove) === closedKey);
         check("Recommended moves appear before the game-day checklist",
           document.getElementById("gmInboxList").compareDocumentPosition(document.getElementById("gmChecklist")) & Node.DOCUMENT_POSITION_FOLLOWING);
+
+        const scoreState = {
+          activeLeague: state.activeLeague, managers: state.managers, week: state.week,
+          currentMatchups: state.currentMatchups, currentMatchupsKey: state.currentMatchupsKey,
+          currentMatchupsCheckedAt: state.currentMatchupsCheckedAt, workspaceSnapshot: state.workspaceSnapshot
+        };
+        const scoreOptions = Object.fromEntries(["teamSelect", "simTeamA", "simTeamB"].map(id => [id, { html: document.getElementById(id).innerHTML, value: document.getElementById(id).value }]));
+        const scoreError = state.dataErrors.matchups;
+        const scoreFreshness = state.dataFreshness.matchups;
+        try {
+          state.activeLeague = { provider: "sleeper", leagueId: "scoreboard-fixture", season: 2099, rosterPositions: ["QB"] };
+          state.week = 8; state.workspaceSnapshot = "";
+          state.managers = [1, 2, 3, 4].map(id => ({ rosterId: id, teamName: id === 1 ? "<My team>" : `Team ${id}`, starters: [], players: [] }));
+          for (const id of ["teamSelect", "simTeamA", "simTeamB"]) {
+            document.getElementById(id).innerHTML = state.managers.map((team, index) => `<option value="${index}">${team.rosterId}</option>`).join("");
+          }
+          const scoreRows = [
+            { matchup_id: 1, roster_id: 1, points: 0 }, { matchup_id: 1, roster_id: 2, points: -2 },
+            { matchup_id: 2, roster_id: 3, points: 75.5 }, { matchup_id: 2, roster_id: 4, points: 71 }
+          ];
+          setCurrentMatchupScores(scoreRows);
+          renderInboxScoreboard();
+          const board = document.getElementById("gmScoreboard");
+          check("Inbox shows the selected matchup above Recommended moves",
+            !board.hidden && board.querySelector(".is-featured") &&
+            board.compareDocumentPosition(document.getElementById("gmInboxList")) & Node.DOCUMENT_POSITION_FOLLOWING);
+          check("Inbox scoreboard preserves actual zero and negative scores and escapes team names",
+            board.querySelector(".is-featured").textContent.includes("0.0") &&
+            board.querySelector(".is-featured").textContent.includes("-2.0") &&
+            board.querySelector(".is-featured strong").textContent === "<My team>" && !board.querySelector("my"));
+          check("League scoreboard stays compact with other games in a disclosure",
+            !board.querySelector("details").open && board.querySelectorAll(".gm-score-game").length === 2);
+          board.querySelector("[data-score-review]").click();
+          check("Scoreboard comparison opens the exact teams despite numeric roster IDs",
+            document.getElementById("simTeamA").value === "0" && document.getElementById("simTeamB").value === "1" &&
+            document.querySelector(".tab-page.active")?.id === "tab-matchup");
+          document.getElementById("teamSelect").value = "1";
+          renderInboxScoreboard();
+          check("Changing roster puts the selected team first in its matchup",
+            board.querySelector(".is-featured strong").textContent === "Team 2");
+          scoreRows[1].points = null;
+          setCurrentMatchupScores(scoreRows); renderInboxScoreboard();
+          check("Missing actual scores are unavailable, not invented zeroes",
+            getInboxScoreboardGames()[0].awayScore === null && board.querySelector(".is-featured").textContent.includes("—"));
+          scoreRows[1].points = "90";
+          check("Nonnumeric provider scores remain unavailable", getInboxScoreboardGames()[0].awayScore === null);
+          scoreRows[1].points = 5; scoreRows[1].custom_points = 0;
+          check("Sleeper custom score overrides preserve zero", getInboxScoreboardGames()[0].awayScore === 0);
+          setCurrentMatchupScores([...scoreRows, { matchup_id: 1, roster_id: 3, points: 4 }]);
+          check("Ambiguous multi-team groups are not fabricated head-to-head games", getInboxScoreboardGames().length === 1);
+          setCurrentMatchupScores([...scoreRows, { matchup_id: 3, roster_id: 1, points: 9 }, { matchup_id: 3, roster_id: 4, points: 9 }]);
+          check("Duplicate team appearances invalidate scoreboard pairings", getInboxScoreboardGames().length === 0);
+          setCurrentMatchupScores([{ matchup_id: null, roster_id: 1, points: 0 }]); renderInboxScoreboard();
+          check("Unpaired roster does not become an invented opponent or a claimed bye",
+            !board.querySelector(".is-featured") && board.textContent.includes("No verified head-to-head"));
+          setCurrentMatchupScores(scoreRows); state.week = 9; renderInboxScoreboard();
+          check("Week changes cannot relabel old scoreboard scores as the new week",
+            getInboxScoreboardGames().length === 0 && board.textContent.includes("Scores for this week have not loaded"));
+          state.week = 8;
+          const oldScoreKey = getCurrentMatchupScoreKey();
+          state.week = 9;
+          setCurrentMatchupScores(scoreRows);
+          const newScores = state.currentMatchups;
+          setCurrentMatchupScores([], oldScoreKey);
+          check("Late old-week score responses cannot overwrite the newly selected week's feed",
+            state.currentMatchups === newScores && state.currentMatchupsKey === getCurrentMatchupScoreKey());
+          state.week = 8;
+          state.dataErrors.matchups = "Fixture feed unavailable";
+          renderInboxScoreboard();
+          check("Score-update failures are visible in the scoreboard", board.textContent.includes("Fixture feed unavailable"));
+          delete state.dataErrors.matchups;
+          state.activeLeague = { ...state.activeLeague, provider: "espn", espnData: { settings: { scheduleSettings: { matchupPeriods: { 1: [8, 9] } } } } };
+          setCurrentMatchupScores([{ id: 1, matchupPeriodId: 1, home: { teamId: 1, totalPoints: 0 }, away: { teamId: 2, totalPoints: -1 } }]);
+          check("ESPN scoreboard uses supplied total points", getInboxScoreboardGames()[0].awayScore === -1);
+          renderInboxScoreboard();
+          check("ESPN multiweek scores are explicitly labeled as matchup-period totals", board.textContent.includes("Matchup-period totals (multiweek)"));
+          delete state.activeLeague.espnData;
+          renderInboxScoreboard();
+          check("Missing ESPN period mapping is disclosed without breaking the Inbox", board.textContent.includes("week mapping unverified"));
+          state.activeLeague = { ...state.activeLeague, provider: "yahoo" };
+          setCurrentMatchupScores([{ homeId: "1", awayId: "2", homeScore: 12, awayScore: 0 }]); renderInboxScoreboard();
+          check("Yahoo scoreboard explicitly labels imported snapshots", board.textContent.includes("Saved/imported scores") && getInboxScoreboardGames()[0].awayScore === 0);
+          state.activeLeague = null; renderInboxScoreboard();
+          check("Disconnected Inbox hides and clears the scoreboard", board.hidden && !board.innerHTML);
+        } finally {
+          Object.assign(state, scoreState);
+          if (scoreError === undefined) delete state.dataErrors.matchups; else state.dataErrors.matchups = scoreError;
+          if (scoreFreshness === undefined) delete state.dataFreshness.matchups; else state.dataFreshness.matchups = scoreFreshness;
+          for (const [id, saved] of Object.entries(scoreOptions)) {
+            document.getElementById(id).innerHTML = saved.html; document.getElementById(id).value = saved.value;
+          }
+          renderInboxScoreboard();
+          if (savedActiveTab) activateTab(savedActiveTab);
+        }
 
         const beforePlannerLeague = state.activeLeague;
         const beforePlannerManagers = state.managers;
