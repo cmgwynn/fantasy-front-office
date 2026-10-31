@@ -20,7 +20,7 @@
   <h1>Optimizer Regression Checks</h1>
   <p id="summary" role="status">Loading the app runtime...</p>
   <ol id="results"></ol>
-  <iframe id="appFrame" src="../index.html?v=20261031-weekly-matchups-2&amp;resume=0" title="Optimizer test runtime"></iframe>
+  <iframe id="appFrame" src="../index.html?v=20261031-weekly-matchups-3&amp;resume=0" title="Optimizer test runtime"></iframe>
   <script>
     async function runOptimizerFixtures() {
       const results = [];
@@ -1044,6 +1044,17 @@
           check("Start/sit guide explains incomplete matchup coverage instead of inventing a second rating",
             document.getElementById("startSitAdvice").textContent.includes("coverage incomplete") &&
             document.getElementById("startSitAdvice").textContent.includes("Informational only"));
+          check("Start/sit recommendation is visible with two distinct players",
+            !document.getElementById("startSitAdvice").hidden);
+          document.getElementById("comparePlayerB").value = "";
+          renderStartSitAdvice();
+          check("Incomplete player selection has no redundant start/sit banner",
+            document.getElementById("startSitAdvice").hidden && !document.getElementById("startSitAdvice").textContent);
+          document.getElementById("comparePlayerB").value = "fixture_claim_rb";
+          renderStartSitAdvice();
+          check("Selecting the same player twice also hides the recommendation card",
+            document.getElementById("startSitAdvice").hidden);
+          document.getElementById("comparePlayerB").value = "fixture_owned_rb";
           const frozenMap = state.gameDayByTeam, frozenAvailable = state.gameDayScheduleAvailable;
           state.gameDayByTeam = { NE: { status: "live", kickoff: Date.now() - 60000 } };
           state.gameDayScheduleAvailable = true;

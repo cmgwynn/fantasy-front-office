@@ -504,7 +504,8 @@ Compare Players destination. **Compare Players → Who should I start?** present
 a projection-based lean with availability, known kickoff locks, positional
 matchup evidence and verified season workload context. It distinguishes an
 actionable roster comparison from informational comparisons of unowned or
-opponent-owned players.
+opponent-owned players. The recommendation card appears only after two distinct
+players are selected; there is no duplicate introductory start/sit banner.
 
 The shared weekly-matchups module aggregates Sleeper's public enriched weekly
 stat records from at most six prior completed NFL weeks (three concurrent

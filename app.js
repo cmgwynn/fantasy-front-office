@@ -7646,7 +7646,8 @@ function renderStartSitAdvice() {
   const a = state.players[document.getElementById("comparePlayerA")?.value];
   const b = state.players[document.getElementById("comparePlayerB")?.value];
   const escape = draftEscapeHtml;
-  if (!a || !b || a.id === b.id) { target.innerHTML = '<h3>Weekly start/sit guide</h3><p class="comparison-note">Choose two players below for projections, matchup evidence, availability and recent workload.</p>'; return; }
+  target.hidden = !a || !b || a.id === b.id;
+  if (target.hidden) { target.replaceChildren(); return; }
   const manager = state.managers[Number(document.getElementById("teamSelect").value || 0)];
   const scenario = getComparisonRosterScenario(a, b, manager);
   const active = getPlannerRosterIds(manager || {});
