@@ -41,6 +41,9 @@ installation; it is not full offline functionality. App/browser storage may
 differ on Apple devices. This is not an app-store release or cross-device sync.
 Cloudflare `_headers` keeps worker/manifest revalidation enabled and prevents
 hosting analytics or email transformations from altering the cached offline page.
+The worker script URL is versioned as well, because zone caching can override
+asset response cache headers. Redirected Pages offline responses are rewrapped
+before delivery so Chrome accepts them during offline navigation.
 
 ### Inbox matchup and scoreboard
 

@@ -39,7 +39,7 @@
 
   const supportedHost = ["fantasyfo.com", "localhost", "127.0.0.1"].includes(location.hostname);
   if ("serviceWorker" in navigator && window.isSecureContext && supportedHost) {
-    navigator.serviceWorker.register("/service-worker.js", { scope: "/", updateViaCache: "none" }).catch(error => {
+    navigator.serviceWorker.register("/service-worker.js?v=20261031-app-install-2", { scope: "/", updateViaCache: "none" }).catch(error => {
       console.error("Fantasy Front Office app setup failed:", error);
       setStatus("App setup could not finish. You can still use the website; reopen it online to retry.");
     });

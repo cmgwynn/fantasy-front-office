@@ -26,7 +26,8 @@ self.addEventListener("fetch", event => {
     } catch (error) {
       const cache = await caches.open(OFFLINE_CACHE);
       const offline = await cache.match(OFFLINE_URL);
-      if (offline) return offline;
+      // Pages redirects .html URLs; navigation cannot reuse a redirected response.
+      if (offline) return new Response(offline.body, { status: offline.status, headers: offline.headers });
       return new Response("Offline. Connect to the internet and reopen Fantasy Front Office.", {
         status: 503, headers: { "Content-Type": "text/plain; charset=utf-8" }
       });

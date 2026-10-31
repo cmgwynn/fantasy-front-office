@@ -96,7 +96,11 @@ test("worker never caches provider data or app assets and preserves HTTP failure
   worker.sandbox.fetch = async () => new Response("Provider error", { status: 503 });
   assert.equal((await worker.fetchRequest(navigation)).status, 503);
   worker.sandbox.fetch = async () => { throw new TypeError("Network unavailable"); };
-  assert.match(await (await worker.fetchRequest(navigation)).text(), /You're offline/);
+  const cached = worker.saved.get("https://fantasyfo.com/offline.html");
+  Object.defineProperty(cached, "redirected", { value: true });
+  const fallback = await worker.fetchRequest(navigation);
+  assert.equal(fallback.redirected, false, "Cloudflare's redirected offline document must become a valid navigation response.");
+  assert.match(await fallback.text(), /You're offline/);
   assert.equal(worker.saved.size, 1);
   worker.saved.clear();
   assert.equal((await worker.fetchRequest(navigation)).status, 503);
@@ -150,7 +154,7 @@ test("standalone apps hide install links and registration failures are surfaced"
   await new Promise(resolve => setImmediate(resolve));
   assert.match(failed.status.textContent, /could not finish/);
   assert.equal(failed.errors.length, 1);
-  assert.equal(failed.registrations[0][0], "/service-worker.js");
+  assert.equal(failed.registrations[0][0], "/service-worker.js?v=20261031-app-install-2");
   const oldDomain = installFixture({ hostname: "fantasy-front-office.pages.dev" });
   assert.equal(oldDomain.registrations.length, 0, "Do not create a second installed app on the old domain.");
 });
