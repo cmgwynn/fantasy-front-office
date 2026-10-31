@@ -15,7 +15,7 @@ Bump those versions together whenever publishing changed assets to avoid a new
 HTML page reusing older cached scripts or styles.
 Fresh visits start on GM Inbox unless a previous league or manually saved workspace resumes.
 Navigation groups organize the tools into Overview, My Team, League, Players,
-and Draft. Labels describe the job each view performs; in-view notes explain
+Draft, and Extras. Labels describe the job each view performs; in-view notes explain
 where outputs are estimates, local plans, or dependent on provider data.
 Loading a provider league is separate from loading the UI; a provider
 authorization failure does not mean the release is missing. Connect or import
@@ -25,20 +25,51 @@ a league to use roster-based features.
 
 ### Compact sidebar
 
-The desktop sidebar uses five native accordion groups: **Overview**, **My
-Team**, **League**, **Players**, and **Draft**. One group is expanded at a time.
+The desktop sidebar uses six native accordion groups: **Overview**, **My
+Team**, **League**, **Players**, **Draft**, and **Extras**. One group is expanded at a time.
 Selecting a tool through a shortcut also opens its group and synchronizes the
 mobile picker and `aria-current`. Collapsing the current group leaves the
 selected tool's name visible in its summary. Native summaries support keyboard
 Enter/Space, with visible focus indicators and reduced-motion support.
 The sidebar uses system fonts, rounded inset selection, restrained blue accents,
 original line icons, and 48px group targets. At widths up to 960px, a native
-44px picker with the same five option groups replaces the sidebar list.
+44px picker with the same six option groups replaces the sidebar list.
 Short phone landscape layouts keep that picker beside the content and compact
 the provider controls to preserve the limited vertical space. Player Analytics
 uses a responsive scatter plot with labels for the top 10 players in the current
 sort; the sortable table below retains the full plotted-player values.
-All existing tools remain accessible; no analytics were removed.
+Core tools focus on lineup, pickup, trade, matchup, and upcoming coverage decisions.
+Team grades, power rankings, and records/rivalries are in the bottom Extras group.
+Weekly picks, historical standings, and secondary tables are collapsed.
+The illustrative playoff bracket is optional beneath the schedule simulation.
+
+### Decision-first Inbox and integrated recap
+
+GM Inbox initially shows at most three prioritized actions, with one primary
+review button each. Explanations, comparisons, feedback, and data assumptions
+are available on demand. Category filters run before the limit and Show all
+keeps remaining actions accessible. Injury/bye alerts target current starters;
+bench health remains visible in My Roster. Waivers must improve the optimized
+lineup by at least 0.5 projected points. Trade-history and depth-only filler
+are no longer generated as weekly actions.
+
+Four upcoming week cards reuse the roster planner's slot coverage logic:
+bye names, structural slot gaps, and unknown schedules remain distinct.
+The coverage shortcut opens **Schedule & Coverage** for a full player/opponent
+matrix and hypothetical add/drop testing. Current unavailable players are held
+out; coverage is not a points forecast or a promise of future availability.
+
+The standalone newsletter destination is replaced by a collapsed **League
+recap** inside GM Inbox. It shows at most three highlights: latest loaded
+completed-week top score, closest decided result (or ties), and the selected
+roster's score versus other loaded scored teams. Zero and negative scores
+remain valid. Missing results produce an unavailable message, not invented
+news, projected upset claims, or duplicated action advice. Opening or updating
+the recap loads completed results through the existing provider-aware records
+loader. Snapshot/demo/partial coverage is labeled; full scores, standings, and
+source details stay collapsed. Copy/download use the same short recap and
+source note. Saved legacy issues remain available and are explicitly marked
+as unverified archives; they are not relabeled as final results.
 
 ### Automatic league remembering
 
@@ -102,18 +133,18 @@ and waiver comparisons against an optimized lineup with a bench drop candidate.
 Recommendations do not submit provider transactions.
 
 The Inbox emphasizes its action queue ahead of secondary panels. It shows the
-top six matching actions, with a Show all / Show fewer control; category filters
+top three matching actions, with a Show all / Show fewer control; category filters
 run before the display limit so lower-ranked categories remain reachable.
-Cards keep the recommendation, impact, and review/compare shortcuts visible.
-Reasons, confidence, and done/dismiss/feedback controls live under each card's
+Cards keep the recommendation, impact, and primary review shortcut visible.
+Reasons, comparisons, confidence, and done/dismiss/feedback controls live under each card's
 native disclosure. Portfolio signals, outcome performance, and closed actions
-are collapsed by default, with counts where applicable. Desktop uses a two-column
+are collapsed by default, with counts where applicable. Wide desktops use a three-column
 queue; mobile uses one column. Changing roster/week/league resets expansion.
 
 ### Player comparison
 
-Open **Player Compare** in desktop or mobile navigation, or use **Compare
-players** on GM Inbox lineup and waiver recommendations. Search by name or NFL
+Open **Compare Players** in desktop or mobile navigation, or use **Compare
+players** under an Inbox card's Details & options. Search by name or NFL
 team and optionally filter position. Searches keep existing selections so you
 can find a counterpart without losing the first player; results show up to 100
 matches plus previous selections.
@@ -360,7 +391,7 @@ and Premium workflows have not been independently exercised.
 | Publicly advertised capability | This project's coverage | Remaining work |
 | --- | --- | --- |
 | Power rankings, standings, scoring, expected wins | Rankings/projections plus verified loaded-score all-play, weekly expected wins and scheduling luck in Records | Replace older ranking approximations and add verified historical weekly trends |
-| Weekly reports, awards, storylines | Newsletter/report plus deterministic completed-score weekly awards in Records | Wire verified awards into newsletters; grounded narratives and upcoming previews |
+| Weekly reports, awards, storylines | Compact final-result recap integrated into Inbox; completed-score weekly awards in Extras | Broader provider result coverage; no invented news or projected upset claims |
 | League-specific roster and player values | Partial: scoring and roster models | Audit scoring completeness and positional assumptions |
 | Playoff/championship odds and likely seeds | Schedule-validated Sleeper scenarios with seed distributions, full title paths and conditional next-win qualification; separate illustrative bracket | Calibrate scoring distributions; support more providers, tiebreakers, divisions, median games, byes, multiweek rounds and in-progress scoring |
 | Trade comparison and mutually beneficial packages | Partial: builder and finder | Verify package constraints and both-lineup improvements |

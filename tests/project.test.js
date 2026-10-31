@@ -41,7 +41,7 @@ test("HTML references existing local assets in the expected script order", () =>
   ].map(match => match[1]).filter(asset => !/^(?:[a-z]+:)?\/\//i.test(asset));
 
   assert.ok(assets.length > 0, "Expected local CSS or JavaScript assets.");
-  assert.ok(assets.every(asset => asset.endsWith("?v=20261031-remove-backups-1")), "All local assets must use the current release version.");
+  assert.ok(assets.every(asset => asset.endsWith("?v=20261031-winning-decisions-1")), "All local assets must use the current release version.");
   for (const asset of assets) {
     assert.ok(fs.existsSync(path.join(root, asset.split("?")[0])), `Missing local asset: ${asset}`);
   }
@@ -85,10 +85,10 @@ test("static interface IDs, labels, and tab navigation targets are consistent", 
   const mobileTargets = [...html.matchAll(/<option\b[^>]*\bvalue="(tab-[^"]+)"/g)].map(match => match[1]);
   assert.deepEqual([...desktopTargets].sort(), [...tabIds].sort(), "Every page must have exactly one desktop navigation entry.");
   assert.deepEqual([...mobileTargets].sort(), [...tabIds].sort(), "Mobile and desktop navigation must expose identical pages.");
-  assert.equal((html.match(/name="sidebar-section"/g) || []).length, 5, "Sidebar must contain five native accordion groups.");
-  assert.equal((html.match(/<optgroup label=/g) || []).length, 5, "Mobile navigation must preserve the same five groups.");
-  assert.deepEqual([...html.matchAll(/<optgroup label="([^"]+)"/g)].map(match => match[1]), ["Overview", "My Team", "League", "Players", "Draft"], "Navigation groups should describe the user's main tasks.");
-  for (const label of ["My Roster", "Plan Ahead", "Waiver Planner", "Trade Analyzer", "Team Grade", "Playoff Scenarios", "Compare Players", "Strength of Schedule"]) {
+  assert.equal((html.match(/name="sidebar-section"/g) || []).length, 6, "Sidebar must contain six native accordion groups.");
+  assert.equal((html.match(/<optgroup label=/g) || []).length, 6, "Mobile navigation must preserve the same six groups.");
+  assert.deepEqual([...html.matchAll(/<optgroup label="([^"]+)"/g)].map(match => match[1]), ["Overview", "My Team", "League", "Players", "Draft", "Extras"], "Optional tools belong below winning decisions.");
+  for (const label of ["My Roster", "Schedule &amp; Coverage", "Waiver Planner", "Trade Analyzer", "Team Grade", "Playoff Scenarios", "Compare Players", "Strength of Schedule"]) {
     assert.ok(html.includes(`>${label}</option>`) || html.includes(`>${label}</button>`), `Navigation should use a clear label for ${label}.`);
   }
   assert.match(html, /<button class="nav-btn active" data-tab="tab-inbox" aria-current="page">/, "Initial active section must be the first navigation item.");
@@ -125,7 +125,7 @@ test("browser regression harness is wired to the app and includes saved-state co
   const html = read("tests/optimizer-regression.html");
   const appHtml = read("index.html");
 
-  assert.match(html, /src="\.\.\/index\.html\?v=20261031-remove-backups-1&amp;resume=0"/, "Regression harness must load the current app release without resuming personal snapshots.");
+  assert.match(html, /src="\.\.\/index\.html\?v=20261031-winning-decisions-1&amp;resume=0"/, "Regression harness must load the current app release without resuming personal snapshots.");
   assert.doesNotMatch(appHtml, /id="loadRecordsBtn"/, "Records must load automatically without a manual refresh button.");
   assert.match(html, /runOptimizerFixtures/, "Regression harness must execute its fixtures.");
   assert.match(html, /Cross-league queue saves to target budget/, "Saved FAAB state should remain covered.");
@@ -140,6 +140,18 @@ test("browser regression harness is wired to the app and includes saved-state co
   assert.match(html, /Draft ADP grades use exact round-value thresholds/, "Draft grade boundaries must remain covered.");
   assert.match(appHtml, /id="tab-planner"/, "Multiweek planning must remain accessible.");
   assert.match(html, /Multiweek planner never counts one player in two starter slots/, "Multiweek slot coverage must remain covered.");
+});
+
+test("Inbox integrates a compact recap and keeps recreational tools secondary", () => {
+  const html = read("index.html");
+  const app = read("app.js");
+  assert.doesNotMatch(html, /(?:id|data-tab|value)="tab-newsletter"/, "Newsletter must not remain a duplicate destination.");
+  assert.match(html, /<details id="inboxRecap" class="gm-secondary">/, "The recap should be collapsed within Inbox.");
+  assert.match(html, /id="gmSchedule"/, "Upcoming coverage belongs alongside decisions.");
+  assert.match(app, /matching\.slice\(0, 3\)/, "Only three actions should be shown initially.");
+  assert.match(app, /summary: summary\.slice\(0, 3\)/, "Recaps should have at most three highlights.");
+  assert.match(app, /leagueRecordsCache\.get\(getLeagueRecordsKey\(league\)\)/, "Recaps must use completed results, not current live scores.");
+  assert.match(app, /gmSchedule"\)\?\.addEventListener\("click", handleGMInboxClick\)/, "Schedule shortcuts must actually navigate.");
 });
 
 test("shared fetch helper reports network, HTTP, JSON, and successful responses", async () => {

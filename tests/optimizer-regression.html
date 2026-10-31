@@ -20,7 +20,7 @@
   <h1>Optimizer Regression Checks</h1>
   <p id="summary" role="status">Loading the app runtime...</p>
   <ol id="results"></ol>
-  <iframe id="appFrame" src="../index.html?v=20261031-remove-backups-1&amp;resume=0" title="Optimizer test runtime"></iframe>
+  <iframe id="appFrame" src="../index.html?v=20261031-winning-decisions-1&amp;resume=0" title="Optimizer test runtime"></iframe>
   <script>
     async function runOptimizerFixtures() {
       const results = [];
@@ -133,11 +133,13 @@
         const crowdedInbox = [...Array.from({ length: 14 }, () => ({ type: "Start / sit" })), { type: "Waiver" }];
         check("Inbox filters before limiting cards so lower-priority categories remain reachable",
           selectGmInboxActions(crowdedInbox, "waivers", false).visible.length === 1 &&
-          selectGmInboxActions(crowdedInbox, "all", false).visible.length === 6 &&
+          selectGmInboxActions(crowdedInbox, "all", false).visible.length === 3 &&
           selectGmInboxActions(crowdedInbox, "all", true).visible.length === 15);
         check("Inbox puts the action queue ahead of collapsed secondary panels",
           document.getElementById("gmInboxList").compareDocumentPosition(document.getElementById("portfolioPressureList")) & Node.DOCUMENT_POSITION_FOLLOWING &&
-          document.querySelectorAll("#tab-inbox > details.gm-secondary:not([open])").length === 3);
+          document.querySelectorAll("#tab-inbox > details.gm-secondary:not([open])").length === 4 &&
+          document.getElementById("inboxRecap").closest("#tab-inbox") &&
+          !document.getElementById("tab-newsletter"));
 
         const beforePlannerLeague = state.activeLeague;
         const beforePlannerManagers = state.managers;
@@ -159,6 +161,16 @@
         plan = buildRosterPlan(planManager);
         check("Multiweek planner removes bye players only in the matching week",
           plan.rows[0].baseline.filled === 3 && plan.rows[1].baseline.filled === 2);
+        renderInboxSchedule(planManager);
+        check("Inbox schedule shows four weeks, bye names, gaps and unverified schedules without claiming confirmed coverage",
+          document.querySelectorAll("#gmSchedule .schedule-week").length === 4 &&
+          document.querySelectorAll("#gmSchedule .schedule-week.has-gap").length === 1 &&
+          document.getElementById("gmSchedule").textContent.includes("Planner RB") &&
+          document.getElementById("gmSchedule").textContent.includes("Verify schedule") &&
+          !document.getElementById("gmSchedule").textContent.includes("Slots covered"));
+        document.querySelector("#gmSchedule [data-gm-open]").click();
+        check("Inbox coverage shortcut opens the actual planning tool", document.getElementById("tab-planner").classList.contains("active"));
+        activateTab("tab-inbox");
         state.activeLeague.rosterPositions = ["QB", "FLEX", "FLEX"];
         plan = buildRosterPlan(planManager, { addId: "fixture_plan_TE", dropId: "fixture_plan_QB" });
         check("Multiweek add-drop can repair a FLEX gap while exposing a QB gap",
@@ -447,6 +459,26 @@
           weeklyWaivers[0]?.value === "+12.0 lineup pts" &&
           weeklyWaivers[0]?.detail.includes("10.0 → 22.0") &&
           weeklyWaivers[0]?.detail.includes("Drop candidate: Bench WR."));
+        const savedClaimPoints = state.players.fixture_claim_rb.projectedPoints;
+        const savedBenchHealth = state.players.fixture_drop_wr.injuryStatus;
+        state.players.fixture_claim_rb.projectedPoints = 0;
+        state.players.fixture_drop_wr.injuryStatus = "Out";
+        const quietAdvice = buildWeeklyRecommendations();
+        check("Inbox excludes depth-only waivers, bench injury noise and trade-history filler",
+          !quietAdvice.some(item => item.type === "Waiver" || item.type === "Trade history" ||
+            (item.type === "Roster risk" && item.playerId === "fixture_drop_wr")));
+        state.players.fixture_claim_rb.projectedPoints = savedClaimPoints;
+        state.players.fixture_drop_wr.injuryStatus = savedBenchHealth;
+        addPlayer("fixture_replacement_qb", "Replacement QB", "QB", 25);
+        state.managers[0].players.push("fixture_replacement_qb");
+        state.players.fixture_owned_qb.injuryStatus = "Out";
+        const deduplicatedAdvice = buildWeeklyRecommendations();
+        check("A recommended starter replacement includes its injury reason without a duplicate risk card",
+          deduplicatedAdvice.some(item => item.type === "Start / sit" && item.comparisonPlayerId === "fixture_owned_qb" &&
+            item.level === "urgent" && item.detail.includes("Current starter Out")) &&
+          !deduplicatedAdvice.some(item => item.type === "Roster risk" && item.playerId === "fixture_owned_qb"));
+        state.managers[0].players.pop();
+        state.players.fixture_owned_qb.injuryStatus = "Healthy";
         const demoProjection = { ...state.players.fixture_claim_rb, isDemo: true, byeWeek: state.week };
         check("Demo projections ignore real NFL byes",
           computeLeagueProj(demoProjection, { pts_ppr: 12 }, {}) === 12);
@@ -958,6 +990,38 @@
         fixtureIds.push("fixture_next_bye");
         const nextWatch = buildNewsletterNextWeekWatch({ teamName: "Watch roster", players: ["fixture_next_bye"] });
         check("Newsletter previews next-week byes", nextWatch.some(line => line.includes("Next Week Bye") && line.includes("Week 6")));
+        state.activeLeague = newsletterLeague;
+        state.managers = [
+          { rosterId: "1", teamName: "Zero heroes", wins: 1, losses: 0, pf: 0, pa: -2, players: [] },
+          { rosterId: "2", teamName: "Negative scorers", wins: 0, losses: 1, pf: -2, pa: 0, players: [] }
+        ];
+        document.getElementById("teamSelect").innerHTML = '<option value="0">Zero heroes</option>';
+        const recapKey = getLeagueRecordsKey(newsletterLeague);
+        leagueRecordsCache.set(recapKey, { source: "Fixture final results", coverage: "One completed game.", errors: [],
+          games: [{ week: 4, completed: true, homeId: "1", awayId: "2", homeScore: 0, awayScore: -2 }] });
+        const recap = buildLeagueNewsletterIssue();
+        check("Inbox recap uses up to three final-result highlights including zero/negative points, without repeating recommendations",
+          recap.summary.length === 3 && recap.summary[0].includes("0.0 pts") &&
+          recap.summary[1].includes("-2.0") && recap.summary[2].includes("outscored 1 of 1") &&
+          recap.actions.length === 0 && recap.nextWeekWatch.length === 0 &&
+          recap.games[0].week === 4 && recap.source.includes("Fixture final results"));
+        renderNewsletterIssue(recap);
+        check("Recap keeps full scores and standings collapsed and contains no duplicate action section",
+          document.querySelectorAll("#leagueNewsletterContent .newsletter-brief li").length === 3 &&
+          !document.querySelector("#leagueNewsletterContent details").open &&
+          !document.getElementById("leagueNewsletterContent").textContent.includes("Front Office Watch"));
+        check("Shared recap stays compact and identifies its source",
+          newsletterIssueText(recap).includes("Fixture final results") &&
+          !newsletterIssueText(recap).includes("FRONT OFFICE WATCH"));
+        leagueRecordsCache.delete(recapKey);
+        const emptyRecap = buildLeagueNewsletterIssue();
+        check("Missing final results produce an explicit unavailable message, not generated filler",
+          emptyRecap.games.length === 0 && emptyRecap.summary.length === 1 &&
+          emptyRecap.summary[0].includes("No completed results") && emptyRecap.coverageLabel.includes("No completed scores"));
+        activateTab("tab-newsletter");
+        check("Old newsletter shortcuts lead to the integrated Inbox recap",
+          document.getElementById("tab-inbox").classList.contains("active") && document.getElementById("inboxRecap").open);
+        document.getElementById("inboxRecap").open = false;
         if (priorNewsletter === null) localStorage.removeItem("fantasy-front-office:newsletter:v1");
         else localStorage.setItem("fantasy-front-office:newsletter:v1", priorNewsletter);
       } finally {

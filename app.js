@@ -4,6 +4,10 @@
 
 // 1. Top-Level Tab & Sub-Tab Switcher
 function activateTab(tabId) {
+  if (tabId === "tab-newsletter") {
+    tabId = "tab-inbox";
+    document.getElementById("inboxRecap").open = true;
+  }
   const targetPage = document.getElementById(tabId);
   if (!targetPage?.classList.contains("tab-page")) return null;
   document.querySelectorAll(".nav-btn").forEach(button => {
@@ -70,7 +74,6 @@ document.addEventListener("click", e => {
       }
       case "tab-intel": renderLeagueIntelTab(); break;
       case "tab-inbox": renderGMInbox(); break;
-      case "tab-newsletter": renderLeagueNewsletter(); break;
     }
     return;
   }
@@ -4274,46 +4277,39 @@ function buildNewsletterNextWeekWatch(manager) {
 function buildLeagueNewsletterIssue() {
   const league = state.activeLeague;
   if (!league || !state.managers.length) return null;
-  const leader = [...state.managers].sort((a, b) => (b.wins - a.wins) || (b.pf - a.pf))[0];
-  const games = getNormalizedCurrentMatchups();
-  const closest = [...games].filter(game => game.homeScore > 0 || game.awayScore > 0).sort((a, b) => Math.abs(a.homeScore - a.awayScore) - Math.abs(b.homeScore - b.awayScore))[0];
-  const actions = buildWeeklyRecommendations().slice(0, 5).map(item => ({ title: item.title, detail: item.detail, value: item.value, type: item.type }));
+  const record = leagueRecordsCache.get(getLeagueRecordsKey(league));
+  const completed = record?.games || [];
+  const latestWeek = completed.length ? Math.max(...completed.map(game => game.week)) : null;
+  const recent = completed.filter(game => game.week === latestWeek);
+  const name = id => state.managers.find(manager => String(manager.rosterId) === String(id))?.teamName || `Team ${id}`;
+  const games = recent.map(game => ({ ...game, homeName: name(game.homeId), awayName: name(game.awayId) }));
+  const report = FFORecords.summarize(recent);
   const standings = [...state.managers].sort((a, b) => (b.wins - a.wins) || (b.pf - a.pf)).slice(0, 12).map(manager => ({
     teamName: manager.teamName, record: `${manager.wins}-${manager.losses}${manager.ties ? `-${manager.ties}` : ""}`,
     pointsFor: Number(manager.pf) || 0, pointsAgainst: Number(manager.pa) || 0
   }));
-  const managerOfWeek = [...games].filter(game => game.homeScore > 0 || game.awayScore > 0)
-    .flatMap(game => [{ name: game.homeName, score: game.homeScore }, { name: game.awayName, score: game.awayScore }]).sort((a, b) => b.score - a.score)[0] || null;
-  const playerOfWeek = [...getOptimizerActualPoints().entries()].map(([playerId, points]) => ({ player: state.players[playerId], points }))
-    .filter(item => item.player && item.points > 0).sort((a, b) => b.points - a.points)[0] || null;
-  const projectedUnderdogs = games.map(game => {
-    const homeManager = state.managers.find(manager => String(manager.rosterId) === String(game.homeId));
-    const awayManager = state.managers.find(manager => String(manager.rosterId) === String(game.awayId));
-    if (!homeManager || !awayManager || (game.homeScore <= 0 && game.awayScore <= 0)) return null;
-    const homeProjection = calcOptimalLineup(homeManager.players, false, getLineupLockConstraints(homeManager)).total;
-    const awayProjection = calcOptimalLineup(awayManager.players, false, getLineupLockConstraints(awayManager)).total;
-    const underdog = homeProjection < awayProjection
-      ? { manager: homeManager, projection: homeProjection, favoriteProjection: awayProjection, actual: game.homeScore, favoriteActual: game.awayScore }
-      : { manager: awayManager, projection: awayProjection, favoriteProjection: homeProjection, actual: game.awayScore, favoriteActual: game.homeScore };
-    return underdog.actual > underdog.favoriteActual && underdog.projection < underdog.favoriteProjection ? underdog : null;
-  }).filter(Boolean).sort((a, b) => (b.favoriteProjection - b.projection) - (a.favoriteProjection - a.projection))[0] || null;
   const standingsMovement = getNewsletterStandingsMovement(league, standings);
-  const selectedManager = state.managers[parseInt(document.getElementById("teamSelect")?.value || "0", 10)] || state.managers[0];
-  const nextWeekWatch = buildNewsletterNextWeekWatch(selectedManager);
-  const summary = [
-    leader ? `${leader.teamName} leads the standings at ${leader.wins}-${leader.losses} with ${Number(leader.pf || 0).toFixed(1)} points for.` : "Standings are not available yet.",
-    managerOfWeek ? `${managerOfWeek.name} is the weekly manager leader so far at ${managerOfWeek.score.toFixed(1)} points.` : "Manager of the week is pending matchup scores.",
-    playerOfWeek ? `${playerOfWeek.player.name} leads player scoring with ${playerOfWeek.points.toFixed(1)} points.` : "Player of the week is pending player scores.",
-    projectedUnderdogs ? `Upset watch: ${projectedUnderdogs.manager.teamName} is leading despite a lower projected score.` : "No projected underdog is currently ahead.",
-    `Standings movement: ${standingsMovement.text}`,
-    closest ? `The closest game is ${closest.homeName} vs ${closest.awayName}, separated by ${Math.abs(closest.homeScore - closest.awayScore).toFixed(1)} points.` : "No close matchup is available to highlight yet.",
-    `${actions.length} front-office move${actions.length === 1 ? "" : "s"} to review this week.`
-  ];
+  const summary = [];
+  if (report.highest) summary.push(`Week ${latestWeek} top score: ${name(report.highest.teamId)} · ${report.highest.points.toFixed(1)} pts.`);
+  if (report.closest) {
+    const game = report.closest.game;
+    summary.push(`Narrowest decided game: ${name(game.homeId)} ${game.homeScore.toFixed(1)} vs ${name(game.awayId)} ${game.awayScore.toFixed(1)} · ${report.closest.margin.toFixed(1)}-pt margin.`);
+  } else if (report.ties) summary.push(`${report.ties} tied matchup${report.ties === 1 ? "" : "s"} in Week ${latestWeek}.`);
+  const selectedManager = state.managers[Number(document.getElementById("teamSelect")?.value || "0")];
+  const scores = recent.flatMap(game => [{ id: String(game.homeId), points: game.homeScore }, { id: String(game.awayId), points: game.awayScore }]);
+  const selectedScore = scores.find(score => score.id === String(selectedManager?.rosterId));
+  if (selectedScore && scores.length > 1) {
+    const others = scores.filter(score => score.id !== selectedScore.id);
+    summary.push(`Your Week ${latestWeek}: ${selectedScore.points.toFixed(1)} pts · outscored ${others.filter(score => score.points < selectedScore.points).length} of ${others.length} other scored teams${others.some(score => score.points === selectedScore.points) ? ` · tied ${others.filter(score => score.points === selectedScore.points).length}` : ""}.`);
+  }
+  if (!summary.length) summary.push("No completed results loaded yet. Live scores and projections are not treated as final results.");
+  const source = `${state.workspaceSnapshot ? "Saved snapshot · " : ""}${league.isDemo ? "Fictional demo · " : ""}${record ? `${record.source} · ${record.coverage}${record.errors.length ? ` Incomplete: ${record.errors.join(" | ")}` : ""}` : "Completed results unavailable."}`;
   return {
     id: `${league.season}-week-${state.week}`, leagueKey: getNewsletterLeagueKey(league),
     leagueName: league.name, season: String(league.season), week: state.week,
     title: `${league.name} · Week ${state.week}`, generatedAt: new Date().toISOString(),
-    summary, games, standings, actions, nextWeekWatch,
+    summary: summary.slice(0, 3), games, standings, actions: [], nextWeekWatch: [], source, recapVersion: 2,
+    coverageLabel: `${league.isDemo ? "Fictional demo · " : ""}${state.workspaceSnapshot ? "Saved snapshot · " : ""}${record?.errors.length ? "Partial results · " : ""}${latestWeek === null ? "No completed scores" : `Week ${latestWeek} · ${games.length} loaded final${games.length === 1 ? "" : "s"}`}`,
     standingsMovement: { previousWeek: standingsMovement.previousWeek, movers: standingsMovement.movers }
   };
 }
@@ -4321,11 +4317,8 @@ function buildLeagueNewsletterIssue() {
 function newsletterIssueText(issue) {
   return [
     issue.title, `${issue.season} season · Generated ${new Date(issue.generatedAt).toLocaleString()}`,
-    "", "THE WEEK IN BRIEF", ...issue.summary,
-    "", "MATCHUP BOARD", ...(issue.games.length ? issue.games.map(game => `${game.homeName} ${game.homeScore.toFixed(1)} — ${game.awayScore.toFixed(1)} ${game.awayName}`) : ["No matchup scores available."]),
-    "", "STANDINGS", ...issue.standings.map((team, index) => `${index + 1}. ${team.teamName} · ${team.record} · ${team.pointsFor.toFixed(1)} PF`),
-    "", "FRONT OFFICE WATCH", ...(issue.actions.length ? issue.actions.map(action => `${action.title} — ${action.detail} (${action.value})`) : ["No recommended actions right now."]),
-    "", "NEXT WEEK WATCH", ...(issue.nextWeekWatch || ["No upcoming watch items available."]),
+    "", "LEAGUE RECAP", ...issue.summary.slice(0, 3),
+    "", issue.source || "Archived legacy issue; results may have been in progress.",
     "", "Fantasy Front Office"
   ].join("\n");
 }
@@ -4335,14 +4328,11 @@ function renderNewsletterIssue(issue, isSaved = false) {
   const status = document.getElementById("newsletterStatus");
   if (!content || !issue) return;
   const games = issue.games.length ? issue.games.map(game => {
-    const winner = game.homeScore === game.awayScore ? "Tied" : (game.homeScore > game.awayScore ? game.homeName : game.awayName);
-    return `<li><div><strong>${draftEscapeHtml(game.homeName)}</strong><span>${game.homeScore.toFixed(1)}</span></div><div><strong>${draftEscapeHtml(game.awayName)}</strong><span>${game.awayScore.toFixed(1)}</span></div><small>${draftEscapeHtml(winner)} leads</small></li>`;
+    return `<li><div><strong>${draftEscapeHtml(game.homeName)}</strong><span>${game.homeScore.toFixed(1)}</span></div><div><strong>${draftEscapeHtml(game.awayName)}</strong><span>${game.awayScore.toFixed(1)}</span></div><small>${issue.recapVersion === 2 ? `Week ${game.week} · Final` : "Archived score; final status unverified"}</small></li>`;
   }).join("") : `<li class="newsletter-empty">Matchups are not available for this week.</li>`;
   const standings = issue.standings.map((team, index) => `<tr><td>${index + 1}</td><td>${draftEscapeHtml(team.teamName)}</td><td>${draftEscapeHtml(team.record)}</td><td>${team.pointsFor.toFixed(1)}</td><td>${team.pointsAgainst.toFixed(1)}</td></tr>`).join("");
-  const actions = issue.actions.length ? issue.actions.map(action => `<li><span class="newsletter-action-type">${draftEscapeHtml(action.type)}</span><div><strong>${draftEscapeHtml(action.title)}</strong><small>${draftEscapeHtml(action.detail)} · ${draftEscapeHtml(action.value)}</small></div></li>`).join("") : `<li class="newsletter-empty">No front-office actions to highlight.</li>`;
-  const nextWeekWatch = (issue.nextWeekWatch || []).map(line => `<li>${draftEscapeHtml(line)}</li>`).join("") || `<li class="newsletter-empty">No next-week watch items saved.</li>`;
-  content.innerHTML = `<header class="newsletter-masthead"><div><span>FANTASY FRONT OFFICE · ${draftEscapeHtml(issue.season)} SEASON</span><h1>${draftEscapeHtml(issue.title)}</h1></div><time>${draftEscapeHtml(new Date(issue.generatedAt).toLocaleString())}${isSaved ? " · archived" : ""}</time></header><section class="newsletter-brief"><h3>THE WEEK IN BRIEF</h3><ul>${issue.summary.map(line => `<li>${draftEscapeHtml(line)}</li>`).join("")}</ul></section><section class="newsletter-section"><h3>Matchup Board</h3><ol class="newsletter-games">${games}</ol></section><section class="newsletter-section"><h3>Standings</h3><div class="table-wrap"><table class="newsletter-standings"><thead><tr><th>#</th><th>Team</th><th>Record</th><th>PF</th><th>PA</th></tr></thead><tbody>${standings}</tbody></table></div></section><section class="newsletter-section"><h3>Front Office Watch</h3><ol class="newsletter-actions">${actions}</ol></section><section class="newsletter-section"><h3>Next Week Watch</h3><ul>${nextWeekWatch}</ul></section><footer class="newsletter-footer">Generated for ${draftEscapeHtml(issue.leagueName)} by Fantasy Front Office.</footer>`;
-  if (status) status.textContent = isSaved ? `Viewing archived Week ${issue.week} · ${issue.season}.` : `Previewing the current Week ${issue.week} issue. Save it to keep this edition in the league archive.`;
+  content.innerHTML = `<p class="comparison-note">${draftEscapeHtml(issue.coverageLabel || "Legacy archive · final status unverified")}${isSaved ? " · archived" : ""}</p><section class="newsletter-brief"><ul>${issue.summary.slice(0, 3).map(line => `<li>${draftEscapeHtml(line)}</li>`).join("")}</ul></section><p class="comparison-note">${draftEscapeHtml(new Date(issue.generatedAt).toLocaleString())}</p><details class="gm-secondary"><summary>Scores, standings &amp; source</summary><p class="comparison-note">${draftEscapeHtml(issue.source || "Archived legacy issue; final scores were not verified.")}</p><ol class="newsletter-games">${games}</ol><p class="comparison-note">Loaded standings, ordered by wins then points for; provider tiebreakers may differ.</p><div class="table-wrap"><table class="newsletter-standings"><thead><tr><th>#</th><th>Team</th><th>Record</th><th>PF</th><th>PA</th></tr></thead><tbody>${standings}</tbody></table></div></details>`;
+  if (status) status.textContent = isSaved ? `Viewing archived Week ${issue.week} · ${issue.season}.` : "Current recap. Save to keep a copy; update after syncing your league.";
 }
 
 function renderLeagueNewsletter() {
@@ -4389,7 +4379,11 @@ function saveNewsletterIssue() {
   const archive = getNewsletterArchive();
   if (!archive[issue.leagueKey]) archive[issue.leagueKey] = {};
   archive[issue.leagueKey][issue.id] = issue;
-  try { localStorage.setItem("fantasy-front-office:newsletter:v1", JSON.stringify(archive)); } catch {}
+  try { localStorage.setItem("fantasy-front-office:newsletter:v1", JSON.stringify(archive)); }
+  catch (error) {
+    document.getElementById("newsletterStatus").textContent = `Recap could not be saved: ${error.message}`;
+    return;
+  }
   renderLeagueNewsletter();
   const select = document.getElementById("newsletterArchiveSelect");
   if (select) select.value = issue.id;
@@ -4405,21 +4399,25 @@ async function copyNewsletterIssue() {
   catch {
     const textarea = document.createElement("textarea");
     textarea.value = text; document.body.appendChild(textarea); textarea.select();
-    try { document.execCommand("copy"); } catch {}
-    textarea.remove();
+    try {
+      if (!document.execCommand("copy")) throw new Error("Clipboard access was denied.");
+    } catch (error) {
+      document.getElementById("newsletterStatus").textContent = `Recap could not be copied: ${error.message}`;
+      return;
+    } finally { textarea.remove(); }
   }
-  document.getElementById("newsletterStatus").textContent = "Newsletter copied as text.";
+  document.getElementById("newsletterStatus").textContent = "Recap copied as text.";
 }
 
 function downloadNewsletterIssue() {
   const issue = getSelectedNewsletterIssue();
   if (!issue) return;
-  const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${draftEscapeHtml(issue.title)}</title><style>body{font:16px Georgia,serif;max-width:820px;margin:40px auto;padding:0 20px;color:#18221e}h1{font:700 34px Georgia,serif}h2,h3{font:700 15px Arial,sans-serif;text-transform:uppercase;letter-spacing:1px;margin-top:30px}li{line-height:1.6;margin:8px 0}table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:9px;border-bottom:1px solid #d8e0dc}footer{margin-top:35px;color:#63716a;font:12px Arial,sans-serif}</style></head><body><p>FANTASY FRONT OFFICE · ${draftEscapeHtml(issue.season)} SEASON</p><h1>${draftEscapeHtml(issue.title)}</h1><h2>The week in brief</h2><ul>${issue.summary.map(line => `<li>${draftEscapeHtml(line)}</li>`).join("")}</ul><h2>Matchups</h2><ul>${issue.games.map(game => `<li>${draftEscapeHtml(game.homeName)} ${game.homeScore.toFixed(1)} — ${game.awayScore.toFixed(1)} ${draftEscapeHtml(game.awayName)}</li>`).join("")}</ul><h2>Standings</h2><table><thead><tr><th>#</th><th>Team</th><th>Record</th><th>PF</th><th>PA</th></tr></thead><tbody>${issue.standings.map((team, index) => `<tr><td>${index + 1}</td><td>${draftEscapeHtml(team.teamName)}</td><td>${draftEscapeHtml(team.record)}</td><td>${team.pointsFor.toFixed(1)}</td><td>${team.pointsAgainst.toFixed(1)}</td></tr>`).join("")}</tbody></table><h2>Front office watch</h2><ul>${issue.actions.map(action => `<li><strong>${draftEscapeHtml(action.title)}</strong> — ${draftEscapeHtml(action.detail)} · ${draftEscapeHtml(action.value)}</li>`).join("")}</ul><h2>Next week watch</h2><ul>${(issue.nextWeekWatch || []).map(line => `<li>${draftEscapeHtml(line)}</li>`).join("")}</ul><footer>Generated for ${draftEscapeHtml(issue.leagueName)} by Fantasy Front Office.</footer></body></html>`;
+  const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${draftEscapeHtml(issue.title)}</title><style>body{font:16px system-ui,sans-serif;max-width:720px;margin:40px auto;padding:0 20px;line-height:1.6}pre{white-space:pre-wrap;overflow-wrap:anywhere;font:inherit}</style></head><body><pre>${draftEscapeHtml(newsletterIssueText(issue))}</pre></body></html>`;
   const url = URL.createObjectURL(new Blob([html], { type: "text/html" }));
   const link = document.createElement("a");
   link.href = url; link.download = `${issue.leagueName.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}-week-${issue.week}-newsletter.html`;
   link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
-  document.getElementById("newsletterStatus").textContent = "Standalone newsletter HTML downloaded.";
+  document.getElementById("newsletterStatus").textContent = "Recap HTML downloaded.";
 }
 
 function getPickemStorageKey() {
@@ -4759,19 +4757,21 @@ function buildWeeklyRecommendations() {
     if (!current || !best || current.id === best.id) return;
     const gain = (best.projectedPoints || 0) - (current.projectedPoints || 0);
     if (gain < 0.5) return;
+    const unavailable = ["Out", "IR", "PUP", "Suspended"].includes(current.injuryStatus) || current.byeWeek === state.week;
     recommendations.push({
-      priority: gain >= 5 ? 100 + gain : 65 + gain, level: gain >= 5 ? "urgent" : "high", confidence: gain >= 5 ? "Medium" : "Low", actionKind: "lineup",
+      priority: unavailable || gain >= 5 ? 100 + gain : 65 + gain, level: unavailable || gain >= 5 ? "urgent" : "high", confidence: gain >= 5 ? "Medium" : "Low", actionKind: "lineup",
       type: "Start / sit", playerId: best.id, title: `Start ${best.name} over ${current.name}`,
       comparisonPlayerId: current.id, projectedGain: gain, recommendedProjection: best.projectedPoints || 0,
       comparisonProjection: current.projectedPoints || 0, lineupSlot: slot,
-      detail: `${slot} slot · ${Number(current.projectedPoints || 0).toFixed(1)} projected now → ${Number(best.projectedPoints || 0).toFixed(1)} with this move`,
+      detail: `${slot} slot${unavailable ? ` · ${current.byeWeek === state.week ? "Current starter on bye" : `Current starter ${current.injuryStatus}`}` : ""} · ${Number(current.projectedPoints || 0).toFixed(1)} projected now → ${Number(best.projectedPoints || 0).toFixed(1)} with this move`,
       value: `+${gain.toFixed(1)} pts`
     });
   });
 
   manager.players.forEach(playerId => {
     const player = state.players[playerId];
-    if (!player || player.isPick) return;
+    if (!player || player.isPick || !(manager.starters || []).includes(playerId)) return;
+    if (recommendations.some(item => item.type === "Start / sit" && item.comparisonPlayerId === playerId)) return;
     if (["Out", "IR", "PUP", "Suspended"].includes(player.injuryStatus)) {
       recommendations.push({ priority: 94, level: "urgent", type: "Roster risk", playerId, title: `${player.name} is ${player.injuryStatus}`, detail: `${player.position} · ${player.team}`, value: "Review lineup", confidence: "High", actionKind: "lineup" });
     }
@@ -4786,6 +4786,7 @@ function buildWeeklyRecommendations() {
     const proposedIds = manager.players.filter(id => id !== drop?.id).concat(player.id);
     const proposed = calcOptimalLineup(proposedIds, false, getLineupLockConstraints(manager));
     const gain = Math.max(0, proposed.total - optimal.total);
+    if (gain < 0.5) return;
     const bid = getSuggestedFaabBid(player);
     recommendations.push({
       priority: 55 - index + Math.min(20, gain), level: gain >= 5 ? "high" : "normal",
@@ -4797,11 +4798,6 @@ function buildWeeklyRecommendations() {
     });
   });
 
-  const managerPlayerIds = new Set(manager.players);
-  state.dbTrades.filter(trade => trade.src === "LEAGUE" && (trade.aIds.some(id => managerPlayerIds.has(id)) || trade.bIds.some(id => managerPlayerIds.has(id)))).slice(0, 3).forEach(trade => {
-    const playerId = trade.aIds.find(id => managerPlayerIds.has(id)) || trade.bIds.find(id => managerPlayerIds.has(id));
-    recommendations.push({ priority: 48, level: "normal", type: "Trade history", playerId, title: "Review a recent league trade", detail: trade.label, value: `${Math.round(Math.min(trade.aVal, trade.bVal))} value`, confidence: "Low", actionKind: "trade" });
-  });
   recommendations.push(...buildOpponentAwareRecommendations(manager));
   return recommendations.sort((a, b) => b.priority - a.priority).slice(0, 18);
 }
@@ -5081,7 +5077,26 @@ let gmInboxContext = "";
 
 function selectGmInboxActions(items, filter, expanded) {
   const matching = filterGmRecommendations(items, filter);
-  return { matching, visible: expanded ? matching : matching.slice(0, 6) };
+  return { matching, visible: expanded ? matching : matching.slice(0, 3) };
+}
+
+function renderInboxSchedule(manager) {
+  const container = document.getElementById("gmSchedule");
+  if (!container) return;
+  container.hidden = !manager;
+  if (!manager) return;
+  const report = buildRosterPlan(manager);
+  if (report.reason) {
+    container.innerHTML = `<p class="comparison-note">${draftEscapeHtml(report.reason)}</p>`;
+    return;
+  }
+  const cards = report.rows.map(({ week, baseline }) => {
+    const unknown = baseline.filled - baseline.known;
+    const byes = report.ids.map(id => state.players[id]).filter(player => getPlannerAvailability(player, week, true).kind === "bye");
+    const label = baseline.gaps.length ? `Need ${baseline.gaps.join(", ")}` : unknown ? "Verify schedule" : "Slots covered";
+    return `<article class="schedule-week${baseline.gaps.length ? " has-gap" : ""}"><span>Week ${week}</span><strong>${draftEscapeHtml(label)}</strong><small>${byes.length ? `Bye: ${draftEscapeHtml(byes.map(player => player.name).join(", "))}` : "No known byes"}${unknown ? ` · ${unknown} unverified slot${unknown === 1 ? "" : "s"}` : ""}</small></article>`;
+  }).join("");
+  container.innerHTML = `<div class="draft-panel-heading"><h3>Plan before the bye</h3><button type="button" class="btn-builder-action" data-gm-open="planner">Open schedule &amp; find coverage</button></div><div class="schedule-weeks">${cards}</div><details class="gm-action-details"><summary>Coverage assumptions</summary><p>Slot coverage, not projected points. Current injuries are held out; unknown schedules are unverified. Check provider eligibility before making a move.</p></details>`;
 }
 
 async function renderGMInbox(forceRefresh = false) {
@@ -5104,7 +5119,8 @@ async function renderGMInbox(forceRefresh = false) {
       briefing.innerHTML = `<h3>Your league, at a glance.</h3><p>Connect ESPN or Sleeper above to see lineup decisions, roster risks, and waiver moves here.</p>`;
     }
     summary.hidden = true;
-    list.innerHTML = `<p class="draft-empty">Connect a league to build your GM Inbox.</p>`;
+    list.innerHTML = "";
+    renderInboxSchedule(null);
     if (completedList) completedList.innerHTML = "";
     pressureList.innerHTML = `<p class="draft-empty">Connect or import leagues to compare portfolio pressure.</p>`;
     document.getElementById("gmOutcomeSummary").innerHTML = "";
@@ -5149,10 +5165,12 @@ async function renderGMInbox(forceRefresh = false) {
   const { matching, visible: visibleRecommendations } = selectGmInboxActions(activeRecommendations, inboxFilter, gmInboxExpanded);
   const urgentCount = activeRecommendations.filter(item => item.level === "urgent").length;
   const selectedManager = state.managers[parseInt(document.getElementById("teamSelect")?.value || "0", 10)];
-  summary.hidden = false;
+  summary.hidden = true;
+  renderInboxSchedule(selectedManager);
+  if (document.getElementById("inboxRecap")?.open) renderLeagueNewsletter();
   if (briefing) {
     const sourceNote = getProjectionSourceNote();
-    briefing.innerHTML = `<div class="draft-eyebrow">WEEK ${state.week}${state.activeLeague.isDemo ? " · DEMO" : ""} · DECISION BRIEF</div><h3>${urgentCount ? `${urgentCount} urgent decision${urgentCount === 1 ? "" : "s"} to review` : activeRecommendations.length ? "Your next moves, in priority order" : "You're caught up"}</h3><p class="gm-briefing-source">${draftEscapeHtml(sourceNote)} Review lineup decisions before kickoff.</p>`;
+    briefing.innerHTML = `<div class="draft-eyebrow">WEEK ${state.week}${state.activeLeague.isDemo ? " · DEMO" : ""} · ${draftEscapeHtml(selectedManager?.teamName || "Your roster")}</div><h3>${urgentCount ? `${urgentCount} urgent decision${urgentCount === 1 ? "" : "s"}` : activeRecommendations.length ? "Your next moves" : "No immediate flags"}</h3><details class="gm-action-details"><summary>Data &amp; estimates</summary><p>${draftEscapeHtml(sourceNote)} Suggestions are estimates. Review and submit changes in your league.</p></details>`;
   }
   const leagueRecords = Object.values(feedback).filter(record => record.leagueKey === leagueKey);
   const rated = leagueRecords.filter(record => typeof record.helpful === "boolean");
@@ -5163,7 +5181,7 @@ async function renderGMInbox(forceRefresh = false) {
   ].map(([label, value]) => `<div><span>${draftEscapeHtml(label)}</span><strong>${draftEscapeHtml(value)}</strong></div>`).join("");
   if (meta) meta.textContent = `${matching.length} ${inboxFilter === "all" ? "open" : "matching"} action${matching.length === 1 ? "" : "s"}${matching.length > visibleRecommendations.length ? ` · showing top ${visibleRecommendations.length}` : ""}`;
   if (moreButton) {
-    moreButton.hidden = matching.length <= 6;
+    moreButton.hidden = matching.length <= 3;
     moreButton.textContent = gmInboxExpanded ? "Show fewer actions" : `Show all ${matching.length} actions`;
     moreButton.setAttribute("aria-expanded", String(gmInboxExpanded));
   }
@@ -5190,12 +5208,12 @@ async function renderGMInbox(forceRefresh = false) {
         : `<button type="button" class="btn-builder-action" data-gm-state="done" data-gm-type="${draftEscapeHtml(item.type)}" data-gm-id="${draftEscapeHtml(key)}">Mark done</button><button type="button" class="btn-builder-action" data-gm-state="dismissed" data-gm-type="${draftEscapeHtml(item.type)}" data-gm-id="${draftEscapeHtml(key)}">Dismiss</button>`;
     const tradeData = action === "trade" ? `data-gm-opponent="${draftEscapeHtml(item.opponentRosterId || "")}"` : "";
     const compare = item.comparisonPlayerId && item.playerId ? `<button type="button" class="btn-builder-action" data-compare-a="${draftEscapeHtml(item.comparisonPlayerId)}" data-compare-b="${draftEscapeHtml(item.playerId)}">Compare players</button>` : "";
-    const review = `<button type="button" data-gm-open="${draftEscapeHtml(action)}" data-gm-player="${draftEscapeHtml(item.playerId || "")}" ${tradeData}>${action === "trade" ? "Build trade" : action === "waivers" ? "Review waivers" : action === "watch" ? "Watch player" : action === "portfolio" ? "Review portfolio" : "Review lineup"}</button>${compare}`;
-    return `<article class="gm-action-card ${item.level || "normal"}"><div class="gm-action-topline"><span class="recommendation-priority ${item.level || "normal"}">${item.level === "urgent" ? "Urgent · " : ""}${draftEscapeHtml(item.type)}</span><span class="gm-action-value">${draftEscapeHtml(item.value || "Review")}</span></div><h3>${draftEscapeHtml(item.title)}</h3><div class="gm-action-controls">${isClosed ? "" : review}</div><details class="gm-action-details"><summary>Why this suggestion &amp; options</summary><p>${draftEscapeHtml(item.detail)}</p><span class="gm-confidence">${draftEscapeHtml(confidence)}</span><div class="gm-action-controls">${controls}</div></details></article>`;
+    const review = `<button type="button" data-gm-open="${draftEscapeHtml(action)}" data-gm-player="${draftEscapeHtml(item.playerId || "")}" ${tradeData}>${action === "trade" ? "Build trade" : action === "waivers" ? "Review pickup" : action === "watch" ? "Watch player" : action === "portfolio" ? "Review portfolio" : "Review lineup"}</button>`;
+    return `<article class="gm-action-card ${item.level || "normal"}"><div class="gm-action-topline"><span class="recommendation-priority ${item.level || "normal"}">${item.level === "urgent" ? "Urgent · " : ""}${draftEscapeHtml(item.type)}</span><span class="gm-action-value">${draftEscapeHtml(item.value || "Review")}</span></div><h3>${draftEscapeHtml(item.title)}</h3><div class="gm-action-controls">${isClosed ? "" : review}</div><details class="gm-action-details"><summary>Details &amp; options</summary><p>${draftEscapeHtml(item.detail)}</p><span class="gm-confidence">${draftEscapeHtml(confidence)}</span><div class="gm-action-controls">${compare}${controls}</div></details></article>`;
   };
   list.innerHTML = visibleRecommendations.length
     ? visibleRecommendations.map(item => renderAction(item, false)).join("")
-    : `<p class="draft-empty">${activeRecommendations.length ? "No open actions match this filter." : "No open recommendations for this roster right now."}</p>`;
+    : `<p class="draft-empty">${activeRecommendations.length ? "No open actions match this filter." : "No immediate lineup or pickup flags. Check upcoming coverage below."}</p>`;
   if (completedList) completedList.innerHTML = closedRecommendations.length ? closedRecommendations.map(item => renderAction(item, true)).join("") : `<p class="draft-empty">No completed or dismissed actions this week.</p>`;
 }
 
@@ -5228,7 +5246,7 @@ function handleGMInboxClick(event) {
     document.querySelector('.nav-btn[data-tab="tab-trade"]')?.click();
     return;
   }
-  const targetTab = action === "waivers" ? "tab-waiver" : action === "portfolio" ? "tab-intel" : "tab-opt";
+  const targetTab = action === "planner" ? "tab-planner" : action === "waivers" ? "tab-waiver" : action === "portfolio" ? "tab-intel" : "tab-opt";
   document.querySelector(`.nav-btn[data-tab="${targetTab}"]`)?.click();
 }
 
@@ -6800,16 +6818,14 @@ function renderLeagueRecords() {
     const description = `${name(row.teamId)} vs ${name(cell.opponentId)}: ${cell.wins} wins, ${cell.losses} losses, ${cell.ties} ties in ${cell.games} games. ${(cell.rate * 100).toFixed(0)}% win equivalent; ties count as half a win.`;
     return `<td class="rivalry-${cell.kind}" title="${escape(description)}" aria-label="${escape(description)}"><strong>${recordText}</strong><small>${(cell.rate * 100).toFixed(0)}% · ${cell.games} game${cell.games === 1 ? "" : "s"}</small></td>`;
   }).join("")}</tr>`).join("");
-  container.innerHTML = `<p class="comparison-note">Records within loaded results only. Equal record scores/margins display the first game by week/team-ID order. Ties are not counted as decided games. ${report.ties} tied game${report.ties === 1 ? "" : "s"}. No playoff or championship finishes are inferred.</p>
-    <section class="rivalry-panel">
-      <div class="draft-eyebrow">HEAD-TO-HEAD HEAT MAP</div><h3>Who has the edge?</h3>
-      <p id="rivalryHeatmapHelp" class="comparison-note">Read across a row: each cell shows that team's wins–losses–ties against the column opponent. Color shows win equivalent: (wins + half of ties) ÷ games. “No games” means no meetings in the loaded results, not a 0% record. Small samples are not predictions. Scroll horizontally for more opponents.</p>
+  container.innerHTML = `<div class="comparison-cards">${cards}</div>
+    <details class="gm-secondary rivalry-panel"><summary>Head-to-head records</summary>
+      <p id="rivalryHeatmapHelp" class="comparison-note">Read across your team's row: wins-losses-ties against each opponent. Past results, not predictions. Scroll for more teams.</p>
       <div class="rivalry-legend" aria-label="Heat map color legend"><span class="rivalry-strong-loss">0–25% · Trailing</span><span class="rivalry-loss">&gt;25–&lt;50%</span><span class="rivalry-even">50% · Even</span><span class="rivalry-win">&gt;50–&lt;75%</span><span class="rivalry-strong-win">75–100% · Leading</span></div>
       <div class="rivalry-scroll" role="region" aria-label="Scrollable head-to-head heat map" aria-describedby="rivalryHeatmapHelp" tabindex="0">
         <table class="rivalry-heatmap"><caption>Season head-to-head matrix · row team's perspective · W-L-T</caption><thead><tr><th scope="col">Your team ↓ / Opponent →</th>${matrix.map(row => `<th scope="col">${escape(name(row.teamId))}</th>`).join("")}</tr></thead><tbody>${heatRows}</tbody></table>
       </div>
-    </section>
-    <div class="comparison-cards">${cards}</div>
+    </details>
     <details class="rivalry-details"><summary>Verified scoring, expected wins &amp; weekly awards</summary>
     <p class="comparison-note">Uses loaded completed scores, not season PF or projections. Each week's expected win equivalent = (opponents outscored + half of tied opponents) / other scored teams in that week. Actual win equivalent = wins + half of ties. Luck = actual minus expected. Byes/unloaded teams are excluded; partial weeks make these partial-sample estimates. This table does not replace provider standings or account for median-game formats.</p>
     <div class="table-wrap" role="region" aria-label="Score-based expected wins" tabindex="0"><table class="comparison-table"><caption>Loaded-game scoring insights, ordered by expected wins</caption><thead><tr><th scope="col">Team</th><th scope="col">Weeks</th><th scope="col">W-L-T</th><th scope="col">All-play W-L-T</th><th scope="col">Expected wins</th><th scope="col">Schedule luck</th><th scope="col">Points for</th></tr></thead><tbody>${insights.teams.map(team =>
@@ -7181,7 +7197,7 @@ function renderAllViews(teamIdx) {
   saveReloadWorkspace();
   renderSosTab(); renderPlayoffBracketTab(); renderDraftRoom();
   if (document.getElementById("tab-inbox")?.classList.contains("active")) renderGMInbox();
-  if (document.getElementById("tab-newsletter")?.classList.contains("active")) renderLeagueNewsletter();
+  if (document.getElementById("inboxRecap")?.open) renderLeagueNewsletter();
 }
 
 // 10. Form Control Bindings & Boot
@@ -7338,6 +7354,7 @@ function bindControlEvents() {
   document.getElementById("gmInboxFilter")?.addEventListener("change", () => { gmInboxExpanded = false; renderGMInbox(); });
   document.getElementById("gmShowMoreBtn")?.addEventListener("click", () => { gmInboxExpanded = !gmInboxExpanded; renderGMInbox(); });
   document.getElementById("gmInboxList")?.addEventListener("click", handleGMInboxClick);
+  document.getElementById("gmSchedule")?.addEventListener("click", handleGMInboxClick);
   document.getElementById("gmInboxCompleted")?.addEventListener("click", handleGMInboxClick);
   document.getElementById("portfolioPressureList")?.addEventListener("click", handleGMInboxClick);
   document.getElementById("newsletterLeagueSelect")?.addEventListener("change", event => {
@@ -7347,9 +7364,16 @@ function bindControlEvents() {
     leagueSelect.dispatchEvent(new Event("change", { bubbles: true }));
   });
   document.getElementById("newsletterArchiveSelect")?.addEventListener("change", renderLeagueNewsletter);
-  document.getElementById("generateNewsletterBtn")?.addEventListener("click", () => {
+  document.getElementById("inboxRecap")?.addEventListener("toggle", async event => {
+    if (!event.currentTarget.open) return;
+    renderLeagueNewsletter();
+    await loadLeagueRecords();
+    if (document.getElementById("inboxRecap").open) renderLeagueNewsletter();
+  });
+  document.getElementById("generateNewsletterBtn")?.addEventListener("click", async () => {
     const archiveSelect = document.getElementById("newsletterArchiveSelect");
     if (archiveSelect) archiveSelect.value = "current";
+    await loadLeagueRecords();
     renderLeagueNewsletter();
   });
   document.getElementById("saveNewsletterBtn")?.addEventListener("click", saveNewsletterIssue);
@@ -7397,13 +7421,14 @@ function bindControlEvents() {
   document.getElementById("leagueSelect")?.addEventListener("change", async e => {
     await loadLeague(parseInt(e.target.value, 10));
     if (document.getElementById("tab-inbox")?.classList.contains("active")) await renderGMInbox();
-    if (document.getElementById("tab-newsletter")?.classList.contains("active")) renderLeagueNewsletter();
+    if (document.getElementById("inboxRecap")?.open) renderLeagueNewsletter();
   });
   document.getElementById("teamSelect")?.addEventListener("change", e => {
     rememberWorkspaceSelection();
     const idx = parseInt(e.target.value, 10);
     if (document.getElementById("tradeTeamA")) document.getElementById("tradeTeamA").value = idx;
     renderRosterTab(idx); renderOptimizerTab(idx); renderWaiversTab(); renderSosTab(); renderTradeFinder(); renderDraftKeeperLedger(); buildTradeDatabase();
+    if (document.getElementById("inboxRecap")?.open) renderLeagueNewsletter();
     if (document.getElementById("tab-intel")?.classList.contains("active")) renderLeagueIntelTab();
     if (document.getElementById("tab-inbox")?.classList.contains("active")) renderGMInbox();
     if (document.getElementById("tab-compare")?.classList.contains("active")) renderPlayerComparison();
@@ -7421,7 +7446,7 @@ function bindControlEvents() {
       renderOptimizerTab(parseInt(document.getElementById("teamSelect")?.value || "0", 10));
     }
     if (document.getElementById("tab-inbox")?.classList.contains("active")) await renderGMInbox();
-    if (document.getElementById("tab-newsletter")?.classList.contains("active")) renderLeagueNewsletter();
+    if (document.getElementById("inboxRecap")?.open) renderLeagueNewsletter();
   });
   document.getElementById("powerChartMode")?.addEventListener("change", drawPowerChart);
   document.getElementById("tradeTeamA")?.addEventListener("change", e => {
