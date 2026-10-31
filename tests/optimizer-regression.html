@@ -20,7 +20,7 @@
   <h1>Optimizer Regression Checks</h1>
   <p id="summary" role="status">Loading the app runtime...</p>
   <ol id="results"></ol>
-  <iframe id="appFrame" src="../index.html?v=20261031-weekly-matchups-1&amp;resume=0" title="Optimizer test runtime"></iframe>
+  <iframe id="appFrame" src="../index.html?v=20261031-weekly-matchups-2&amp;resume=0" title="Optimizer test runtime"></iframe>
   <script>
     async function runOptimizerFixtures() {
       const results = [];
@@ -989,6 +989,7 @@
         const matchupKey = getWeeklyMatchupKey(), previousMatchup = weeklyMatchupData.get(matchupKey);
         const priorMatchupPosition = document.getElementById("weeklyMatchupPosition").value;
         const priorMatchupScope = document.getElementById("weeklyMatchupScope").value;
+        const priorMatchupProjection = document.getElementById("weeklyMatchupProjection").value;
         const originalMatchupPlayer = { ...state.players.fixture_claim_rb };
         const compareIdsBefore = [document.getElementById("comparePlayerA").value, document.getElementById("comparePlayerB").value];
         try {
@@ -1003,6 +1004,7 @@
           state.players.fixture_claim_rb.team = "NE";
           document.getElementById("weeklyMatchupPosition").value = "RB";
           document.getElementById("weeklyMatchupScope").value = "ALL";
+          document.getElementById("weeklyMatchupProjection").value = "STARTABLE";
           const matchup = getWeeklyPlayerMatchup(state.players.fixture_claim_rb);
           check("Weekly player ratings use verified opponent and completed positional evidence",
             matchup.rating === 100 && matchup.games === 3 && matchup.confidence === "Low");
@@ -1011,6 +1013,28 @@
             document.getElementById("weeklyMatchupResults").textContent.includes("100") &&
             document.getElementById("weeklyMatchupResults").textContent.includes("3 games") &&
             document.querySelector('[data-matchup-compare="fixture_claim_rb"]'));
+          check("Weekly Matchups has its own Players navigation destination, separate from analytics",
+            document.getElementById("weeklyMatchupResults").closest(".tab-page").id === "tab-weekly-matchups" &&
+            document.querySelector('[data-tab="tab-weekly-matchups"]').closest(".nav-group").textContent.includes("Players"));
+          const matchupRow = document.querySelector('[data-matchup-player="fixture_claim_rb"]');
+          check("Weekly matchups show player photos, opponent logos and labeled rating colors",
+            matchupRow.querySelector(".matchup-photo img").getAttribute("src") === avatarUrl(state.players.fixture_claim_rb) &&
+            matchupRow.querySelector(".matchup-opponent img").getAttribute("src") === teamLogoUrl(teams.at(-1)) &&
+            matchupRow.querySelector(".matchup-favorable").textContent.includes("Favorable"));
+          const matchupProjectionBefore = state.players.fixture_claim_rb.projectedPoints;
+          state.players.fixture_claim_rb.projectedPoints = 7.99;
+          renderWeeklyMatchups();
+          check("Startable filter excludes even perfect matchups below the scoring minimum",
+            !document.querySelector('[data-matchup-player="fixture_claim_rb"]') &&
+            document.getElementById("weeklyMatchupFilterNote").textContent.includes("lower-output"));
+          document.getElementById("weeklyMatchupProjection").value = "ALL";
+          document.getElementById("weeklyMatchupProjection").dispatchEvent(new Event("change"));
+          check("Show all restores low-output players without favorable highlighting",
+            document.querySelector('[data-matchup-player="fixture_claim_rb"] .matchup-low')?.textContent.includes("Low output") &&
+            !document.querySelector('[data-matchup-player="fixture_claim_rb"] .matchup-favorable'));
+          state.players.fixture_claim_rb.projectedPoints = matchupProjectionBefore;
+          document.getElementById("weeklyMatchupProjection").value = "STARTABLE";
+          renderWeeklyMatchups();
           document.querySelector('[data-matchup-compare="fixture_claim_rb"]').click();
           check("Matchup shortlist routes to the existing comparison tab and selects its player",
             document.querySelector(".tab-page.active").id === "tab-compare" &&
@@ -1032,7 +1056,7 @@
           renderWeeklyMatchups();
           renderStartSitAdvice();
           check("New matchup and start/sit surfaces escape provider player names",
-            !document.querySelector("#weeklyMatchupResults img, #startSitAdvice img") &&
+            !document.querySelector('#weeklyMatchupResults img[src="x"], #startSitAdvice img[src="x"]') &&
             document.getElementById("weeklyMatchupResults").textContent.includes("<img src=x"));
           state.activeLeague = { ...claimLeague, isDemo: true };
           check("Fictional/snapshot data never borrows real weekly matchup ratings",
@@ -1043,6 +1067,7 @@
           if (previousMatchup) weeklyMatchupData.set(matchupKey, previousMatchup); else weeklyMatchupData.delete(matchupKey);
           document.getElementById("weeklyMatchupPosition").value = priorMatchupPosition;
           document.getElementById("weeklyMatchupScope").value = priorMatchupScope;
+          document.getElementById("weeklyMatchupProjection").value = priorMatchupProjection;
           document.getElementById("comparePlayerA").value = compareIdsBefore[0];
           document.getElementById("comparePlayerB").value = compareIdsBefore[1];
         }

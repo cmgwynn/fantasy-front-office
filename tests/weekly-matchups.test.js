@@ -5,7 +5,7 @@ const vm = require("node:vm");
 const path = require("node:path");
 const sandbox = { window: {} };
 vm.runInNewContext(fs.readFileSync(path.join(__dirname, "../weekly-matchups.js"), "utf8"), sandbox);
-const { aggregate, compare } = sandbox.window.FFOWeeklyMatchups;
+const { aggregate, compare, shortlist, projectionMinimums } = sandbox.window.FFOWeeklyMatchups;
 const teams = Array.from({ length: 32 }, (_, index) => `T${index}`);
 const options = { season: "2026", weeks: [1, 2, 3], position: "WR", receptionPoints: 1, teams };
 const fixtures = () => teams.flatMap((opponent, index) => [1, 2, 3].map(week => ({
@@ -13,6 +13,31 @@ const fixtures = () => teams.flatMap((opponent, index) => [1, 2, 3].map(week => 
   opponent, week, season: "2026", season_type: "regular", game_id: `${week}:${index}`,
   stats: { gp: 1, off_snp: 20, pts_ppr: index + 10, pts_half_ppr: index + 5, pts_std: index }
 })));
+
+test("shortlists enforce exact position-aware projection minimums and keep low output last", () => {
+  for (const [position, minimum] of Object.entries(projectionMinimums)) {
+    const entry = (id, projection, rating = 100, adjustment = 0.1) => ({
+      player: { id, position, projectedPoints: projection }, matchup: { rating, adjustment }
+    });
+    const entries = [entry("low", minimum - 0.01), entry("boundary", minimum, 0, -0.1),
+      entry("high", minimum + 6, 40, 0), entry("zero", 0), entry("invalid", NaN)];
+    assert.deepEqual(Array.from(shortlist(entries, position), row => row.player.id), ["high", "boundary"]);
+    assert.deepEqual(Array.from(shortlist(entries, position, true), row => row.player.id), ["high", "boundary", "low"]);
+    assert.equal(shortlist(entries, position, true).at(-1).lowOutput, true);
+    assert.equal(shortlist(entries, position).at(-1).lowOutput, false);
+  }
+});
+
+test("shortlist ranks scoring potential ahead of matchup alone, bounds adjustment and rejects missing evidence", () => {
+  const entry = (id, projectedPoints, rating, adjustment) => ({
+    player: { id, position: "WR", projectedPoints }, matchup: { rating, adjustment }
+  });
+  const result = shortlist([entry("easy-low", 8, 100, 0.1), entry("tough-star", 20, 0, -0.1),
+    entry("missing", 30, null, null), entry("bounded", 10, 100, 50)], "WR");
+  assert.deepEqual(Array.from(result, row => row.player.id), ["tough-star", "bounded", "easy-low"]);
+  assert.equal(result[1].score, 11);
+  assert.throws(() => shortlist([], "K"), /Unsupported/);
+});
 
 test("weekly positional matchup ratings use historical row opponents, not current player teams", () => {
   const result = aggregate(fixtures(), options);

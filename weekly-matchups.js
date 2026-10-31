@@ -1,6 +1,20 @@
 (() => {
   const positions = ["QB", "RB", "WR", "TE"];
   const teamCode = value => ({ JAC: "JAX", LA: "LAR", WSH: "WAS" }[value] || value);
+  const projectionMinimums = Object.freeze({ QB: 14, RB: 8, WR: 8, TE: 6 });
+
+  function shortlist(entries, position, showAll = false) {
+    const minimum = projectionMinimums[position];
+    if (minimum === undefined) throw new Error("Unsupported shortlist position.");
+    return entries.filter(({ player, matchup }) => player.position === position && Number.isFinite(player.projectedPoints) &&
+      player.projectedPoints > 0 && Number.isFinite(matchup.rating) && Number.isFinite(matchup.adjustment))
+      .map(entry => ({ ...entry, lowOutput: entry.player.projectedPoints < minimum,
+        score: entry.player.projectedPoints * (1 + Math.max(-0.1, Math.min(0.1, entry.matchup.adjustment))) }))
+      .filter(entry => showAll || !entry.lowOutput)
+      .sort((a, b) => Number(a.lowOutput) - Number(b.lowOutput) || b.score - a.score ||
+        b.player.projectedPoints - a.player.projectedPoints || b.matchup.rating - a.matchup.rating ||
+        String(a.player.id).localeCompare(String(b.player.id)));
+  }
 
   function aggregate(rows, { season, weeks, position, receptionPoints = 1, teams }) {
     if (!positions.includes(position) || ![0, 0.5, 1].includes(receptionPoints)) throw new Error("Unsupported matchup position or reception scoring.");
@@ -72,5 +86,5 @@
     return { preferred: scoreA === scoreB ? null : scoreA > scoreB ? "a" : "b", basis: complete ? "Projection + matchup sensitivity" : "Projection only; matchup coverage incomplete", adjusted, close };
   }
 
-  window.FFOWeeklyMatchups = Object.freeze({ aggregate, compare });
+  window.FFOWeeklyMatchups = Object.freeze({ aggregate, compare, shortlist, projectionMinimums });
 })();

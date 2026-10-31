@@ -489,9 +489,17 @@ and Premium workflows have not been independently exercised.
 
 ## Weekly positional matchups and start/sit guide
 
-**Player Analytics → Best matchups this week** defaults to wide receivers, with
-QB/RB/TE filters and all/selected-roster/unrostered scopes. The shortlist is
-ordered by matchup rating, then projected points, and links to the existing
+**Players → Weekly Matchups** is a dedicated tab that defaults to wide receivers,
+with QB/RB/TE filters, all/selected-roster/unrostered scopes, player photos and
+opponent logos. Startable projections are shown by default: QB >=14, RB/WR >=8,
+TE >=6 projected points. Show all projections includes positive lower-output
+players, labels them in muted gray and ranks them after players meeting the minimum.
+The top 12 are ordered by projected points with the same capped matchup sensitivity
+used by the start/sit guide, not matchup rating alone. This is illustrative, not
+a new projection or calibrated scoring probability. Favorable (67–100), neutral
+(34–66) and tough (0–33) ratings use green, amber and red with text labels.
+Missing photos fall back to initials; missing opponent logos retain team text.
+The shortlist links to the existing
 Compare Players destination. **Compare Players → Who should I start?** presents
 a projection-based lean with availability, known kickoff locks, positional
 matchup evidence and verified season workload context. It distinguishes an

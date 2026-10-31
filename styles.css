@@ -461,6 +461,20 @@ canvas.chart-canvas { width:100%; height:300px; background:var(--bg-card); borde
 .trade-impact-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr)); gap:16px; }
 .trade-impact-grid span { color:var(--text-muted); }
 .weekly-matchups { margin-bottom:18px; }
+.matchup-legend { display:flex; flex-wrap:wrap; gap:8px; margin:12px 0; }
+.matchup-rating { display:inline-block; padding:5px 9px; border-radius:8px; font-size:12px; font-weight:700; white-space:nowrap; }
+.matchup-favorable { color:var(--good); background:var(--good-bg); }
+.matchup-neutral { color:var(--warn); background:var(--warn-bg); }
+.matchup-tough { color:var(--bad); background:var(--bad-bg); }
+.matchup-low { color:var(--text-muted); background:var(--bg-base); }
+.matchup-player, .matchup-opponent { display:flex; align-items:center; gap:10px; }
+.matchup-player { min-width:190px; }
+.matchup-player small, .matchup-output-note { display:block; color:var(--text-muted); font-size:11px; font-weight:400; margin-top:4px; }
+.matchup-photo { position:relative; flex-shrink:0; display:grid; place-items:center; width:42px; height:42px; border-radius:10px; background:var(--bg-base); overflow:hidden; }
+.matchup-photo img { position:absolute; width:100%; height:100%; object-fit:cover; background:var(--bg-card); }
+.matchup-opponent { white-space:nowrap; }
+.matchup-opponent img { width:30px; height:30px; object-fit:contain; }
+.matchup-low-output td, .matchup-low-output th { background:rgba(128,128,128,0.04); }
 #startSitAdvice { margin:12px 0; }
 #startSitAdvice .comparison-cards { margin-top:12px; }
 .faab-claim-actions { flex-wrap:wrap; }

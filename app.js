@@ -78,7 +78,8 @@ document.addEventListener("click", e => {
       case "tab-grades": renderTeamGrades(); break;
       case "tab-planner": renderRosterPlanner(); break;
       case "tab-waiver": drawWaiverChart(); break;
-      case "tab-analytics": drawSingleAnalyticsChart(); ensureWeeklyMatchups(); break;
+      case "tab-analytics": drawSingleAnalyticsChart(); break;
+      case "tab-weekly-matchups": renderWeeklyMatchups(); ensureWeeklyMatchups(); break;
       case "tab-compare":
         renderPlayerComparison();
         ensureWeeklyMatchups();
@@ -7612,22 +7613,30 @@ function renderWeeklyMatchups() {
   document.getElementById("weeklyMatchupWeek").textContent = `Week ${state.week}`;
   const position = document.getElementById("weeklyMatchupPosition").value;
   const scope = document.getElementById("weeklyMatchupScope").value;
+  const showAll = document.getElementById("weeklyMatchupProjection").value === "ALL";
+  const minimum = FFOWeeklyMatchups.projectionMinimums[position];
   const manager = state.managers[Number(document.getElementById("teamSelect").value || 0)];
   const owned = new Set(state.managers.flatMap(roster => roster.players || []));
   const data = weeklyMatchupData.get(getWeeklyMatchupKey());
   const snapshot = state.workspaceSnapshot || state.activeLeague?.isDemo || state.activeLeague?.provider === "yahoo";
   status.textContent = snapshot ? "Snapshot/demo data: weekly matchup evidence is unavailable. Connect a live league to use this tool." : data?.loading ? "Loading prior completed-week stats from Sleeper…" :
-    data ? `Sleeper · ${state.activeLeague?.season || state.season} · loaded weeks ${data.weeks.join(", ") || "none"} · ${data.checkedAt ? `checked ${new Date(data.checkedAt).toLocaleString()}` : "not verified"}. ${data.errors.length ? `Partial/unavailable: ${data.errors.length} source issue${data.errors.length === 1 ? "" : "s"}; see data coverage.` : ""}` : "Open Player Analytics or Compare Players to load matchup evidence.";
+    data ? `Sleeper · ${state.activeLeague?.season || state.season} · loaded weeks ${data.weeks.join(", ") || "none"} · ${data.checkedAt ? `checked ${new Date(data.checkedAt).toLocaleString()}` : "not verified"}. ${data.errors.length ? `Partial/unavailable: ${data.errors.length} source issue${data.errors.length === 1 ? "" : "s"}; see data coverage.` : ""}` : "Open Weekly Matchups or Compare Players to load matchup evidence.";
   document.getElementById("weeklyMatchupErrors").hidden = Boolean(snapshot) || !data?.errors.length;
   document.getElementById("weeklyMatchupErrorDetails").textContent = data?.errors.join(" ") || "";
   let unrated = 0, unavailableReason = "";
-  const players = Object.values(state.players).filter(player => !player.isPick && !player.isDemo && player.isCurrentNfl && player.position === position &&
+  const rated = Object.values(state.players).filter(player => !player.isPick && !player.isDemo && player.isCurrentNfl && player.position === position &&
     !["Out", "IR", "PUP", "Suspended"].includes(player.injuryStatus) && Number.isFinite(player.projectedPoints) && player.projectedPoints > 0 &&
     (scope !== "ROSTER" || getPlannerRosterIds(manager || {}).includes(player.id)) && (scope !== "AVAILABLE" || !owned.has(player.id)))
-    .map(player => ({ player, matchup: getWeeklyPlayerMatchup(player) })).filter(entry => { if (entry.matchup.reason) { unrated++; unavailableReason ||= entry.matchup.reason; return false; } return true; })
-    .sort((a, b) => b.matchup.rating - a.matchup.rating || b.player.projectedPoints - a.player.projectedPoints).slice(0, 12);
-  target.innerHTML = players.length ? `<div class="table-wrap"><table class="comparison-table"><caption>${draftEscapeHtml(position)} matchup shortlist · higher rating is easier, not necessarily a better start</caption><thead><tr><th>Player</th><th>Opponent</th><th>Matchup / 100</th><th>Allowed / game</th><th>Sample</th><th>Projected</th><th>Review</th></tr></thead><tbody>${players.map(({ player, matchup }) => `<tr><th scope="row">${draftEscapeHtml(player.name)}${player.injuryStatus === "Questionable" ? " · Q" : ""}</th><td>${matchup.isHome ? "vs" : "@"} ${draftEscapeHtml(matchup.opponent)}</td><td>${matchup.rating}</td><td>${matchup.average.toFixed(1)}</td><td>${matchup.games} games · ${matchup.confidence}</td><td>${player.projectedPoints.toFixed(1)}</td><td><button class="btn-builder-action" type="button" data-matchup-compare="${draftEscapeHtml(player.id)}">Compare start</button></td></tr>`).join("")}</tbody></table></div>` :
-    `<p class="comparison-note">${data?.loading ? "Checking matchup coverage…" : `No rated players available for this position/filter. ${draftEscapeHtml(unavailableReason || "Ratings are withheld when opponent, scoring or completed-game coverage cannot be verified.")}`}</p>`;
+    .map(player => ({ player, matchup: getWeeklyPlayerMatchup(player) })).filter(entry => { if (entry.matchup.reason) { unrated++; unavailableReason ||= entry.matchup.reason; return false; } return true; });
+  const lowCount = rated.filter(({ player }) => player.projectedPoints < minimum).length;
+  const players = FFOWeeklyMatchups.shortlist(rated, position, showAll).slice(0, 12);
+  document.getElementById("weeklyMatchupFilterNote").textContent = `${showAll ? `All positive projections; under ${minimum} pts marked low output and ranked last.` : `${minimum}+ projected pts; ${lowCount} lower-output player${lowCount === 1 ? "" : "s"} hidden.`} ${state.dataErrors.projections || !state.dataFreshness.projections ? "Projections unverified; rankings provisional." : "Point estimates are not guarantees."}`;
+  target.innerHTML = players.length ? `<div class="table-wrap"><table class="comparison-table"><caption>${draftEscapeHtml(position)} scoring shortlist · projection-led order with capped matchup sensitivity</caption><thead><tr><th>Player</th><th>Opponent</th><th>Matchup / 100</th><th>Allowed / game</th><th>Sample</th><th>Projected</th><th>Review</th></tr></thead><tbody>${players.map(({ player, matchup, lowOutput }) => {
+    const tier = lowOutput ? "low" : matchup.rating >= 67 ? "favorable" : matchup.rating >= 34 ? "neutral" : "tough";
+    const label = lowOutput ? "Low output" : matchup.rating >= 67 ? "Favorable" : matchup.rating >= 34 ? "Neutral" : "Tough";
+    return `<tr class="${lowOutput ? "matchup-low-output" : ""}" data-matchup-player="${draftEscapeHtml(player.id)}"><th scope="row"><div class="matchup-player"><span class="matchup-photo" aria-hidden="true">${draftEscapeHtml(player.name.charAt(0))}<img src="${draftEscapeHtml(avatarUrl(player))}" alt="" loading="lazy" onerror="this.hidden=true"></span><span>${draftEscapeHtml(player.name)}${player.injuryStatus === "Questionable" ? " · Q" : ""}<small>${draftEscapeHtml(player.team)} · ${draftEscapeHtml(player.position)}</small></span></div></th><td><span class="matchup-opponent"><img src="${draftEscapeHtml(teamLogoUrl(matchup.opponent))}" alt="" loading="lazy" onerror="this.hidden=true">${matchup.isHome ? "vs" : "@"} ${draftEscapeHtml(matchup.opponent)}</span></td><td><span class="matchup-rating matchup-${tier}">${matchup.rating} · ${label}</span></td><td>${matchup.average.toFixed(1)}</td><td>${matchup.games} games · ${matchup.confidence}</td><td><strong>${player.projectedPoints.toFixed(1)}</strong>${lowOutput ? '<small class="matchup-output-note">Below scoring minimum</small>' : ""}</td><td><button class="btn-builder-action" type="button" data-matchup-compare="${draftEscapeHtml(player.id)}">Compare start</button></td></tr>`;
+  }).join("")}</tbody></table></div>` :
+    `<p class="comparison-note">${data?.loading ? "Checking matchup coverage…" : rated.length && !showAll ? `No rated players meet the ${minimum}-point minimum. Choose Show all projections to review lower-output options.` : `No rated players available for this position/filter. ${draftEscapeHtml(unavailableReason || "Ratings are withheld when opponent, scoring or completed-game coverage cannot be verified.")}`}</p>`;
   if (unrated && !snapshot && !data?.loading) target.innerHTML += `<p class="comparison-note">${unrated} player${unrated === 1 ? "" : "s"} lack a verified rating and are not ranked.</p>`;
 }
 
@@ -7795,7 +7804,7 @@ function renderAllViews(teamIdx) {
   renderMatchupSim(); drawSingleAnalyticsChart();
   renderPlayerComparison();
   renderWeeklyMatchups();
-  if (["tab-analytics", "tab-compare"].includes(document.querySelector(".tab-page.active")?.id)) ensureWeeklyMatchups();
+  if (["tab-weekly-matchups", "tab-compare"].includes(document.querySelector(".tab-page.active")?.id)) ensureWeeklyMatchups();
   renderTeamGrades();
   renderRosterPlanner();
   renderLeagueRecords();
@@ -8082,6 +8091,7 @@ function bindControlEvents() {
   document.getElementById("analyticsPos")?.addEventListener("change", () => { updateAnalyticsDropdownOptions(); drawSingleAnalyticsChart(); });
   document.getElementById("weeklyMatchupPosition")?.addEventListener("change", renderWeeklyMatchups);
   document.getElementById("weeklyMatchupScope")?.addEventListener("change", renderWeeklyMatchups);
+  document.getElementById("weeklyMatchupProjection")?.addEventListener("change", renderWeeklyMatchups);
   document.getElementById("weeklyMatchupResults")?.addEventListener("click", event => {
     const button = event.target.closest("[data-matchup-compare]");
     if (!button) return;

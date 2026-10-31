@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Fantasy Front Office</title>
-  <link rel="stylesheet" href="styles.css?v=20261031-weekly-matchups-1" />
+  <link rel="stylesheet" href="styles.css?v=20261031-weekly-matchups-2" />
 </head>
 <body>
 
@@ -79,6 +79,7 @@
       </optgroup>
       <optgroup label="Players">
       <option value="tab-analytics">Player Analytics</option>
+      <option value="tab-weekly-matchups">Weekly Matchups</option>
       <option value="tab-compare">Compare Players</option>
       <option value="tab-sos">Strength of Schedule</option>
       </optgroup>
@@ -113,6 +114,7 @@
         <summary><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="10" cy="10" r="6"/><path d="m15 15 6 6"/></svg><span>Players<small class="nav-current"></small></span><span class="nav-chevron" aria-hidden="true"></span></summary>
         <div class="nav-group-items">
           <button class="nav-btn" data-tab="tab-analytics">Player Analytics</button>
+          <button class="nav-btn" data-tab="tab-weekly-matchups">Weekly Matchups</button>
           <button class="nav-btn" data-tab="tab-compare">Compare Players</button>
           <button class="nav-btn" data-tab="tab-sos">Strength of Schedule</button>
         </div>
@@ -504,18 +506,6 @@
         </div>
       </div>
       <p class="tool-intro-copy">Compare stats and model projections for your scoring. Not expert-consensus rankings.</p>
-      <section class="comparison-card weekly-matchups" aria-label="Best weekly player matchups">
-        <div class="draft-panel-heading"><h3>Best matchups this week</h3><span id="weeklyMatchupWeek" class="badge badge-green"></span></div>
-        <div class="comparison-controls">
-          <label for="weeklyMatchupPosition">Position<select id="weeklyMatchupPosition"><option value="WR" selected>Wide receivers</option><option value="RB">Running backs</option><option value="TE">Tight ends</option><option value="QB">Quarterbacks</option></select></label>
-          <label for="weeklyMatchupScope">Players<select id="weeklyMatchupScope"><option value="ALL">All loaded players</option><option value="ROSTER">My roster</option><option value="AVAILABLE">Unrostered</option></select></label>
-        </div>
-        <p id="weeklyMatchupStatus" class="comparison-note" role="status">Matchup data loads when you open this tool.</p>
-        <details id="weeklyMatchupErrors" class="gm-action-details" hidden><summary>Data coverage issues</summary><p id="weeklyMatchupErrorDetails" class="comparison-note"></p></details>
-        <div id="weeklyMatchupResults"></div>
-        <details class="gm-action-details"><summary>How matchup ratings work</summary><p class="comparison-note">Higher is easier: 0–100 percentile of fantasy points allowed to the entire position, using up to six prior completed NFL weeks. At least three games per defense and 24 qualifying defenses are required. Standard/half/PPR scoring only; custom bonuses are not included. Descriptive, not opponent-strength adjusted; not a receiver-versus-cornerback grade. Low samples, injuries, role changes and weather can outweigh the matchup. No seeded schedule grades are used here.</p></details>
-      </section>
-
       <div id="analyticsFormulaCard" class="card-banner" style="display:none; background:#12151E; border:1px solid var(--accent); font-size:12px; line-height:1.6;">
         <div style="font-weight:800; color:var(--accent); font-size:13px;">HOW PLAYER ANALYTICS & TRADE VALUE ARE CALCULATED</div>
         <div>• <b>TPRR % (Targets per Route Run):</b> <code>(Targets/Gm ÷ Estimated Routes Run/Gm) × 100</code> derived from actual offensive snaps (<code>off_snp</code>).</div>
@@ -540,6 +530,31 @@
         <div id="analyticsPoolSummary" style="font-size:11px; color:var(--text-muted);">Showing Top 32 Active Players</div>
       </div>
       <div class="table-wrap"><table id="analyticsTable"></table></div>
+    </div>
+
+    <div id="tab-weekly-matchups" class="tab-page">
+      <div class="draft-heading">
+        <div><div class="draft-eyebrow">PLAYERS</div><h2>Weekly Matchups</h2></div>
+        <span id="weeklyMatchupWeek" class="badge badge-green"></span>
+      </div>
+      <p class="tool-intro-copy">Find scoring potential, not just an easy opponent. Ranked by projection with a small matchup adjustment.</p>
+      <section class="comparison-card weekly-matchups" aria-label="Best weekly player matchups">
+        <div class="comparison-controls">
+          <label for="weeklyMatchupPosition">Position<select id="weeklyMatchupPosition"><option value="WR" selected>Wide receivers</option><option value="RB">Running backs</option><option value="TE">Tight ends</option><option value="QB">Quarterbacks</option></select></label>
+          <label for="weeklyMatchupScope">Players<select id="weeklyMatchupScope"><option value="ALL">All loaded players</option><option value="ROSTER">My roster</option><option value="AVAILABLE">Unrostered</option></select></label>
+          <label for="weeklyMatchupProjection">Scoring potential<select id="weeklyMatchupProjection"><option value="STARTABLE">Startable projections</option><option value="ALL">Show all projections</option></select></label>
+        </div>
+        <p id="weeklyMatchupFilterNote" class="comparison-note"></p>
+        <div class="matchup-legend" aria-label="Matchup rating key">
+          <span class="matchup-rating matchup-favorable">67–100 Favorable</span>
+          <span class="matchup-rating matchup-neutral">34–66 Neutral</span>
+          <span class="matchup-rating matchup-tough">0–33 Tough</span>
+        </div>
+        <p id="weeklyMatchupStatus" class="comparison-note" role="status">Matchup data loads when you open this tool.</p>
+        <details id="weeklyMatchupErrors" class="gm-action-details" hidden><summary>Data coverage issues</summary><p id="weeklyMatchupErrorDetails" class="comparison-note"></p></details>
+        <div id="weeklyMatchupResults"></div>
+        <details class="gm-action-details"><summary>How rankings &amp; ratings work</summary><p class="comparison-note">Startable minimums: QB 14, RB/WR 8, TE 6 projected points, inclusive. Show all keeps lower projections below those minimums and labels them low output. The top 12 are ranked by projection with 25% of positional defensive allowance deviation, capped at ±10%; this is illustrative, not a new projection or calibrated probability. Projections may already include matchup. Higher matchup ratings are easier: 0–100 percentile of fantasy points allowed to the entire position, using up to six prior completed NFL weeks. At least three games per defense and 24 qualifying defenses are required. Standard/half/PPR scoring only; custom bonuses are not included. Descriptive, not opponent-strength adjusted; not a receiver-versus-cornerback grade. Injuries, role changes and weather can outweigh the matchup. No seeded schedule grades are used here.</p></details>
+      </section>
     </div>
 
     <div id="tab-compare" class="tab-page">
@@ -983,13 +998,13 @@
   <div id="monetizationDisclosure" class="monetization-disclosure" hidden></div>
 </footer>
 
-<script src="monetization-config.js?v=20261031-weekly-matchups-1"></script>
-<script src="data-fetch.js?v=20261031-weekly-matchups-1"></script>
-<script src="demo-league.js?v=20261031-weekly-matchups-1"></script>
-<script src="league-records.js?v=20261031-weekly-matchups-1"></script>
-<script src="workspace-backup.js?v=20261031-weekly-matchups-1"></script>
-<script src="playoff-simulator.js?v=20261031-weekly-matchups-1"></script>
-<script src="weekly-matchups.js?v=20261031-weekly-matchups-1"></script>
-<script src="app.js?v=20261031-weekly-matchups-1"></script>
+<script src="monetization-config.js?v=20261031-weekly-matchups-2"></script>
+<script src="data-fetch.js?v=20261031-weekly-matchups-2"></script>
+<script src="demo-league.js?v=20261031-weekly-matchups-2"></script>
+<script src="league-records.js?v=20261031-weekly-matchups-2"></script>
+<script src="workspace-backup.js?v=20261031-weekly-matchups-2"></script>
+<script src="playoff-simulator.js?v=20261031-weekly-matchups-2"></script>
+<script src="weekly-matchups.js?v=20261031-weekly-matchups-2"></script>
+<script src="app.js?v=20261031-weekly-matchups-2"></script>
 </body>
 </html>
