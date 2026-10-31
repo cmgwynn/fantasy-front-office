@@ -824,6 +824,7 @@ button:disabled { cursor:not-allowed; opacity:0.45; }
 /* Keep wide data scrollable without letting controls widen the page. */
 .table-wrap { min-width:0; max-width:100%; overscroll-behavior-x:contain; }
 .table-wrap:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+.is-reviewed-pickup td { background:var(--accent-bg); }
 .tab-page h3 { line-height:1.35; }
 .draft-subtitle, .comparison-note, .tool-intro p, .tool-intro-copy { line-height:1.45; }
 .tool-disclosure > .draft-settings { border:0; background:transparent; padding:8px 0 0; }

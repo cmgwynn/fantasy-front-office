@@ -967,20 +967,40 @@ function getLineupLockConstraints(manager) {
   return { requiredPlayerIds, excludedPlayerIds, lockedSlots };
 }
 
+function getDecisionLineupConstraints(manager, rosterIds = manager?.players || []) {
+  const locks = getLineupLockConstraints(manager);
+  const required = new Set(locks.requiredPlayerIds.map(String));
+  const inactive = new Set([...(manager?.reserve || []), ...(manager?.taxi || [])].map(String));
+  const unavailable = rosterIds.filter(id => {
+    const player = state.players[id];
+    return player && !required.has(String(id)) &&
+      (inactive.has(String(id)) || !Number.isFinite(player.projectedPoints) ||
+        ["Out", "IR", "PUP", "Suspended"].includes(player.injuryStatus) || player.byeWeek === state.week);
+  });
+  return { ...locks, excludedPlayerIds: [...new Set([...locks.excludedPlayerIds, ...unavailable].map(String))] };
+}
+
+function getOutgoingLineupPlayer(manager, optimalSlots, index) {
+  let current = state.players[manager.starters?.[index]];
+  // Follow retained starters across slots to find who actually leaves the lineup.
+  while (current && optimalSlots.has(String(current.id))) {
+    current = state.players[manager.starters?.[optimalSlots.get(String(current.id))]];
+  }
+  return current;
+}
+
 function buildGameDayChecklist(manager, now = Date.now()) {
   if (!state.activeLeague || !manager) return { items: [], reason: "Connect a league and select a roster." };
   const slots = (state.activeLeague.rosterPositions || []).filter(slot => !["BN", "IR", "TAXI"].includes(slot));
   if (!slots.length) return { items: [], reason: "Starter-slot settings are missing." };
-  const constraints = getLineupLockConstraints(manager);
   const rosterIds = getPlannerRosterIds(manager);
-  const unavailable = rosterIds.filter(id => {
-    const player = state.players[id];
-    return player && (["Out", "IR", "PUP", "Suspended"].includes(player.injuryStatus) || player.byeWeek === state.week);
-  });
-  const required = new Set(constraints.requiredPlayerIds);
-  const optimal = calcOptimalLineup(rosterIds, false, {
-    ...constraints, excludedPlayerIds: [...constraints.excludedPlayerIds, ...unavailable.filter(id => !required.has(id))]
-  });
+  const optimal = calcOptimalLineup(rosterIds, false, getDecisionLineupConstraints(manager, rosterIds));
+  const starters = new Set((manager.starters || []).map(String));
+  const optimalSlots = new Map(optimal.filled.flatMap((player, index) => player ? [[String(player.id), index]] : []));
+  const replacements = optimal.filled.flatMap((player, index) =>
+    player && !starters.has(String(player.id)) && Number.isFinite(player.projectedPoints) && player.projectedPoints > 0
+      ? [{ player, outgoing: getOutgoingLineupPlayer(manager, optimalSlots, index) }] : []);
+  const usedReplacements = new Set();
   const items = [];
   slots.forEach((slot, index) => {
     const current = state.players[manager.starters?.[index]];
@@ -988,8 +1008,10 @@ function buildGameDayChecklist(manager, now = Date.now()) {
     const risk = !current || ["Out", "IR", "PUP", "Suspended", "Doubtful", "Questionable"].includes(current.injuryStatus) ||
       current.byeWeek === state.week || !isPosEligible(current.position, slot);
     if (!risk) return;
-    const best = optimal.filled[index];
-    const alternative = best && best.id !== current?.id && !getPlayerGameDayStatus(best).locked ? best : null;
+    const best = replacements.find(({ player, outgoing }) => !usedReplacements.has(String(player.id)) &&
+      (current ? String(outgoing?.id) === String(current.id) : !outgoing && isPosEligible(player.position, slot)))?.player;
+    const alternative = !status.locked && best && !getPlayerGameDayStatus(best).locked ? best : null;
+    if (alternative) usedReplacements.add(String(alternative.id));
     const title = !current ? `${slot}: empty slot` : `${current.name}: ${current.byeWeek === state.week ? "bye" : !isPosEligible(current.position, slot) ? `not eligible for ${slot}` : current.injuryStatus}`;
     const action = status.locked ? "Kickoff passed; check provider rules" : alternative ? `Review ${alternative.name} (${Number(alternative.projectedPoints).toFixed(1)} projected)` : "Review lineup / find coverage";
     items.push({ title, action, locked: status.locked, playerId: current?.id || "", replacementId: alternative?.id || "", kickoff: status.kickoff || null });
@@ -1056,7 +1078,7 @@ function computeLeagueProj(m, st, rules) {
     for (const k in st) {
       if (!k.startsWith("pts_") && rules[k] !== undefined) { tot += st[k] * rules[k]; hit = true; }
     }
-    if (hit && Math.abs(tot) > 0.001) return Math.max(0, tot);
+    if (hit) return Math.max(0, tot);
   }
   const recM = rules?.rec ?? 1.0;
   if (recM >= 0.9 && st.pts_ppr !== undefined) return Math.max(0, st.pts_ppr);
@@ -1628,21 +1650,31 @@ async function initApp(skipUrlAccountSync = false, forceRefreshSources = false, 
   }
 }
 
+let weeklyProjectionLoadVersion = 0;
+
 async function fetchWeeklyProjections() {
+  const version = ++weeklyProjectionLoadVersion;
   const seas = state.activeLeague?.season || state.season;
-  setStatus(`Syncing Week ${state.week} projections...`);
-  const previousProjections = state.rawProj;
+  const week = state.week;
+  const leagueKey = getLeagueRecordsKey();
+  const isCurrent = () => version === weeklyProjectionLoadVersion && week === state.week &&
+    String(seas) === String(state.activeLeague?.season || state.season) && leagueKey === getLeagueRecordsKey();
+  setStatus(`Syncing Week ${week} projections...`);
   try {
-    const data = await fetchJson(`https://api.sleeper.app/v1/projections/nfl/regular/${seas}/${state.week}`);
-    state.rawProj = {};
+    const data = await fetchJson(`https://api.sleeper.app/v1/projections/nfl/regular/${seas}/${week}`);
+    if (!isCurrent()) return;
+    if (!data || typeof data !== "object" || !Object.keys(data).length) throw new Error(`No projection coverage for ${seas} Week ${week}.`);
+    const projections = {};
     if (Array.isArray(data)) {
-      data.forEach(e => { if (e.player_id) state.rawProj[e.player_id] = { ...(e.stats || e), pts_ppr: e.pts_ppr ?? e.stats?.pts_ppr }; });
+      data.forEach(e => { if (e.player_id) projections[e.player_id] = { ...(e.stats || e), pts_ppr: e.pts_ppr ?? e.stats?.pts_ppr }; });
     } else if (data) {
-      for (const [k, e] of Object.entries(data)) state.rawProj[k] = { ...(e.stats || e), pts_ppr: e.pts_ppr ?? e.stats?.pts_ppr };
+      for (const [k, e] of Object.entries(data)) projections[k] = { ...(e.stats || e), pts_ppr: e.pts_ppr ?? e.stats?.pts_ppr };
     }
+    state.rawProj = projections;
     markDataSource("projections");
   } catch (error) {
-    state.rawProj = previousProjections;
+    if (!isCurrent()) return;
+    state.rawProj = {};
     markDataSource("projections", error);
   }
   recalcAllPlayers();
@@ -3427,7 +3459,7 @@ function renderOptimizerTab(idx) {
   renderGameDayChecklist(state.managers[idx]);
   const tm = state.managers[idx];
   if (!tm) return;
-  const opt = calcOptimalLineup(tm.players, false, getLineupLockConstraints(tm));
+  const opt = calcOptimalLineup(tm.players, false, getDecisionLineupConstraints(tm));
   const rowsEl = document.getElementById("optRows");
   if (!rowsEl) return;
   rowsEl.innerHTML = "";
@@ -3449,10 +3481,7 @@ function renderOptimizerTab(idx) {
     let cPl = null;
     if (currentIds.has(String(oPl.id)) && !usedCurrent.has(String(oPl.id))) cPl = oPl;
     if (!cPl) {
-      let outgoing = state.players[tm.starters[index]];
-      while (outgoing && optimalSlots.has(String(outgoing.id))) {
-        outgoing = state.players[tm.starters[optimalSlots.get(String(outgoing.id))]];
-      }
+      const outgoing = getOutgoingLineupPlayer(tm, optimalSlots, index);
       const candidates = replacementCandidates.filter(player => !usedCurrent.has(String(player.id)));
       candidates.sort((a, b) => Number(a.projectedPoints || 0) - Number(b.projectedPoints || 0));
       cPl = outgoing && !usedCurrent.has(String(outgoing.id)) ? outgoing : candidates[0] || null;
@@ -3767,24 +3796,31 @@ function renderWaiverNeeds(manager, needs) {
   }).join("") : `<div class="draft-empty">No matching available players found for these needs.</div>`;
 }
 
-function renderWaiversTab() {
-  loadFaabState();
-  const rostered = new Set();
-  state.managers.forEach(m => m.players.forEach(p => rostered.add(p)));
-  const selectedTeamIndex = parseInt(document.getElementById("teamSelect")?.value || "0", 10);
-  const selectedManager = state.managers[selectedTeamIndex];
-  const rosterNeeds = getWaiverRosterNeeds(selectedManager);
-  const pf = document.getElementById("waiverPos")?.value || "ALL";
-  state.waiverTargets = Object.values(state.players).filter(p => {
+let waiverReviewPlayerId = "";
+
+function getWaiverCandidates(manager, pf = "ALL", reviewPlayerId = "") {
+  const rostered = new Set(state.managers.flatMap(roster => roster.players || []).map(String));
+  const rosterNeeds = getWaiverRosterNeeds(manager);
+  return Object.values(state.players).filter(p => {
     if (Boolean(p.isDemo) !== Boolean(state.activeLeague?.isDemo)) return false;
-    if (p.isPick || rostered.has(p.id)) return false;
+    if (p.isPick || rostered.has(String(p.id))) return false;
     if (p.position !== "DEF" && !p.isCurrentNfl) return false;
     if (pf === "ALL" && !["QB","RB","WR","TE","DEF","K"].includes(p.position)) return false;
     if (pf === "FLEX" && !["RB","WR","TE"].includes(p.position)) return false;
     if (pf !== "ALL" && pf !== "FLEX" && p.position !== pf) return false;
     return p.projectedPoints > 1 || p.seasonPpg > 2;
   }).map(player => ({ ...player, waiverFitScore: rosterNeeds.fitByPosition[player.position] || (pf === "FLEX" ? rosterNeeds.fitByPosition.FLEX || 0 : 0) }))
-    .sort((a, b) => (b.waiverFitScore - a.waiverFitScore) || (pf === "ALL" ? (b.vorpScore - a.vorpScore) : (b.projectedPoints - a.projectedPoints))).slice(0, 15);
+    .sort((a, b) => Number(String(b.id) === reviewPlayerId) - Number(String(a.id) === reviewPlayerId) ||
+      (b.waiverFitScore - a.waiverFitScore) || (pf === "ALL" ? (b.vorpScore - a.vorpScore) : (b.projectedPoints - a.projectedPoints))).slice(0, 15);
+}
+
+function renderWaiversTab() {
+  loadFaabState();
+  const selectedTeamIndex = parseInt(document.getElementById("teamSelect")?.value || "0", 10);
+  const selectedManager = state.managers[selectedTeamIndex];
+  const rosterNeeds = getWaiverRosterNeeds(selectedManager);
+  const pf = document.getElementById("waiverPos")?.value || "ALL";
+  state.waiverTargets = getWaiverCandidates(selectedManager, pf, waiverReviewPlayerId);
   renderWaiverNeeds(selectedManager, rosterNeeds.needs);
 
   const tbl = document.getElementById("waiverTbl");
@@ -3798,6 +3834,9 @@ function renderWaiversTab() {
     const hCol = ["Questionable","Doubtful"].includes(fa.injuryStatus) ? "var(--warn)" : (["Out","IR","PUP","Suspended"].includes(fa.injuryStatus) ? "var(--bad)" : "var(--good)");
     const isBye = fa.byeWeek > 0 && fa.byeWeek === state.week;
     const tr = document.createElement("tr");
+    tr.dataset.waiverPlayer = fa.id;
+    tr.classList.toggle("is-reviewed-pickup", String(fa.id) === waiverReviewPlayerId);
+    tr.tabIndex = -1;
     tr.innerHTML = `
       <td><span class="pos-pill" style="${posBadgeStyle(fa.position)}">${fa.position}</span></td>
       <td><div class="player-cell"><img class="avatar" src="${avatarUrl(fa)}" onerror="this.style.display='none'" /><div><div style="font-weight:700;font-size:14px;color:var(--text-main);"><img class="team-logo-sm" src="${teamLogoUrl(fa.team)}" onerror="this.style.display='none'"/>${fa.name}</div><div style="font-size:11px;color:var(--text-muted);">${fa.position} #${fa.posRank} • Snap: ${fa.snapSharePct.toFixed(0)}%</div></div></div></td>
@@ -4296,8 +4335,9 @@ function readFaabStateForLeague(league) {
 
 function getPortfolioClaimDrop(roster, addPlayer) {
   const starters = new Set((roster.starters || []).map(String));
+  const inactive = new Set([...(roster.reserve || []), ...(roster.taxi || [])].map(String));
   return (roster.players || []).map(id => state.players[id]).filter(player => {
-    return player && !player.isPick && String(player.id) !== String(addPlayer.id) && !starters.has(String(player.id)) && !getPlayerGameDayStatus(player).locked;
+    return player && !player.isPick && String(player.id) !== String(addPlayer.id) && !starters.has(String(player.id)) && !inactive.has(String(player.id)) && !getPlayerGameDayStatus(player).locked;
   }).sort((a, b) => Number(a.projectedPoints || 0) - Number(b.projectedPoints || 0) || Number(a.baseValue || 0) - Number(b.baseValue || 0))[0] || null;
 }
 
@@ -5107,25 +5147,29 @@ function buildOpponentAwareRecommendations(manager) {
   return results.sort((a, b) => b.priority - a.priority).slice(0, 3);
 }
 
-function buildWeeklyRecommendations() {
+function buildWeeklyRecommendations(waiverCandidates) {
   const managerIndex = parseInt(document.getElementById("teamSelect")?.value || "0", 10);
   const manager = state.managers[managerIndex];
   if (!manager) return [];
   const recommendations = [];
-  const optimal = calcOptimalLineup(manager.players, false, getLineupLockConstraints(manager));
+  const optimal = calcOptimalLineup(manager.players, false, getDecisionLineupConstraints(manager));
   const currentStarters = new Set((manager.starters || []).map(String));
   const optimalSlots = new Map(optimal.filled.flatMap((player, index) => player ? [[String(player.id), index]] : []));
   optimal.slots.forEach((slot, index) => {
     const best = optimal.filled[index];
-    if (!best || currentStarters.has(String(best.id))) return;
-    let current = state.players[manager.starters[index]];
-    // Follow retained starters across slots to find who actually leaves the lineup.
-    while (current && optimalSlots.has(String(current.id))) {
-      current = state.players[manager.starters[optimalSlots.get(String(current.id))]];
+    if (!best || currentStarters.has(String(best.id)) || !Number.isFinite(best.projectedPoints) || best.projectedPoints <= 0) return;
+    const current = getOutgoingLineupPlayer(manager, optimalSlots, index);
+    if (!current) {
+      recommendations.push({
+        priority: 100, level: "urgent", confidence: "Medium", actionKind: "lineup",
+        type: "Open slot", playerId: best.id, title: `Start ${best.name} in open ${slot}`,
+        detail: `${slot} slot is empty. ${Number(best.projectedPoints || 0).toFixed(1)} projected pts; verify eligibility in your league.`,
+        value: "Fill empty slot"
+      });
+      return;
     }
-    if (!current) return;
     const gain = (best.projectedPoints || 0) - (current.projectedPoints || 0);
-    if (gain < 0.5) return;
+    if (!Number.isFinite(gain) || gain < 0.5) return;
     const unavailable = ["Out", "IR", "PUP", "Suspended"].includes(current.injuryStatus) || current.byeWeek === state.week;
     recommendations.push({
       priority: unavailable || gain >= 5 ? 100 + gain : 65 + gain, level: unavailable || gain >= 5 ? "urgent" : "high", confidence: gain >= 5 ? "Medium" : "Low", actionKind: "lineup",
@@ -5139,27 +5183,29 @@ function buildWeeklyRecommendations() {
 
   manager.players.forEach(playerId => {
     const player = state.players[playerId];
-    if (!player || player.isPick || !(manager.starters || []).includes(playerId)) return;
-    if (recommendations.some(item => item.type === "Start / sit" && item.comparisonPlayerId === playerId)) return;
+    if (!player || player.isPick || !currentStarters.has(String(playerId)) || getPlayerGameDayStatus(player).locked) return;
+    if (recommendations.some(item => item.type === "Start / sit" && String(item.comparisonPlayerId) === String(playerId))) return;
     if (["Out", "IR", "PUP", "Suspended"].includes(player.injuryStatus)) {
       recommendations.push({ priority: 94, level: "urgent", type: "Roster risk", playerId, title: `${player.name} is ${player.injuryStatus}`, detail: `${player.position} · ${player.team}`, value: "Review lineup", confidence: "High", actionKind: "lineup" });
     }
-    if (player.byeWeek === state.week) {
+    else if (player.byeWeek === state.week) {
       recommendations.push({ priority: 78, level: "high", type: "Bye week", playerId, title: `${player.name} is on bye`, detail: `${player.position} · Week ${state.week}`, value: "Find coverage", confidence: "High", actionKind: "lineup" });
     }
   });
 
-  const owned = new Set(state.managers.flatMap(roster => roster.players || []));
-  state.waiverTargets.filter(player => !owned.has(player.id)).slice(0, 5).forEach((player, index) => {
+  const owned = new Set(state.managers.flatMap(roster => roster.players || []).map(String));
+  (waiverCandidates || getWaiverCandidates(manager)).filter(player => !owned.has(String(player.id)) &&
+    !getPlayerGameDayStatus(player).locked && !["Out", "IR", "PUP", "Suspended"].includes(player.injuryStatus) &&
+    player.byeWeek !== state.week && Number.isFinite(player.projectedPoints) && player.projectedPoints > 0).forEach(player => {
     const drop = getPortfolioClaimDrop(manager, player);
     const proposedIds = manager.players.filter(id => id !== drop?.id).concat(player.id);
-    const proposed = calcOptimalLineup(proposedIds, false, getLineupLockConstraints(manager));
+    const proposed = calcOptimalLineup(proposedIds, false, getDecisionLineupConstraints(manager, proposedIds));
     const gain = Math.max(0, proposed.total - optimal.total);
-    if (gain < 0.5) return;
+    if (!Number.isFinite(gain) || gain < 0.5) return;
     const bid = getSuggestedFaabBid(player);
     recommendations.push({
-      priority: 55 - index + Math.min(20, gain), level: gain >= 5 ? "high" : "normal",
-      type: "Waiver", playerId: player.id, title: `Evaluate ${player.name}`,
+      priority: 55 + Math.min(20, gain), level: gain >= 5 ? "high" : "normal",
+      type: "Waiver", playerId: player.id, projectedGain: gain, title: `Evaluate ${player.name}`,
       comparisonPlayerId: drop?.id,
       detail: `${player.position} · optimized lineup ${optimal.total.toFixed(1)} → ${proposed.total.toFixed(1)} projected pts. ${drop ? `Drop candidate: ${drop.name}.` : "No unlocked bench drop; check roster space."} Suggested $${bid}; verify remaining FAAB before submitting.`,
       value: gain > 0 ? `+${gain.toFixed(1)} lineup pts` : "Depth option",
@@ -5167,12 +5213,14 @@ function buildWeeklyRecommendations() {
     });
   });
 
-  recommendations.push(...buildOpponentAwareRecommendations(manager));
-  return recommendations.sort((a, b) => b.priority - a.priority).slice(0, 18);
+  const waiverAdvice = recommendations.filter(item => item.type === "Waiver")
+    .sort((a, b) => b.projectedGain - a.projectedGain).slice(0, 5);
+  return [...recommendations.filter(item => item.type !== "Waiver"), ...waiverAdvice, ...buildOpponentAwareRecommendations(manager)]
+    .sort((a, b) => b.priority - a.priority).slice(0, 18);
 }
 
 function getGmRecommendationCategory(item) {
-  if (["Start / sit", "Roster risk", "Bye week"].includes(item.type)) return "lineup";
+  if (["Start / sit", "Open slot", "Roster risk", "Bye week"].includes(item.type)) return "lineup";
   if (["Waiver", "Portfolio roster gap"].includes(item.type)) return "waivers";
   if (["Trade fit", "Trade history"].includes(item.type)) return "trade";
   if (item.type.startsWith("Portfolio")) return "portfolio";
@@ -5534,7 +5582,7 @@ async function renderGMInbox(forceRefresh = false) {
   await reconcileGmAdviceOutcomes(nflState, forceRefresh);
   if (version !== gmInboxRenderVersion) return;
   const adviceSnapshots = readGmAdviceSnapshots();
-  const allRecommendations = [...weeklyRecommendations, ...pressure].sort((a, b) => b.priority - a.priority);
+  const allRecommendations = weeklyRecommendations;
   const feedback = readGmFeedback();
   const leagueKey = getNewsletterLeagueKey();
   const activeRecommendations = allRecommendations.filter(item => !["done", "dismissed"].includes(feedback[getGmRecommendationKey(item)]?.status));
@@ -5572,7 +5620,7 @@ async function renderGMInbox(forceRefresh = false) {
     const byeCount = pressure.filter(item => item.title.includes("on bye across leagues")).length;
     const gapCount = pressure.filter(item => item.type === "Portfolio roster gap").length;
     const counts = [`${injuryCount} concentrated injury risk${injuryCount === 1 ? "" : "s"}`, `${byeCount} shared bye conflict${byeCount === 1 ? "" : "s"}`, `${gapCount} roster depth gap${gapCount === 1 ? "" : "s"}`].filter((label, index) => [injuryCount, byeCount, gapCount][index] > 0);
-    pressureList.innerHTML = `<div class="portfolio-pressure-summary"><strong>${pressure.length} portfolio signal${pressure.length === 1 ? "" : "s"}</strong><span>${draftEscapeHtml(counts.join(" · "))}</span><small>${draftEscapeHtml(pressure.slice(0, 3).map(item => item.title).join(" · "))}</small></div>`;
+    pressureList.innerHTML = `<div class="portfolio-pressure-summary"><strong>${pressure.length} portfolio signal${pressure.length === 1 ? "" : "s"}</strong><span>${draftEscapeHtml(counts.join(" · "))}</span><small>${draftEscapeHtml(pressure.slice(0, 3).map(item => item.title).join(" · "))}</small></div><button type="button" class="btn-builder-action" data-gm-open="portfolio">Review leagues</button>`;
   } else pressureList.innerHTML = `<p class="draft-empty">No cross-league concentration or base-position gaps detected in the tracked rosters.</p>`;
   list.innerHTML = visibleRecommendations.length
     ? visibleRecommendations.map(item => renderGmInboxAction(item, false, feedback, leagueKey, adviceSnapshots)).join("")
@@ -5608,7 +5656,8 @@ function handleGMInboxClick(event) {
     const existing = records[key] || {};
     if (feedbackButton) records[key] = { ...existing, type: feedbackButton.dataset.gmType || existing.type, helpful: feedbackButton.dataset.gmValue === "1", ratedAt: Date.now() };
     else records[key] = { ...existing, status: stateButton.dataset.gmState, leagueKey: getNewsletterLeagueKey(), type: stateButton.dataset.gmType || existing.type || "Other", week: state.week, updatedAt: Date.now() };
-    try { localStorage.setItem("fantasy-front-office:gm-feedback:v1", JSON.stringify(records)); } catch {}
+    try { localStorage.setItem("fantasy-front-office:gm-feedback:v1", JSON.stringify(records)); }
+    catch (error) { setStatus(`Inbox action could not be saved: ${error.message}`); return; }
     renderGMInbox();
     return;
   }
@@ -5616,9 +5665,30 @@ function handleGMInboxClick(event) {
   const action = actionButton.dataset.gmOpen;
   const playerId = actionButton.dataset.gmPlayer;
   if (action === "watch" && playerId) { togglePlayerWatch(playerId); renderGMInbox(); return; }
+  if (action === "waivers" && playerId) {
+    const player = state.players[playerId];
+    if (!player || state.managers.some(manager => manager.players.some(id => String(id) === String(playerId))) ||
+      getPlayerGameDayStatus(player).locked || ["Out", "IR", "PUP", "Suspended"].includes(player.injuryStatus) || player.byeWeek === state.week) {
+      setStatus("This pickup is no longer available for a current-week move. Reload to update recommendations.");
+      return;
+    }
+    document.getElementById("waiverPos").value = player.position;
+    waiverReviewPlayerId = String(playerId);
+    document.querySelector('.nav-btn[data-tab="tab-waiver"]')?.click();
+    renderWaiversTab();
+    const row = [...document.querySelectorAll("#waiverTbl tbody tr")].find(row => row.dataset.waiverPlayer === waiverReviewPlayerId);
+    if (row) { row.focus({ preventScroll: true }); row.scrollIntoView({ block: "nearest", inline: "nearest" }); }
+    else setStatus("This pickup is no longer available in the selected league. Reload to update recommendations.");
+    return;
+  }
   if (action === "trade") {
     const ownIndex = state.managers.findIndex(manager => String(manager.rosterId) === String(state.managers[parseInt(document.getElementById("teamSelect")?.value || "0", 10)]?.rosterId));
     const opponentIndex = state.managers.findIndex(manager => String(manager.rosterId) === actionButton.dataset.gmOpponent);
+    if (ownIndex < 0 || opponentIndex < 0 || ownIndex === opponentIndex ||
+      !state.managers[ownIndex].players.some(id => String(id) === String(playerId))) {
+      setStatus("This trade suggestion no longer matches the selected roster or partner. Reload to update recommendations.");
+      return;
+    }
     if (ownIndex >= 0) document.getElementById("tradeTeamA").value = String(ownIndex);
     if (opponentIndex >= 0) document.getElementById("tradeTeamB").value = String(opponentIndex);
     state.tradeSideA = playerId ? [playerId] : [];
@@ -7612,7 +7682,7 @@ function getProjectionSourceNote() {
   if (state.activeLeague?.isDemo) return "Fictional demo projections, fixed Week 6 snapshot; not actionable player advice.";
   if (state.activeLeague?.provider === "yahoo") return "Imported snapshot; re-import to update projections.";
   if (state.dataErrors.projections || !state.dataFreshness.projections) return "Projection feed unavailable or not verified; point estimates may use model fallbacks.";
-  return `Projections checked ${new Date(state.dataFreshness.projections).toLocaleString()}. Estimates are not guarantees.`;
+  return `${state.activeLeague?.season || state.season} Week ${state.week} projections checked ${new Date(state.dataFreshness.projections).toLocaleString()}. Estimates are not guarantees.`;
 }
 
 function getWeeklyMatchupKey() {

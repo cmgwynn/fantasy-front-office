@@ -67,6 +67,38 @@ nested vertical scrollers; the optional full board retains its bounded scroll.
 On phones, position, team and age sit beneath each draft player's name instead
 of occupying separate columns. Draft behavior, filters and saved settings remain
 unchanged.
+
+Inbox quality checks: the main queue contains active-league lineup, waiver and
+trade decisions only. Cross-league exposure and roster observations remain in
+Across your leagues with a direct review link; they do not fill action slots.
+The queue can contain fewer than three actions. Existing done/dismissed states
+still hide recommendations for the selected league, roster and week.
+
+Lineup advice, the kickoff checklist and the Optimizer share availability
+constraints and outgoing-player pairing. Out/IR/PUP/suspended and bye-week bench players are excluded, while locked
+starters stay in their exact slots. Empty slots generate fill-slot advice when
+an available positive-projection replacement exists. Locked injury flags do not
+become impossible current-week move requests. These are projection-only upgrades,
+not matchup-adjusted promises; unknown kickoff coverage remains explicitly warned.
+
+Weekly waiver recommendations use the same roster-fit candidate pool independently
+of the last Waivers screen filter. Only available, unlocked pickups with at least
+0.5 optimized lineup points are proposed; the five largest gains in the candidate
+pool are retained rather than evaluating only the first five candidates.
+Reserve/taxi players are not treated as immediately available starters or as
+active-bench drops that would free a roster spot. Review pickup opens the correct position
+and pins/highlights the named player in Waivers; it does not queue a bid. Stale
+pickup/trade links are revalidated before routing. Comparisons retain both player
+IDs; trade links retain the selected roster and suggested partner.
+
+Projection requests are bound to their requested league, season and week; late
+responses cannot overwrite newer selections. Failed or empty responses explicitly
+warn about unavailable coverage and discard old weekly stats rather than relabeling
+them as current projections. Custom scoring preserves a computed zero instead of
+falling through to a positive preset total. Available projection source notes
+include season and week. Existing weekly matchup evidence still requires verified
+opponents, supported scoring and sufficient completed-game coverage; missing
+coverage does not receive a made-up rating.
 Healthy roster-check status is a plain line rather than another bordered banner;
 warning states retain their existing prominence. The connected phone header
 keeps status, data details and sharing on one line.

@@ -20,7 +20,7 @@
   <h1>Optimizer Regression Checks</h1>
   <p id="summary" role="status">Loading the app runtime...</p>
   <ol id="results"></ol>
-  <iframe id="appFrame" src="../index.html?v=20261031-mobile-tools-1&amp;resume=0" title="Optimizer test runtime"></iframe>
+  <iframe id="appFrame" src="../index.html?v=20261031-decision-quality-1&amp;resume=0" title="Optimizer test runtime"></iframe>
   <script>
     async function runOptimizerFixtures() {
       const results = [];
@@ -76,7 +76,7 @@
         state.players[id] = {
           id, name, position, team: "FA", projectedPoints: score, seasonPpg: score,
           isPick: false, baseValue: 100, injuryStatus: "Healthy", byeWeek: 0,
-          isCurrentNfl: true, vorpScore: score, posRank: 999, ovrRank: 999
+          isCurrentNfl: true, vorpScore: score, posRank: 999, ovrRank: 999, snapSharePct: 0
         };
       };
       const check = (name, passed, detail) => results.push({ name, passed: Boolean(passed), detail: detail || "" });
@@ -600,7 +600,50 @@
         state.dataFreshness.projections = 0;
         const staleFallback = computeLeagueProj(projectionFixture, { adp_dd_ppr: 1000 }, { rec: 1 });
         check("Missing fresh Sleeper projection is zero", authoritativeMissing === 0 && explicitZero === 0, `Missing=${authoritativeMissing}; explicit zero=${explicitZero}.`);
+        check("Custom scoring preserves a calculated zero instead of falling through to preset points",
+          computeLeagueProj(projectionFixture, { pass_yd: 100, int: 2, pts_ppr: 12 }, { pass_yd: 0.04, int: -2 }) === 0);
         check("Stale Sleeper projection preserves fallback", staleFallback === 12, `Fallback=${staleFallback}.`);
+        const projectionLoadContext = {
+          fetch: window.fetch, recalc: recalcAllPlayers, dvp: recomputeDynamicDvpRanks,
+          raw: state.rawProj, week: state.week, checked: state.dataFreshness.projections,
+          error: state.dataErrors.projections
+        };
+        try {
+          recalcAllPlayers = () => {};
+          recomputeDynamicDvpRanks = () => {};
+          state.rawProj = { oldWeek: { pts_ppr: 40 } };
+          window.fetch = async () => { throw new Error("Projection fixture unavailable"); };
+          await fetchWeeklyProjections();
+          check("Projection failure discards old-week data and explicitly labels model fallback estimates",
+            Object.keys(state.rawProj).length === 0 &&
+            state.dataErrors.projections.includes("Projection fixture unavailable") &&
+            getProjectionSourceNote().includes("model fallbacks"));
+          window.fetch = async () => ({ ok: true, json: async () => ({}) });
+          await fetchWeeklyProjections();
+          check("An empty projection response is unavailable coverage, not a verified zero-point feed",
+            state.dataErrors.projections.includes("No projection coverage"));
+          let finishOldWeek;
+          window.fetch = () => new Promise(resolve => { finishOldWeek = data => resolve({ ok: true, json: async () => data }); });
+          const oldWeekRequest = fetchWeeklyProjections();
+          state.week = projectionLoadContext.week === 18 ? 17 : projectionLoadContext.week + 1;
+          const newWeek = state.week;
+          window.fetch = async () => ({ ok: true, json: async () => ({ currentWeek: { pts_ppr: 15 } }) });
+          await fetchWeeklyProjections();
+          finishOldWeek({ obsoleteWeek: { pts_ppr: 99 } });
+          await oldWeekRequest;
+          check("A late old-week projection response cannot overwrite the selected week's data",
+            state.rawProj.currentWeek.pts_ppr === 15 && !state.rawProj.obsoleteWeek &&
+            getProjectionSourceNote().includes(`Week ${newWeek}`));
+        } finally {
+          window.fetch = projectionLoadContext.fetch;
+          recalcAllPlayers = projectionLoadContext.recalc;
+          recomputeDynamicDvpRanks = projectionLoadContext.dvp;
+          state.rawProj = projectionLoadContext.raw;
+          state.week = projectionLoadContext.week;
+          state.dataFreshness.projections = projectionLoadContext.checked;
+          if (projectionLoadContext.error) state.dataErrors.projections = projectionLoadContext.error;
+          else delete state.dataErrors.projections;
+        }
 
         const actualClaim = buildWaiverOutcomeRecord({ playerId: "added", dropPlayerId: "dropped" }, new Map([["added", 17], ["dropped", 11]]), 6);
         const projectedClaim = buildWaiverOutcomeRecord({ playerId: "added", dropPlayerId: "bench", dropProjection: 10.5 }, new Map([["added", 14]]), 6);
@@ -818,18 +861,103 @@
         state.gameDayScheduleAvailable = false;
         state.dbTrades = [];
         state.waiverTargets = [state.players.fixture_owned_rb, state.players.fixture_claim_rb];
-        const weeklyWaivers = buildWeeklyRecommendations().filter(item => item.type === "Waiver");
+        const weeklyWaivers = buildWeeklyRecommendations(state.waiverTargets).filter(item => item.type === "Waiver");
         check("Weekly waiver advice excludes opponents' players",
           weeklyWaivers.length === 1 && weeklyWaivers[0].playerId === "fixture_claim_rb");
         check("Weekly waiver advice measures optimized lineup gain and names a drop",
           weeklyWaivers[0]?.value === "+12.0 lineup pts" &&
           weeklyWaivers[0]?.detail.includes("10.0 → 22.0") &&
           weeklyWaivers[0]?.detail.includes("Drop candidate: Bench WR."));
+        const waiverAuditContext = { filter: document.getElementById("waiverPos").value, targets: state.waiverTargets };
+        document.getElementById("waiverPos").value = "QB";
+        const firstWaiverAdvice = buildWeeklyRecommendations().filter(item => item.type === "Waiver").map(item => item.playerId).join(",");
+        document.getElementById("waiverPos").value = "WR";
+        state.waiverTargets = [];
+        check("Inbox waiver suggestions are independent of the last Waivers filter or rendered target list",
+          buildWeeklyRecommendations().filter(item => item.type === "Waiver").map(item => item.playerId).join(",") === firstWaiverAdvice &&
+          firstWaiverAdvice.length > 0);
+        document.getElementById("waiverPos").value = waiverAuditContext.filter;
+        state.waiverTargets = waiverAuditContext.targets;
+        const blockedPickupStatus = state.players.fixture_claim_rb.injuryStatus;
+        state.players.fixture_claim_rb.injuryStatus = "Out";
+        check("Unavailable pickups cannot generate immediate weekly scoring upgrades",
+          !buildWeeklyRecommendations([state.players.fixture_claim_rb]).some(item => item.type === "Waiver"));
+        state.players.fixture_claim_rb.injuryStatus = blockedPickupStatus;
+        const lowImpactPickups = Array.from({ length: 5 }, (_, index) => {
+          const id = `fixture_low_pickup_${index}`;
+          addPlayer(id, `Low pickup ${index}`, "RB", 0.1);
+          return state.players[id];
+        });
+        check("Useful pickups are evaluated beyond the first five candidates rather than hidden by low-impact options",
+          buildWeeklyRecommendations([...lowImpactPickups, state.players.fixture_claim_rb])
+            .some(item => item.type === "Waiver" && item.playerId === "fixture_claim_rb" && item.projectedGain === 12));
+        const reviewContext = {
+          review: waiverReviewPlayerId, filter: document.getElementById("waiverPos").value,
+          targets: state.waiverTargets, tab: document.querySelector(".tab-page.active").id,
+          tradeA: state.tradeSideA, tradeB: state.tradeSideB,
+          teamA: document.getElementById("tradeTeamA").value, teamB: document.getElementById("tradeTeamB").value,
+          teamAOptions: document.getElementById("tradeTeamA").innerHTML, teamBOptions: document.getElementById("tradeTeamB").innerHTML
+        };
+        try {
+          const reviewButton = document.createElement("button");
+          reviewButton.dataset.gmOpen = "waivers";
+          reviewButton.dataset.gmPlayer = "fixture_claim_rb";
+          loadFaabState();
+          const claimCountBefore = faabState.claims.length;
+          handleGMInboxClick({ target: reviewButton });
+          check("Review pickup opens Waivers with the correct position, pinned player and no automatic bid",
+            document.getElementById("tab-waiver").classList.contains("active") &&
+            document.getElementById("waiverPos").value === "RB" &&
+            document.querySelector("#waiverTbl tbody tr.is-reviewed-pickup")?.dataset.waiverPlayer === "fixture_claim_rb" &&
+            faabState.claims.length === claimCountBefore);
+          movePreview.innerHTML = renderGmInboxAction(weeklyWaivers[0], false, {}, "layout-fixture", []);
+          const compareButton = movePreview.querySelector("[data-compare-a]");
+          document.body.appendChild(movePreview);
+          compareButton.click();
+          check("Inbox pickup comparison carries the exact drop and add players into Compare",
+            document.getElementById("tab-compare").classList.contains("active") &&
+            document.getElementById("comparePlayerA").value === "fixture_drop_wr" &&
+            document.getElementById("comparePlayerB").value === "fixture_claim_rb");
+          movePreview.remove();
+          reviewButton.dataset.gmPlayer = "fixture_owned_rb";
+          handleGMInboxClick({ target: reviewButton });
+          check("A stale pickup link cannot offer an already-rostered player",
+            document.getElementById("tab-compare").classList.contains("active") &&
+            document.getElementById("statusLabel").textContent.includes("no longer available"));
+          reviewButton.dataset.gmOpen = "trade";
+          for (const id of ["tradeTeamA", "tradeTeamB"]) {
+            document.getElementById(id).innerHTML = '<option value="0">My roster</option><option value="1">Other roster</option>';
+          }
+          reviewButton.dataset.gmPlayer = "fixture_drop_wr";
+          reviewButton.dataset.gmOpponent = String(state.managers[1].rosterId);
+          handleGMInboxClick({ target: reviewButton });
+          check("Trade review preloads the current roster, intended partner and offered player",
+            document.getElementById("tab-trade").classList.contains("active") &&
+            document.getElementById("tradeTeamA").value === "0" &&
+            document.getElementById("tradeTeamB").value === "1" &&
+            state.tradeSideA.join(",") === "fixture_drop_wr" && state.tradeSideB.length === 0);
+          reviewButton.dataset.gmOpponent = "missing-partner";
+          handleGMInboxClick({ target: reviewButton });
+          check("A stale trade partner is rejected instead of silently reusing the previous partner",
+            document.getElementById("statusLabel").textContent.includes("no longer matches"));
+        } finally {
+          movePreview.remove();
+          waiverReviewPlayerId = reviewContext.review;
+          document.getElementById("waiverPos").value = reviewContext.filter;
+          state.waiverTargets = reviewContext.targets;
+          state.tradeSideA = reviewContext.tradeA;
+          state.tradeSideB = reviewContext.tradeB;
+          document.getElementById("tradeTeamA").innerHTML = reviewContext.teamAOptions;
+          document.getElementById("tradeTeamB").innerHTML = reviewContext.teamBOptions;
+          document.getElementById("tradeTeamA").value = reviewContext.teamA;
+          document.getElementById("tradeTeamB").value = reviewContext.teamB;
+          activateTab(reviewContext.tab);
+        }
         const savedClaimPoints = state.players.fixture_claim_rb.projectedPoints;
         const savedBenchHealth = state.players.fixture_drop_wr.injuryStatus;
         state.players.fixture_claim_rb.projectedPoints = 0;
         state.players.fixture_drop_wr.injuryStatus = "Out";
-        const quietAdvice = buildWeeklyRecommendations();
+        const quietAdvice = buildWeeklyRecommendations(state.waiverTargets);
         check("Inbox excludes depth-only waivers, bench injury noise and trade-history filler",
           !quietAdvice.some(item => item.type === "Waiver" || item.type === "Trade history" ||
             (item.type === "Roster risk" && item.playerId === "fixture_drop_wr")));
@@ -838,7 +966,7 @@
         addPlayer("fixture_replacement_qb", "Replacement QB", "QB", 25);
         state.managers[0].players.push("fixture_replacement_qb");
         state.players.fixture_owned_qb.injuryStatus = "Out";
-        const deduplicatedAdvice = buildWeeklyRecommendations();
+        const deduplicatedAdvice = buildWeeklyRecommendations(state.waiverTargets);
         check("A recommended starter replacement includes its injury reason without a duplicate risk card",
           deduplicatedAdvice.some(item => item.type === "Start / sit" && item.comparisonPlayerId === "fixture_owned_qb" &&
             item.level === "urgent" && item.detail.includes("Current starter Out")) &&
@@ -858,21 +986,30 @@
             rosterId: "starter-advice", players: ["fixture_mason", "fixture_judkins"],
             starters: ["fixture_judkins", "fixture_mason"]
           }];
-          const reorderedAdvice = buildWeeklyRecommendations();
+          const reorderedAdvice = buildWeeklyRecommendations([]);
           check("Inbox does not suggest starting one existing starter over another after RB/FLEX reordering",
             !reorderedAdvice.some(item => item.type === "Start / sit"));
+          state.players.fixture_judkins.injuryStatus = "Questionable";
+          check("Kickoff checklist never presents another existing starter as replacement coverage",
+            buildGameDayChecklist(state.managers[0]).items.every(item => !item.replacementId));
+          state.players.fixture_judkins.injuryStatus = "Healthy";
           renderOptimizerTab(0);
           check("Optimizer collapses unchanged starters without repeating their player cards",
             document.querySelectorAll("#optRows > .opt-row").length === 0 &&
             !document.querySelector("#optRows > details").open &&
             document.querySelectorAll("#optRows .opt-player-card").length === 2);
           state.managers[0].players.push("fixture_bench_rb");
-          const replacementAdvice = buildWeeklyRecommendations().filter(item => item.type === "Start / sit");
+          const replacementAdvice = buildWeeklyRecommendations([]).filter(item => item.type === "Start / sit");
           check("Inbox follows RB/FLEX reshuffling to recommend only the real bench-to-starter replacement",
             replacementAdvice.length === 1 &&
             replacementAdvice[0].playerId === "fixture_bench_rb" &&
             replacementAdvice[0].comparisonPlayerId === "fixture_judkins" &&
             replacementAdvice[0].projectedGain === 4.5);
+          state.players.fixture_judkins.injuryStatus = "Questionable";
+          check("Kickoff checklist follows slot reshuffling to identify real bench coverage",
+            buildGameDayChecklist(state.managers[0]).items.some(item =>
+              item.playerId === "fixture_judkins" && item.replacementId === "fixture_bench_rb"));
+          state.players.fixture_judkins.injuryStatus = "Healthy";
           renderOptimizerTab(0);
           check("Optimizer shows real changes before unchanged starters and preserves full lineup totals",
             document.querySelectorAll("#optRows > .opt-row").length === 1 &&
@@ -885,12 +1022,55 @@
           addPlayer("fixture_third_rb", "Third RB", "RB", 10);
           state.managers[0].players.push("fixture_third_rb");
           state.managers[0].starters = ["fixture_third_rb", "fixture_judkins", "fixture_mason"];
-          const repeatedSlotAdvice = buildWeeklyRecommendations().filter(item => item.type === "Start / sit");
+          const repeatedSlotAdvice = buildWeeklyRecommendations([]).filter(item => item.type === "Start / sit");
           check("Inbox pairs a new starter with the outgoing player across repeated starting slots",
             repeatedSlotAdvice.length === 1 &&
             repeatedSlotAdvice[0].playerId === "fixture_bench_rb" &&
             repeatedSlotAdvice[0].comparisonPlayerId === "fixture_third_rb" &&
             repeatedSlotAdvice[0].projectedGain === 6);
+          state.players.fixture_bench_rb.injuryStatus = "Out";
+          check("Unavailable bench players cannot become suggested starters even with a positive projection",
+            !buildWeeklyRecommendations([]).some(item => item.type === "Start / sit" && item.playerId === "fixture_bench_rb"));
+          state.players.fixture_bench_rb.injuryStatus = "Healthy";
+          state.players.fixture_bench_rb.byeWeek = state.week;
+          check("Bye-week bench players cannot become suggested starters",
+            !buildWeeklyRecommendations([]).some(item => item.type === "Start / sit" && item.playerId === "fixture_bench_rb"));
+          state.players.fixture_bench_rb.byeWeek = 0;
+          state.managers[0].taxi = ["fixture_bench_rb"];
+          check("Taxi players are not treated as immediately available starters",
+            !buildWeeklyRecommendations([]).some(item => item.type === "Start / sit" && item.playerId === "fixture_bench_rb"));
+          state.managers[0].taxi = [];
+          state.managers[0].reserve = ["fixture_bench_rb"];
+          check("Reserve players are not immediate starters or active-bench drop candidates",
+            !buildWeeklyRecommendations([]).some(item => item.type === "Start / sit" && item.playerId === "fixture_bench_rb") &&
+            getPortfolioClaimDrop(state.managers[0], state.players.fixture_owned_qb)?.id !== "fixture_bench_rb");
+          state.managers[0].reserve = [];
+          state.activeLeague = { ...state.activeLeague, rosterPositions: ["RB"] };
+          state.managers[0].starters = [];
+          const openAdvice = buildWeeklyRecommendations([]);
+          check("An empty starting slot produces one fill-slot action rather than being ignored",
+            openAdvice.filter(item => item.type === "Open slot").length === 1 &&
+            openAdvice.find(item => item.type === "Open slot").playerId === "fixture_bench_rb" &&
+            getGmRecommendationCategory(openAdvice.find(item => item.type === "Open slot")) === "lineup");
+          const oldKickoffs = state.gameDayByTeam, oldKickoffAvailable = state.gameDayScheduleAvailable;
+          const oldBenchTeam = state.players.fixture_bench_rb.team;
+          try {
+            state.players.fixture_bench_rb.team = "NE";
+            state.gameDayByTeam = { NE: { status: "locked", kickoff: Date.now() - 1000 } };
+            state.gameDayScheduleAvailable = true;
+            check("Kickoff-locked bench players cannot fill an open slot or become pickup advice",
+              !buildWeeklyRecommendations([state.players.fixture_bench_rb]).some(item => item.playerId === "fixture_bench_rb"));
+            state.managers[0].starters = ["fixture_bench_rb"];
+            state.players.fixture_bench_rb.injuryStatus = "Out";
+            check("Locked starters remain in their exact slots without impossible injury-replacement actions",
+              calcOptimalLineup(state.managers[0].players, false, getDecisionLineupConstraints(state.managers[0])).filled[0].id === "fixture_bench_rb" &&
+              !buildWeeklyRecommendations([]).some(item => item.type === "Start / sit" || item.type === "Roster risk"));
+          } finally {
+            state.players.fixture_bench_rb.team = oldBenchTeam;
+            state.players.fixture_bench_rb.injuryStatus = "Healthy";
+            state.gameDayByTeam = oldKickoffs;
+            state.gameDayScheduleAvailable = oldKickoffAvailable;
+          }
         } finally {
           state.activeLeague = starterAdviceContext.league;
           state.managers = starterAdviceContext.managers;
