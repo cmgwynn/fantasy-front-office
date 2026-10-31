@@ -63,6 +63,11 @@ function activateTab(tabId, { navigate = false, focus = false } = {}) {
 }
 
 document.addEventListener("click", e => {
+  const sortButton = e.target.closest(".th-sort[data-sort-table]");
+  if (sortButton) {
+    handleTableSortClick(sortButton);
+    return;
+  }
   const compareButton = e.target.closest("[data-compare-a]");
   if (compareButton) {
     openPlayerComparison(compareButton.dataset.compareA, compareButton.dataset.compareB);
@@ -2598,28 +2603,72 @@ function renderRosterTab(idx) {
   if (txIds.length) renderRosterTable("taxiTbl", txIds);
 }
 
+// Columns: [label, firstClickDirection, extra th style]. "asc" suits rank-style columns where lower is better.
+const tableSortState = {};
+
+function renderSortableHeader(tableId, columns) {
+  return `<thead><tr>${columns.map(([label, dir, style = ""], col) =>
+    `<th scope="col" data-sort-col="${col}" data-sort-first="${dir}"${style ? ` style="${style}"` : ""}><button type="button" class="th-sort" data-sort-table="${tableId}" data-sort-col="${col}">${label}<span class="th-sort-icon" aria-hidden="true"></span></button></th>`).join("")}</tr></thead>`;
+}
+
+function applyTableSort(table) {
+  const sort = tableSortState[table?.id];
+  if (!table) return;
+  table.querySelectorAll("thead th[data-sort-col]").forEach(th => {
+    const active = sort && Number(th.dataset.sortCol) === sort.col;
+    if (active) th.setAttribute("aria-sort", sort.dir === "asc" ? "ascending" : "descending");
+    else th.removeAttribute("aria-sort");
+  });
+  if (!sort) return;
+  const tbody = table.querySelector("tbody");
+  const value = row => {
+    const raw = row.children[sort.col]?.dataset.sortValue ?? row.children[sort.col]?.textContent.trim() ?? "";
+    const num = Number(raw);
+    return raw !== "" && Number.isFinite(num) ? num : raw.toLowerCase();
+  };
+  const rows = [...tbody.rows].map((row, index) => ({ row, index, v: value(row) }));
+  rows.sort((a, b) => {
+    const cmp = typeof a.v === "number" && typeof b.v === "number" ? a.v - b.v : String(a.v).localeCompare(String(b.v));
+    return (sort.dir === "asc" ? cmp : -cmp) || a.index - b.index;
+  });
+  rows.forEach(({ row }) => tbody.appendChild(row));
+}
+
+function handleTableSortClick(button) {
+  const table = document.getElementById(button.dataset.sortTable);
+  if (!table) return;
+  const col = Number(button.dataset.sortCol);
+  const prev = tableSortState[table.id];
+  const first = button.closest("th")?.dataset.sortFirst === "asc" ? "asc" : "desc";
+  tableSortState[table.id] = { col, dir: prev?.col === col ? (prev.dir === "asc" ? "desc" : "asc") : first };
+  applyTableSort(table);
+}
+
 function renderPowerTab() {
   const tbl = document.getElementById("powerTbl");
   if (!tbl) return;
-  tbl.innerHTML = `<thead><tr><th>Rank</th><th style="text-align:left;">Team / Manager</th><th>Record</th><th>Playoff %</th><th>Points For</th><th>Max PF</th><th>Efficiency</th><th>Points Against</th><th>All-Play</th><th>Luck Index</th><th>Power Score</th></tr></thead><tbody></tbody>`;
+  tbl.innerHTML = `${renderSortableHeader("powerTbl", [["Rank", "asc"], ["Team / Manager", "asc", "text-align:left;"], ["Record", "desc"], ["Playoff %", "desc"], ["Points For", "desc"], ["Max PF", "desc"], ["Efficiency", "desc"], ["Points Against", "desc"], ["All-Play", "desc"], ["Luck Index", "desc"], ["Power Score", "desc"]])}<tbody></tbody>`;
   const tbody = tbl.querySelector("tbody");
   state.managers.forEach(m => {
+    const games = (m.wins || 0) + (m.losses || 0) + (m.ties || 0);
+    const allPlayGames = (m.allPlayW || 0) + (m.allPlayL || 0);
     const poCol = m.playoffPct >= 65 ? "var(--good)" : (m.playoffPct <= 30 ? "var(--bad)" : "var(--warn)");
     const efCol = m.eff >= 90 ? "var(--good)" : (m.eff <= 80 ? "var(--bad)" : "var(--warn)");
     const lkCol = m.luck > 5 ? "var(--good)" : (m.luck < -5 ? "var(--bad)" : "var(--text-muted)");
     const tr = document.createElement("tr");
     tr.innerHTML = `
-      <td style="font-weight:700;">#${m.currentRank}</td>
+      <td style="font-weight:700;" data-sort-value="${m.currentRank}">#${m.currentRank}</td>
       <td style="text-align:left;font-weight:700;">${m.teamName}</td>
-      <td>${m.wins} - ${m.losses}</td>
-      <td style="color:${poCol};font-weight:700;">${m.playoffPct.toFixed(0)}%</td>
-      <td>${m.pf.toFixed(2)}</td><td>${m.maxPf.toFixed(2)}</td>
-      <td style="color:${efCol};font-weight:700;">${m.eff.toFixed(1)}%</td>
-      <td>${m.pa.toFixed(2)}</td><td>${m.allPlayW} - ${m.allPlayL}</td>
-      <td style="color:${lkCol};font-weight:700;">${m.luck >= 0 ? "+" : ""}${m.luck.toFixed(1)}%</td>
-      <td style="font-weight:800;color:var(--accent);">${m.power.toFixed(1)}</td>`;
+      <td data-sort-value="${games ? (((m.wins || 0) + 0.5 * (m.ties || 0)) / games).toFixed(4) : 0}">${m.wins} - ${m.losses}</td>
+      <td style="color:${poCol};font-weight:700;" data-sort-value="${m.playoffPct}">${m.playoffPct.toFixed(0)}%</td>
+      <td data-sort-value="${m.pf}">${m.pf.toFixed(2)}</td><td data-sort-value="${m.maxPf}">${m.maxPf.toFixed(2)}</td>
+      <td style="color:${efCol};font-weight:700;" data-sort-value="${m.eff}">${m.eff.toFixed(1)}%</td>
+      <td data-sort-value="${m.pa}">${m.pa.toFixed(2)}</td><td data-sort-value="${allPlayGames ? (m.allPlayW / allPlayGames).toFixed(4) : 0}">${m.allPlayW} - ${m.allPlayL}</td>
+      <td style="color:${lkCol};font-weight:700;" data-sort-value="${m.luck}">${m.luck >= 0 ? "+" : ""}${m.luck.toFixed(1)}%</td>
+      <td style="font-weight:800;color:var(--accent);" data-sort-value="${m.power}">${m.power.toFixed(1)}</td>`;
     tbody.appendChild(tr);
   });
+  applyTableSort(tbl);
   drawPowerChart();
 }
 
@@ -2659,10 +2708,11 @@ function renderPowerTrajectory() {
   const entry = powerTrajectoryForecasts.get(key);
   status.textContent = powerTrajectoryLoads.has(key) ? "Verifying remaining opponents and completed scores…" : entry?.error ||
     (entry?.report ? `Actual through Week ${entry.report.completedWeeks} · Forecast through Week ${entry.report.regularWeeks} · Solid = completed, dashed = forecast · ${entry.report.iterations.toLocaleString()} trials` : "Open this view to load a schedule-verified trajectory.");
-  results.innerHTML = entry?.report ? `<div class="table-wrap"><table class="comparison-table"><caption>All teams · remaining-season forecasts, not official standings</caption><thead><tr><th>Team</th><th>Current standing</th><th>Expected final standing rank</th><th>Current win equivalents</th><th>Expected final wins</th></tr></thead><tbody>${[...entry.report.teams].sort((a, b) => a.trajectory.at(-1).rank - b.trajectory.at(-1).rank).map(team => {
+  results.innerHTML = entry?.report ? `<div class="table-wrap"><table class="comparison-table" id="powerTrajectoryTbl"><caption>All teams · remaining-season forecasts, not official standings</caption>${renderSortableHeader("powerTrajectoryTbl", [["Team", "asc"], ["Current standing", "asc"], ["Expected final standing rank", "asc"], ["Current win equivalents", "desc"], ["Expected final wins", "desc"]])}<tbody>${[...entry.report.teams].sort((a, b) => a.trajectory.at(-1).rank - b.trajectory.at(-1).rank).map(team => {
     const actual = team.trajectory[entry.report.completedWeeks - 1], final = team.trajectory.at(-1);
-    return `<tr><th scope="row">${draftEscapeHtml(team.name)}</th><td>#${actual.rank}</td><td>${final.rank.toFixed(1)}</td><td>${actual.wins.toFixed(1)}</td><td>${final.wins.toFixed(1)}</td></tr>`;
+    return `<tr><th scope="row">${draftEscapeHtml(team.name)}</th><td data-sort-value="${actual.rank}">#${actual.rank}</td><td data-sort-value="${final.rank}">${final.rank.toFixed(1)}</td><td data-sort-value="${actual.wins}">${actual.wins.toFixed(1)}</td><td data-sort-value="${final.wins}">${final.wins.toFixed(1)}</td></tr>`;
   }).join("")}</tbody></table></div>` : "";
+  applyTableSort(document.getElementById("powerTrajectoryTbl"));
   drawPowerChart();
 }
 

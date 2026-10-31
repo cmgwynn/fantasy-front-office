@@ -32,6 +32,11 @@ trial ranks, not the separate legacy power-score ranking. All teams appear in
 the final summary; chart highlights six including the selected roster. Imported,
 demo, unsupported-format and missing-schedule forecasts are explicitly unavailable.
 No future player injury, bye or news adjustment is implied.
+Every column header in both Power Rankings tables (trajectory summary and the
+power table) is a sort button: first click puts the best value first (rank 1
+first for rank columns, highest first otherwise), a second click reverses it,
+and the chosen sort persists across re-renders. Records and all-play sort by
+win percentage.
 
 Team Grade displays photo-led active-roster position units and individual
 player grades. For live current-season leagues, player grades blend 60%

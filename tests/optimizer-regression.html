@@ -20,7 +20,7 @@
   <h1>Optimizer Regression Checks</h1>
   <p id="summary" role="status">Loading the app runtime...</p>
   <ol id="results"></ol>
-  <iframe id="appFrame" src="../index.html?v=20261031-waiver-bids-1&amp;resume=0" title="Optimizer test runtime"></iframe>
+  <iframe id="appFrame" src="../index.html?v=20261031-sortable-power-1&amp;resume=0" title="Optimizer test runtime"></iframe>
   <script>
     async function runOptimizerFixtures() {
       const results = [];
@@ -1534,6 +1534,36 @@
             document.querySelectorAll("#powerTrajectoryResults tbody tr").length === 4 &&
             document.getElementById("powerTrajectoryStatus").textContent.includes("Forecast through Week 4") &&
             document.getElementById("powerTrajectoryResults").textContent.includes("Expected final wins"));
+          const trajNames = () => [...document.querySelectorAll("#powerTrajectoryTbl tbody tr")].map(row => row.querySelector("th").textContent);
+          const trajCol = label => [...document.querySelectorAll("#powerTrajectoryTbl .th-sort")].find(button => button.textContent.includes(label));
+          trajCol("Team").click();
+          const byNameAsc = trajNames();
+          trajCol("Team").click();
+          const byNameDesc = trajNames();
+          trajCol("Current win equivalents").click();
+          const winsCells = [...document.querySelectorAll("#powerTrajectoryTbl tbody tr")].map(row => Number(row.children[3].dataset.sortValue));
+          renderPowerTrajectory();
+          const persisted = document.querySelector('#powerTrajectoryTbl th[data-sort-col="3"]')?.getAttribute("aria-sort") === "descending";
+          check("Trajectory table sorts by any column, toggles direction and keeps the sort across re-renders",
+            byNameAsc.join() === "Trajectory 1,Trajectory 2,Trajectory 3,Trajectory 4" &&
+            byNameDesc.join() === "Trajectory 4,Trajectory 3,Trajectory 2,Trajectory 1" &&
+            winsCells.every((value, index) => index === 0 || winsCells[index - 1] >= value) && persisted);
+          delete tableSortState.powerTrajectoryTbl;
+          const managersBeforeSort = state.managers;
+          state.managers = [[1, 3, 4, 40, 1200, -6, 90], [2, 1, 6, 75, 1350, 9, 110], [3, 4, 3, 20, 1100, 2, 80], [4, 2, 5, 55, 1280, -1, 100]].map(([rank, luckOrder, wins, playoffPct, pf, luck, power]) => ({
+            teamName: `Sort Team ${rank}`, currentRank: rank, wins, losses: 7 - wins, ties: 0, playoffPct, pf, maxPf: pf + 100, eff: 90, pa: 1200,
+            allPlayW: wins * 5, allPlayL: (7 - wins) * 5, luck, power, luckOrder }));
+          renderPowerTab();
+          const luckBtn = [...document.querySelectorAll("#powerTbl .th-sort")].find(button => button.textContent.includes("Luck Index"));
+          luckBtn.click();
+          const luckValues = [...document.querySelectorAll("#powerTbl tbody tr")].map(row => Number(row.children[9].dataset.sortValue));
+          [...document.querySelectorAll("#powerTbl .th-sort")].find(button => button.textContent.includes("Rank")).click();
+          const rankValues = [...document.querySelectorAll("#powerTbl tbody tr")].map(row => Number(row.children[0].dataset.sortValue));
+          check("Power Rankings table sorts by Luck Index (high first) and Rank (1 first)",
+            luckValues.join() === "9,2,-1,-6" && rankValues.join() === "1,2,3,4");
+          delete tableSortState.powerTbl;
+          state.managers = managersBeforeSort;
+          document.getElementById("powerTbl").innerHTML = "";
           powerTrajectoryForecasts.delete(key);
           state.workspaceSnapshot = 12345;
           await ensurePowerTrajectory();
