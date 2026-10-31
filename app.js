@@ -56,6 +56,7 @@ function activateTab(tabId, { navigate = false, focus = false } = {}) {
     ensureWeeklyMatchups().then(() => { if (targetPage.classList.contains("active")) renderDraftRoom(); });
   }
   if (tabId === "tab-power") ensurePowerTrajectory();
+  if (tabId === "tab-bracket") ensurePlayoffForecast();
   rememberWorkspaceSelection();
   document.querySelectorAll("[data-companion-tab]").forEach(button => button.setAttribute("aria-pressed", String(button.dataset.companionTab === tabId)));
   updateCompanionProviderControls();
@@ -2576,7 +2577,8 @@ function renderRosterTab(idx) {
   if (!tm) return;
   document.getElementById("rTeamName").textContent = tm.teamName;
   document.getElementById("rRecord").textContent = `Record: ${tm.wins} - ${tm.losses}`;
-  document.getElementById("rAllPlay").textContent = `All-Play: ${tm.allPlayW} - ${tm.allPlayL}`;
+  const weeklyAllPlay = getWeeklyLuckByRoster()?.get(String(tm.rosterId));
+  document.getElementById("rAllPlay").textContent = weeklyAllPlay ? `All-Play: ${weeklyAllPlay.allPlayWins} - ${weeklyAllPlay.allPlayLosses}` : `Points-for rank: #${tm.allPlayL + 1}`;
   document.getElementById("rPoints").textContent = `PF: ${tm.pf.toFixed(2)} (Max: ${tm.maxPf.toFixed(2)} | ${tm.eff.toFixed(1)}% Eff) | PA: ${tm.pa.toFixed(2)}`;
   document.getElementById("rRank").textContent = `Power Rank: #${tm.currentRank} (${tm.power.toFixed(1)})`;
 
@@ -2644,17 +2646,50 @@ function handleTableSortClick(button) {
   applyTableSort(table);
 }
 
+// Weekly all-play: each week a team "plays" every other team's score; expected wins are the average share it beats.
+function getWeeklyLuckByRoster() {
+  const record = leagueRecordsCache.get(getLeagueRecordsKey());
+  if (!record?.games?.length) return null;
+  let insights;
+  try { insights = FFORecords.scoringInsights(record.games); } catch { return null; }
+  const byId = new Map(insights.teams.map(team => [team.id, team]));
+  const result = new Map();
+  state.managers.forEach(manager => {
+    const team = byId.get(String(manager.rosterId));
+    const games = (manager.wins || 0) + (manager.losses || 0) + (manager.ties || 0);
+    if (team && team.weeks === games) result.set(String(manager.rosterId), team);
+  });
+  return result.size === state.managers.length ? result : null;
+}
+
+function ensurePowerLuckData() {
+  const league = state.activeLeague;
+  const key = getLeagueRecordsKey();
+  if (!league || state.workspaceSnapshot || !["sleeper", "espn"].includes(league.provider) ||
+      leagueRecordsCache.has(key) || leagueRecordsLoads.has(key)) return;
+  loadLeagueRecords().then(() => {
+    if (getLeagueRecordsKey() === key && document.getElementById("tab-power")?.classList.contains("active")) renderPowerTab();
+  });
+}
+
 function renderPowerTab() {
   const tbl = document.getElementById("powerTbl");
   if (!tbl) return;
+  if (document.getElementById("tab-power")?.classList.contains("active")) ensurePowerLuckData();
+  const weekly = getWeeklyLuckByRoster();
+  const luckLoading = !weekly && leagueRecordsLoads.has(getLeagueRecordsKey());
   tbl.innerHTML = `${renderSortableHeader("powerTbl", [["Rank", "asc"], ["Team / Manager", "asc", "text-align:left;"], ["Record", "desc"], ["Playoff %", "desc"], ["Points For", "desc"], ["Max PF", "desc"], ["Efficiency", "desc"], ["Points Against", "desc"], ["All-Play", "desc"], ["Luck Index", "desc"], ["Power Score", "desc"]])}<tbody></tbody>`;
   const tbody = tbl.querySelector("tbody");
   state.managers.forEach(m => {
     const games = (m.wins || 0) + (m.losses || 0) + (m.ties || 0);
-    const allPlayGames = (m.allPlayW || 0) + (m.allPlayL || 0);
+    const wk = weekly?.get(String(m.rosterId));
+    const allPlayGames = wk ? wk.allPlayWins + wk.allPlayLosses + wk.allPlayTies : 0;
+    const allPlayText = wk ? `${wk.allPlayWins} - ${wk.allPlayLosses}${wk.allPlayTies ? ` - ${wk.allPlayTies}` : ""}` : (luckLoading ? "…" : "--");
+    const luckText = wk ? `${wk.luck >= 0 ? "+" : ""}${wk.luck.toFixed(1)} W` : (luckLoading ? "…" : "--");
+    const luckTitle = wk ? `${m.wins}${m.ties ? `-${m.ties}` : ""} actual wins vs ${wk.expectedWins.toFixed(2)} expected from weekly all-play` : "Needs completed weekly scores";
     const poCol = m.playoffPct >= 65 ? "var(--good)" : (m.playoffPct <= 30 ? "var(--bad)" : "var(--warn)");
     const efCol = m.eff >= 90 ? "var(--good)" : (m.eff <= 80 ? "var(--bad)" : "var(--warn)");
-    const lkCol = m.luck > 5 ? "var(--good)" : (m.luck < -5 ? "var(--bad)" : "var(--text-muted)");
+    const lkCol = !wk ? "var(--text-muted)" : wk.luck >= 0.75 ? "var(--good)" : (wk.luck <= -0.75 ? "var(--bad)" : "var(--text-muted)");
     const tr = document.createElement("tr");
     tr.innerHTML = `
       <td style="font-weight:700;" data-sort-value="${m.currentRank}">#${m.currentRank}</td>
@@ -2663,8 +2698,8 @@ function renderPowerTab() {
       <td style="color:${poCol};font-weight:700;" data-sort-value="${m.playoffPct}">${m.playoffPct.toFixed(0)}%</td>
       <td data-sort-value="${m.pf}">${m.pf.toFixed(2)}</td><td data-sort-value="${m.maxPf}">${m.maxPf.toFixed(2)}</td>
       <td style="color:${efCol};font-weight:700;" data-sort-value="${m.eff}">${m.eff.toFixed(1)}%</td>
-      <td data-sort-value="${m.pa}">${m.pa.toFixed(2)}</td><td data-sort-value="${allPlayGames ? (m.allPlayW / allPlayGames).toFixed(4) : 0}">${m.allPlayW} - ${m.allPlayL}</td>
-      <td style="color:${lkCol};font-weight:700;" data-sort-value="${m.luck}">${m.luck >= 0 ? "+" : ""}${m.luck.toFixed(1)}%</td>
+      <td data-sort-value="${m.pa}">${m.pa.toFixed(2)}</td><td data-sort-value="${allPlayGames ? ((wk.allPlayWins + wk.allPlayTies / 2) / allPlayGames).toFixed(4) : -1}">${allPlayText}</td>
+      <td style="color:${lkCol};font-weight:700;" data-sort-value="${wk ? wk.luck : -99}" title="${luckTitle}">${luckText}</td>
       <td style="font-weight:800;color:var(--accent);" data-sort-value="${m.power}">${m.power.toFixed(1)}</td>`;
     tbody.appendChild(tr);
   });
@@ -6377,17 +6412,18 @@ function renderPlayoffForecast() {
   if (!status || !results || !button) return;
   button.disabled = playoffForecastLoads.has(key);
   const entry = playoffForecasts.get(key);
-  status.textContent = button.disabled ? "Loading and validating the entire regular-season schedule…" :
-    entry?.error || (entry ? `${entry.source}. ${entry.report.iterations.toLocaleString()} reproducible trials; completed Weeks 1–${entry.report.completedWeeks}, remaining Weeks ${entry.report.completedWeeks + 1}–${entry.report.regularWeeks}. ${entry.report.playoffTeams} playoff teams, ${entry.report.reseed ? "reseeding" : "fixed draw"}.` :
-      "Run a schedule-validated scenario. Supports current-season Sleeper, even team counts, 4/6/8 playoff teams, single-week rounds, no divisions/median games/byes. Requires at least two completed weeks and remaining regular-season games. Explore Demo uses fictional inputs.");
+  button.hidden = !entry && !button.disabled;
+  button.textContent = button.disabled ? "Running 5,000 trials…" : "Refresh scenarios";
+  status.textContent = button.disabled ? "Running 5,000 trials with your league settings…" :
+    entry?.error || (entry ? `${entry.report.iterations.toLocaleString()} trials · through Week ${entry.report.completedWeeks} · ${entry.report.playoffTeams} playoff teams${entry.updatedAt ? ` · updated ${new Date(entry.updatedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}` : ""}` :
+      state.activeLeague ? "Loading playoff scenarios…" : "Connect a league to see playoff scenarios.");
   results.replaceChildren();
   if (!entry?.report || entry.error) return;
   const { report } = entry;
   const percent = count => `${(count / report.iterations * 100).toFixed(1)}%`;
   const names = new Map(report.teams.map(team => [team.id, team.name]));
   const escape = draftEscapeHtml;
-  results.innerHTML = `<p class="comparison-note">Scenario estimates, not official or calibrated probabilities. Seeds use record → PF → roster ID, not provider-specific tiebreakers. The entire current week is simulated; live scores are ignored. No future lineup, injury, or NFL bye adjustments.</p>
-    <details class="rivalry-details"><summary>Model, tiebreakers &amp; limitations</summary><p class="comparison-note">Standings are reconstructed from complete weekly results through the last completed week, not live provider totals. Seeds use win equivalents (W + half T), then total PF, then stable roster ID for exact ties. No division berths or custom standings overrides. Each team's score is an independent normal draw using its completed-week mean and sample standard deviation (minimum 10 points), rounded to cents; negative scores are allowed. The same scoring distribution is used throughout the playoffs, with higher seed winning an exact playoff tie. No injury, bye, transaction, correlation, or future lineup adjustments. Small samples and model assumptions can substantially change results. Fixed seed ${report.seed}; repeated runs on identical data match. At 5,000 trials, worst-case Monte Carlo standard error is about 0.7 percentage points; model error is not measured. These results do not replace older Power Rankings estimates or follow the illustrative bracket's controls/picks. Results are not saved in workspace backups.</p></details>
+  results.innerHTML = `<details class="rivalry-details"><summary>How scenarios work</summary><p class="comparison-note">Each trial plays out the rest of your league schedule using every team's scoring average and variance so far, then runs your league's playoff format. Ties break on record, then points for. Injuries, byes and lineup changes are not modeled. Seed ${report.seed}.</p></details>
     <div class="table-wrap" role="region" aria-label="Schedule simulation estimates" tabindex="0"><table class="comparison-table"><caption>Regular-season qualification and full playoff path estimates</caption><thead><tr><th scope="col">Team</th><th scope="col">Score mean ± SD</th><th scope="col">Final win equivalents</th><th scope="col">Qualify</th><th scope="col">First-round bye</th><th scope="col">Reach final</th><th scope="col">Champion</th><th scope="col">Qualify given next win</th></tr></thead><tbody>${report.teams.map(team => {
       const opponent = team.nextOpponentId;
       return `<tr><th scope="row">${escape(team.name)}</th><td>${team.mean.toFixed(1)} ± ${team.deviation.toFixed(1)}</td><td>${team.expectedWinEquivalents.toFixed(2)}</td><td>${percent(team.qualified)}</td><td>${percent(team.bye)}</td><td>${percent(team.finalists)}</td><td>${percent(team.champion)}</td><td>${team.winNext ? `${(team.qualifyWithWin / team.winNext * 100).toFixed(1)}%` : "No sampled wins"}<br><small>vs ${escape(names.get(opponent))}; ${team.winNext} sampled wins</small></td></tr>`;
@@ -6396,36 +6432,31 @@ function renderPlayoffForecast() {
     <details class="rivalry-details"><summary>Final seed distributions</summary><div class="table-wrap" role="region" aria-label="Final seed distributions" tabindex="0"><table class="comparison-table"><caption>Every team's simulated finish, including teams outside the playoff field</caption><thead><tr><th scope="col">Team</th>${report.teams.map((_, index) => `<th scope="col">#${index + 1}</th>`).join("")}</tr></thead><tbody>${report.teams.map(team => `<tr><th scope="row">${escape(team.name)}</th>${team.seeds.map(count => `<td>${percent(count)}</td>`).join("")}</tr>`).join("")}</tbody></table></div></details>`;
 }
 
-async function runPlayoffForecast() {
+async function runPlayoffForecast({ fresh = false } = {}) {
   const league = state.activeLeague;
   const key = getLeagueRecordsKey();
   if (playoffForecastLoads.has(key)) return;
   playoffForecastLoads.add(key);
   renderPlayoffForecast();
   try {
-    let input, source;
-    if (league?.isDemo) {
-      const demo = FFODemo.createDemoLeague();
-      input = { teams: demo.teams.map((team, index) => ({ id: String(index + 1), name: team.teamName })),
-        completedWeeks: 2, regularWeeks: 4, playoffTeams: 4, reseed: false,
-        schedule: [...demo.completedMatchups,
-          { week: 3, homeId: "1", awayId: "3" }, { week: 3, homeId: "2", awayId: "4" },
-          { week: 4, homeId: "1", awayId: "4" }, { week: 4, homeId: "2", awayId: "3" }] };
-      source = "Fictional demo scenario: two supplied weeks plus a fictional two-week schedule, playoffs Weeks 5–6; not the demo standings or live league format";
-    } else {
-      if (!league || league.provider !== "sleeper" || state.workspaceSnapshot) {
-        throw new Error("Connect a live Sleeper league to run this scenario; imported/saved snapshots and other providers are not supported.");
-      }
-      input = await FFOPlayoffs.loadSleeper({ ...league }, fetchJson);
-      source = "Fresh Sleeper schedule and completed matchup scores";
+    if (!league || league.provider !== "sleeper" || league.isDemo || state.workspaceSnapshot) {
+      throw new Error("Playoff scenarios need a live Sleeper league.");
     }
-    playoffForecasts.set(key, { report: FFOPlayoffs.simulate(input), source });
+    const input = await FFOPlayoffs.loadSleeper({ ...league }, fetchJson);
+    const seed = fresh ? 1 + Math.floor(Math.random() * 0xfffffffe) : undefined;
+    playoffForecasts.set(key, { report: FFOPlayoffs.simulate(input, 5000, seed), updatedAt: Date.now() });
   } catch (error) {
-    playoffForecasts.set(key, { error: `Simulation unavailable: ${error.message}` });
+    playoffForecasts.set(key, { error: `Scenarios unavailable for this league: ${error.message}` });
   } finally {
     playoffForecastLoads.delete(key);
     if (getLeagueRecordsKey() === key) renderPlayoffForecast();
   }
+}
+
+function ensurePlayoffForecast() {
+  const key = getLeagueRecordsKey();
+  if (!key || playoffForecasts.has(key) || playoffForecastLoads.has(key)) return;
+  runPlayoffForecast();
 }
 
 function renderPlayoffBracketTab() {
@@ -7642,15 +7673,10 @@ function renderMatchupSim() {
     const edge = Math.abs((pA.projectedPoints || 0) - (pB.projectedPoints || 0));
     const aWins = (pA.projectedPoints || 0) > (pB.projectedPoints || 0);
     const bWins = (pB.projectedPoints || 0) > (pA.projectedPoints || 0);
-    const styleA = aWins ? "border:1.5px solid var(--good); background:var(--good-bg);" : "border:1px solid var(--border);";
-    const styleB = bWins ? "border:1.5px solid var(--good); background:var(--good-bg);" : "border:1px solid var(--border);";
-
+    const simCard = (p, wins, side) => `<div class="sim-card${wins ? " is-winner" : ""}${side === "B" ? " is-b" : ""}"><img class="avatar" src="${avatarUrl(p)}" alt="" onerror="this.style.display='none'" /><div class="sim-card-info"><span class="sim-card-name" title="${draftEscapeHtml(p.name)}"><img class="team-logo-sm" src="${teamLogoUrl(p.team)}" alt="" onerror="this.style.display='none'"/>${draftEscapeHtml(p.name)}</span><div class="sim-card-meta">${p.position} - ${p.team}</div></div><span class="sim-card-pts">${(p.projectedPoints || 0).toFixed(2)} pts</span></div>`;
     const row = document.createElement("div");
-    row.className = "opt-row"; row.style.height = "68px";
-    row.innerHTML = `
-      <div class="p-card" style="height:60px; ${styleA}"><img class="avatar" src="${avatarUrl(pA)}" onerror="this.style.display='none'" /><div style="flex:1;"><b style="color:#F2F4F8;"><img class="team-logo-sm" src="${teamLogoUrl(pA.team)}" onerror="this.style.display='none'"/>${pA.name}</b><div style="font-size:11px;color:var(--text-muted);">${pA.position} - ${pA.team}</div></div><b style="color:${aWins ? 'var(--good)' : 'var(--text-main)'};">${(pA.projectedPoints||0).toFixed(2)} pts</b></div>
-      <div style="background:var(--bg-card);color:var(--accent);border:1px solid var(--border);border-radius:10px;text-align:center;font-weight:800;font-size:11px;padding:8px;">${sl}<br>+${edge.toFixed(1)}</div>
-      <div class="p-card" style="height:60px; ${styleB}"><img class="avatar" src="${avatarUrl(pB)}" onerror="this.style.display='none'" /><div style="flex:1;"><b style="color:#F2F4F8;"><img class="team-logo-sm" src="${teamLogoUrl(pB.team)}" onerror="this.style.display='none'"/>${pB.name}</b><div style="font-size:11px;color:var(--text-muted);">${pB.position} - ${pB.team}</div></div><b style="color:${bWins ? 'var(--good)' : 'var(--text-main)'};">${(pB.projectedPoints||0).toFixed(2)} pts</b></div>`;
+    row.className = "sim-row";
+    row.innerHTML = `${simCard(pA, aWins, "A")}<div class="sim-slot">${sl}<span>+${edge.toFixed(1)}</span></div>${simCard(pB, bWins, "B")}`;
     rowsEl.appendChild(row);
   });
 
@@ -8833,6 +8859,7 @@ function renderAllViews(teamIdx) {
   renderCurrentWeekLabel();
   updateCompanionProviderControls();
   if (document.getElementById("tab-power")?.classList.contains("active")) ensurePowerTrajectory();
+  if (document.getElementById("tab-bracket")?.classList.contains("active")) ensurePlayoffForecast();
   renderDecisionDataStatus();
   renderRosterTab(teamIdx); renderPowerTab();
   renderTradeBuilderSide(true); renderTradeBuilderSide(false);
@@ -9236,7 +9263,7 @@ function bindControlEvents() {
   document.getElementById("bracketSeedMode")?.addEventListener("change", () => { state.bracketOverrides = {}; renderPlayoffBracketTab(); });
   document.getElementById("bracketReseedMode")?.addEventListener("change", () => { delete state.bracketOverrides.sf1; delete state.bracketOverrides.sf2; delete state.bracketOverrides.champ; delete state.bracketOverrides.third; renderPlayoffBracketTab(); });
   document.getElementById("resetBracketBtn")?.addEventListener("click", () => { state.bracketOverrides = {}; renderPlayoffBracketTab(); });
-  document.getElementById("runPlayoffForecast")?.addEventListener("click", runPlayoffForecast);
+  document.getElementById("runPlayoffForecast")?.addEventListener("click", () => runPlayoffForecast({ fresh: true }));
   document.getElementById("simTeamA")?.addEventListener("change", renderMatchupSim);
   document.getElementById("simTeamB")?.addEventListener("change", renderMatchupSim);
   document.getElementById("shareBtn")?.addEventListener("click", async () => {
@@ -9438,6 +9465,7 @@ async function resumeReloadWorkspace(backup) {
 }
 
 function leaveWorkspaceSnapshot() {
+  if (state.workspaceSnapshot) leagueRecordsCache.clear();
   state.workspaceSnapshot = "";
   const banner = document.getElementById("workspaceSnapshotBanner");
   if (banner) banner.hidden = true;

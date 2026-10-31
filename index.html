@@ -10,7 +10,7 @@
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
   <link rel="icon" href="icons/app-icon.svg" type="image/svg+xml" />
   <title>Fantasy Front Office</title>
-  <link rel="stylesheet" href="styles.css?v=20261031-sortable-power-1" />
+  <link rel="stylesheet" href="styles.css?v=20261031-matchup-luck-1" />
 </head>
 <body>
 
@@ -270,6 +270,7 @@
       <div id="powerTrajectoryResults"></div>
       <details class="tool-disclosure"><summary>Forecast method &amp; limits</summary><p class="comparison-note">Solid lines use completed-week standings reconstructed from provider scores. Dashed lines are mean simulated standing ranks or cumulative win equivalents (wins + half ties) against each remaining scheduled opponent. They are not the legacy power-score ranks below. Scores use completed-week means and variability, not future player news, NFL byes or lineup projections. Tiebreakers: record, points for, then roster ID. Requires a complete current-season Sleeper schedule and a supported league format; unavailable evidence is never replaced with an invented trajectory.</p></details>
       <div class="table-wrap"><table id="powerTbl"></table></div>
+      <p class="comparison-note">Luck Index = actual wins − expected wins. Expected wins come from All-Play: each week, the share of the league your score would have beaten.</p>
     </div>
 
     <!-- TAB 3: TRADE CENTER -->
@@ -666,11 +667,13 @@
     <div id="tab-bracket" class="tab-page">
       <div class="tool-intro">
         <h2 id="playoffForecastTitle">Playoff Scenarios</h2>
-        <p class="comparison-note">Estimate your playoff path from remaining matchups. Model scenarios, not official odds; record then points-for breaks ties.</p>
+        <p class="comparison-note">Your playoff odds from 5,000 simulated finishes of the remaining schedule.</p>
       </div>
       <section class="card-banner" aria-labelledby="playoffForecastTitle">
-        <button id="runPlayoffForecast" type="button">Run 5,000-trial scenario</button>
-        <p id="playoffForecastStatus" role="status" aria-live="polite"></p>
+        <div class="playoff-forecast-bar">
+          <p id="playoffForecastStatus" role="status" aria-live="polite"></p>
+          <button id="runPlayoffForecast" type="button" hidden>Refresh scenarios</button>
+        </div>
         <div id="playoffForecastResults"></div>
       </section>
       <details class="gm-secondary"><summary>Try an illustrative bracket</summary>
@@ -717,25 +720,25 @@
     <!-- TAB 9: MATCHUP SIMULATOR -->
     <div id="tab-matchup" class="tab-page">
       <div class="tool-intro"><h2>Matchup Simulator</h2><p>Compare this week's teams. Projected points and win chances are estimates.</p></div>
-      <div class="matchup-team-controls" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
-        <div style="display:flex; align-items:center; gap:8px;">
-          <select id="simTeamA" style="min-width:210px;"></select>
-          <span style="font-size:13px; font-weight:800; color:var(--accent); padding:0 6px;">VS</span>
-          <select id="simTeamB" style="min-width:210px;"></select>
-        </div>
+      <div class="matchup-team-controls">
+        <label class="sr-only" for="simTeamA">Team A</label>
+        <select id="simTeamA"></select>
+        <span class="matchup-vs" aria-hidden="true">VS</span>
+        <label class="sr-only" for="simTeamB">Team B</label>
+        <select id="simTeamB"></select>
       </div>
       <div id="matchupLiveStatus" class="draft-subtitle" aria-live="polite">Scores reflect the last league sync.</div>
-      <div class="matchup-score-grid" style="display:grid; grid-template-columns:1fr 1fr; gap:14px;">
-        <div class="card-banner" style="text-align:center;">
-          <div id="simBannerA" style="font-size:14px; font-weight:800; color:var(--good);">Team A Win Prob: 50.0%</div>
-          <div id="simScoreA" style="font-size:12px; color:var(--text-muted); font-weight:600;">Proj Score: 0.00 pts</div>
+      <div class="matchup-score-grid">
+        <div class="card-banner">
+          <div id="simBannerA" class="sim-banner-title" style="color:var(--good);">Team A Win Prob: 50.0%</div>
+          <div id="simScoreA" class="sim-banner-score">Proj Score: 0.00 pts</div>
         </div>
-        <div class="card-banner" style="text-align:center;">
-          <div id="simBannerB" style="font-size:14px; font-weight:800; color:var(--bad);">Team B Win Prob: 50.0%</div>
-          <div id="simScoreB" style="font-size:12px; color:var(--text-muted); font-weight:600;">Proj Score: 0.00 pts</div>
+        <div class="card-banner">
+          <div id="simBannerB" class="sim-banner-title" style="color:var(--bad);">Team B Win Prob: 50.0%</div>
+          <div id="simScoreB" class="sim-banner-score">Proj Score: 0.00 pts</div>
         </div>
       </div>
-      <div id="simRows" style="display:flex; flex-direction:column; gap:8px;"></div>
+      <div id="simRows" class="sim-rows"></div>
     </div>
 
     <!-- LEAGUE INTELLIGENCE -->
@@ -1063,14 +1066,14 @@
 </footer>
 
 <p id="appInstallStatus" class="app-install-status" role="status"></p>
-<script src="pwa.js?v=20261031-sortable-power-1"></script>
-<script src="monetization-config.js?v=20261031-sortable-power-1"></script>
-<script src="data-fetch.js?v=20261031-sortable-power-1"></script>
-<script src="demo-league.js?v=20261031-sortable-power-1"></script>
-<script src="league-records.js?v=20261031-sortable-power-1"></script>
-<script src="workspace-backup.js?v=20261031-sortable-power-1"></script>
-<script src="playoff-simulator.js?v=20261031-sortable-power-1"></script>
-<script src="weekly-matchups.js?v=20261031-sortable-power-1"></script>
-<script src="app.js?v=20261031-sortable-power-1"></script>
+<script src="pwa.js?v=20261031-matchup-luck-1"></script>
+<script src="monetization-config.js?v=20261031-matchup-luck-1"></script>
+<script src="data-fetch.js?v=20261031-matchup-luck-1"></script>
+<script src="demo-league.js?v=20261031-matchup-luck-1"></script>
+<script src="league-records.js?v=20261031-matchup-luck-1"></script>
+<script src="workspace-backup.js?v=20261031-matchup-luck-1"></script>
+<script src="playoff-simulator.js?v=20261031-matchup-luck-1"></script>
+<script src="weekly-matchups.js?v=20261031-matchup-luck-1"></script>
+<script src="app.js?v=20261031-matchup-luck-1"></script>
 </body>
 </html>

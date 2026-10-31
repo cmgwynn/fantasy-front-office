@@ -30,13 +30,19 @@ the existing validated Sleeper schedule simulation: actual opponents, actual
 completed scores, 5,000 reproducible trials. Expected standing ranks are mean
 trial ranks, not the separate legacy power-score ranking. All teams appear in
 the final summary; chart highlights six including the selected roster. Imported,
-demo, unsupported-format and missing-schedule forecasts are explicitly unavailable.
+unsupported-format and missing-schedule forecasts are explicitly unavailable.
 No future player injury, bye or news adjustment is implied.
 Every column header in both Power Rankings tables (trajectory summary and the
 power table) is a sort button: first click puts the best value first (rank 1
 first for rank columns, highest first otherwise), a second click reverses it,
 and the chosen sort persists across re-renders. Records and all-play sort by
 win percentage.
+Luck Index = actual wins − expected wins, where expected wins come from true
+weekly All-Play (each week, the share of other teams' scores you beat). It is
+shown in wins (e.g. "+0.7 W") and only when completed weekly scores cover every
+game played; otherwise "--". The old points-for-rank percentage is retired.
+Matchup Simulator uses container queries so the lineup cards never overlap in
+half-screen or narrow browser windows.
 
 Team Grade displays photo-led active-roster position units and individual
 player grades. For live current-season leagues, player grades blend 60%
@@ -671,9 +677,9 @@ points; unmeasured model error can be much larger. These are uncalibrated
 scenario estimates, not official odds, and do not replace older Power Rankings
 approximations. Results are in-memory only, not workspace backup content.
 
-Explore Demo runs a separate, explicitly fictional four-team scenario: two
-supplied completed weeks, two invented remaining weeks, and playoffs in Weeks
-5-6. It is not the demo's displayed standings or live league format.
+Playoff Scenarios run automatically (5,000 trials, current league settings)
+when the tab opens; "Refresh scenarios" reruns with a new random seed. There is
+no demo forecast; non-Sleeper or unsupported leagues show "Scenarios unavailable".
 
 ## Winning-tool readiness
 
