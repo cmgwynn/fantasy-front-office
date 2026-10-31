@@ -20,7 +20,7 @@
   <h1>Optimizer Regression Checks</h1>
   <p id="summary" role="status">Loading the app runtime...</p>
   <ol id="results"></ol>
-  <iframe id="appFrame" src="../index.html?v=20261031-analytics-logos-1&amp;resume=0" title="Optimizer test runtime"></iframe>
+  <iframe id="appFrame" src="../index.html?v=20261031-draft-companion-1&amp;resume=0" title="Optimizer test runtime"></iframe>
   <script>
     async function runOptimizerFixtures() {
       const results = [];
@@ -1354,6 +1354,91 @@
         } finally {
           draftState.settings = oldDraftSettings;
           draftState.userPicks = oldUserPicks;
+        }
+        const companionBefore = structuredClone(draftCompanion);
+        const companionSettings = draftState.settings;
+        const liveLeague = { ...claimLeague, provider: "sleeper", leagueId: "live-draft-fixture", season: "2026", rosterPositions: ["QB", "RB", "WR", "FLEX", "BN"] };
+        const liveManager = { ownerId: "owner-2", rosterId: 2 };
+        const liveDraft = { draft_id: "fixture-live", league_id: liveLeague.leagueId, season: "2026", sport: "nfl", type: "snake", status: "drafting",
+          settings: { teams: 4, rounds: 2, reversal_round: 0, player_type: 0 }, metadata: { scoring_type: "ppr" },
+          draft_order: { "owner-1": 1, "owner-2": 2, "owner-3": 3, "owner-4": 4 } };
+        const liveRecords = ["fixture_owned_qb", "fixture_claim_rb", "fixture_drop_wr"].map((player_id, index) => ({
+          draft_id: "fixture-live", player_id, pick_no: index + 1, round: 1, draft_slot: index + 1, picked_by: `owner-${index + 1}`
+        }));
+        try {
+          draftState.settings = { ...planSettings, teams: 4, rounds: 2, slot: 2 };
+          draftCompanion.mode = "manual";
+          draftCompanion.manualPicks = liveRecords.map(record => ({ playerId: record.player_id, overallPick: record.pick_no, teamSlot: record.draft_slot }));
+          const recorded = buildCompanionBoard();
+          check("Manual draft companion records every team without inventing opponent selections",
+            recorded.picks.length === 3 && recorded.nextPick === 4 && recorded.picks.filter(pick => pick.isUserPick).length === 1);
+          const recordedCounts = getDraftRosterCounts(draftState.settings);
+          check("Companion needs use only your actual picks, not your league's existing roster or practice picks",
+            recordedCounts.RB === 1 && !recordedCounts.QB && !recordedCounts.WR);
+          const livePool = liveRecords.map(record => ({ player: state.players[record.player_id], score: 0 }))
+            .concat({ player: state.players.fixture_owned_rb, score: 0 });
+          const livePlan = buildPersonalizedDraftPlan(draftState.settings, recorded, livePool);
+          check("Draft-day strategy removes all actual picks and recalculates the next user snake turn",
+            livePlan.upcoming[0] === 7 && livePlan.candidates.every(entry => !recorded.draftedIds.has(entry.player.id)));
+          const normalized = normalizeSleeperDraft(liveDraft, [...liveRecords].reverse(), [], liveManager, liveLeague);
+          check("Sleeper draft sync normalizes out-of-order picks and imports exact slots and owner draft slot",
+            normalized.picks.map(pick => pick.playerId).join() === liveRecords.map(record => record.player_id).join() &&
+            normalized.settings.slot === 2 && normalized.settings.starterSlots.join() === "QB,RB,WR,FLEX");
+          for (const [label, draft, picks, trades] of [
+            ["auction", { ...liveDraft, type: "auction" }, liveRecords, []],
+            ["reversal", { ...liveDraft, settings: { ...liveDraft.settings, reversal_round: 3 } }, liveRecords, []],
+            ["missing picks", liveDraft, liveRecords.slice(1), []],
+            ["duplicate players", liveDraft, [liveRecords[0], { ...liveRecords[1], player_id: liveRecords[0].player_id }], []],
+            ["unknown player", liveDraft, [{ ...liveRecords[0], player_id: "unmapped" }], []],
+            ["keeper", liveDraft, [{ ...liveRecords[0], is_keeper: true }], []],
+            ["traded picks", liveDraft, liveRecords, [{}]],
+            ["incomplete completed draft", { ...liveDraft, status: "complete" }, liveRecords, []]
+          ]) {
+            let rejected = false;
+            try { normalizeSleeperDraft(draft, picks, trades, liveManager, liveLeague); } catch { rejected = true; }
+            check(`Sleeper companion explicitly rejects ${label}`, rejected);
+          }
+          draftCompanion.mode = "sleeper";
+          draftCompanion.livePicks = normalized.picks;
+          draftCompanion.liveSettings = normalized.settings;
+          check("Sleeper companion board uses exact recorded picks, not simulated picks",
+            buildCompanionBoard().nextPick === 4 && buildCompanionBoard().picks[1].isUserPick);
+          validateDraftCompanion(draftCompanion);
+          const oldDataset = weeklyMatchupData.get(getWeeklyMatchupKey());
+          const seasonKey = String(state.activeLeague?.season || state.season);
+          const oldSchedule = plannerScheduleSources.get(seasonKey);
+          const oldScheduleError = state.dataErrors.schedule, oldScheduleTime = state.dataFreshness.schedule;
+          const oldBye = CURRENT_BYE_WEEKS.MIN;
+          try {
+            const ratingPlayer = { ...state.players.fixture_claim_rb, team: "MIN", position: "RB" };
+            plannerScheduleSources.set(seasonKey, { schedule: { MIN: { 1: { opp: "CHI" }, 2: { opp: "GB" } } } });
+            state.dataFreshness.schedule = Date.now();
+            delete state.dataErrors.schedule;
+            CURRENT_BYE_WEEKS.MIN = 3;
+            weeklyMatchupData.set(getWeeklyMatchupKey(), { weeks: [1, 2, 3], errors: [], loading: false,
+              models: new Map([["RB:1", { ratings: { CHI: { rating: 20 }, GB: { rating: 80 } } }]]) });
+            const rating = getDraftScheduleRating(ratingPlayer, [1, 2, 3], { scoring: "ppr" });
+            check("Draft schedule rating averages exact opponent percentiles and excludes a verified bye",
+              rating.rating === 50 && rating.games === 2);
+            check("Draft schedule rating never invents a neutral opponent for missing weeks",
+              getDraftScheduleRating(ratingPlayer, [1, 4], { scoring: "ppr" }).rating === undefined);
+            check("Draft schedule rating withholds unsupported TE-premium scoring",
+              getDraftScheduleRating(ratingPlayer, [1, 2], { scoring: "tep" }).rating === undefined);
+            check("Draft schedule rating renders both windows with unavailable coverage explicitly labeled",
+              renderDraftScheduleRating(ratingPlayer, { scoring: "ppr" }).includes("Season: Unavailable") &&
+              renderDraftScheduleRating(ratingPlayer, { scoring: "ppr" }).includes("Playoffs:"));
+          } finally {
+            if (oldDataset) weeklyMatchupData.set(getWeeklyMatchupKey(), oldDataset); else weeklyMatchupData.delete(getWeeklyMatchupKey());
+            if (oldSchedule) plannerScheduleSources.set(seasonKey, oldSchedule); else plannerScheduleSources.delete(seasonKey);
+            state.dataErrors.schedule = oldScheduleError;
+            if (oldScheduleError === undefined) delete state.dataErrors.schedule;
+            state.dataFreshness.schedule = oldScheduleTime;
+            CURRENT_BYE_WEEKS.MIN = oldBye;
+          }
+        } finally {
+          pauseLiveDraft();
+          draftCompanion = companionBefore;
+          draftState.settings = companionSettings;
         }
         const planSimulation = { picks: [{ isUserPick: true, player: state.players.fixture_owned_qb }], draftedIds: new Set(["fixture_owned_qb", "fixture_owned_rb"]), nextPick: 6, complete: false };
         const planPool = ["fixture_owned_qb", "fixture_owned_rb", "fixture_claim_rb", "fixture_drop_wr"].map(id => ({ player: state.players[id], score: 0 }));

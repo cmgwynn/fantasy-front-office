@@ -58,6 +58,23 @@
         Array.isArray(value.userPicks) && value.userPicks.every(id) &&
         object(value.adpByName) && Object.values(value.adpByName).every(number) && Array.isArray(value.keepers),
       `Invalid draft session: ${key}`);
+      if (value.companion !== undefined) {
+        const companion = value.companion;
+        requireValue(object(companion) && ["practice", "manual", "sleeper"].includes(companion.mode) &&
+          typeof companion.draftId === "string" && typeof companion.status === "string" && number(companion.checkedAt) &&
+          [companion.manualPicks, companion.livePicks].every(picks => Array.isArray(picks) && picks.length <= 960 &&
+            new Set(picks.map(pick => pick.playerId)).size === picks.length && picks.every((pick, index) =>
+              object(pick) && id(pick.playerId) && pick.overallPick === index + 1 &&
+              Number.isInteger(pick.teamSlot) && pick.teamSlot >= 1 && pick.teamSlot <= 32)) &&
+          (companion.liveSettings === null || (object(companion.liveSettings) &&
+            Number.isInteger(companion.liveSettings.teams) && companion.liveSettings.teams >= 4 && companion.liveSettings.teams <= 32 &&
+            Number.isInteger(companion.liveSettings.rounds) && companion.liveSettings.rounds >= 1 && companion.liveSettings.rounds <= 30 &&
+            Number.isInteger(companion.liveSettings.slot) && companion.liveSettings.slot >= 1 && companion.liveSettings.slot <= companion.liveSettings.teams &&
+            ["standard", "half", "ppr"].includes(companion.liveSettings.scoring) && companion.liveSettings.rosterFormat === "league" &&
+            Array.isArray(companion.liveSettings.starterSlots) && companion.liveSettings.starterSlots.length > 0 &&
+            companion.liveSettings.starterSlots.length <= 40 && companion.liveSettings.starterSlots.every(id))),
+        `Invalid draft companion: ${key}`);
+      }
     } else if (key === "fantasy-front-office:newsletter:v1") {
       requireValue(object(value) && Object.values(value).every(archive => object(archive) && Object.values(archive).every(issue =>
         object(issue) && id(issue.title) && id(issue.leagueName) && Array.isArray(issue.summary) &&

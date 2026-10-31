@@ -24,6 +24,27 @@ a league to use roster-based features.
 
 ## Current release
 
+Draft Room has separate practice, manual draft-day, and read-only Sleeper modes.
+Manual mode records every snake pick in order; undo/reset affect only its board.
+Sleeper mode discovers actual league drafts, verifies ordered complete pick
+coverage and the selected roster owner's draft slot, and refreshes every 15
+seconds only while following with Draft Room visible. Refreshing the app resumes
+a saved draft snapshot with polling off until Follow is selected. Failed syncing
+stops polling and explicitly labels the last board as a snapshot. Standard NFL
+snake drafts only: auctions, reversal rounds, rookie-only pools, keepers, traded
+picks, unknown players and unsupported slots/scoring are explicitly rejected.
+No picks are submitted to Sleeper. Its API documentation requires commercial
+licensing; this integration does not resolve that existing launch requirement.
+
+Actual picks drive remaining-player recommendations, positional gaps, and the
+existing partial ADP grade/model alternatives. Practice picks remain separate.
+Regular-season and playoff schedule ratings are context only and do not change
+draft scores. They require verified schedules and historical positional allowance
+coverage from the weekly matchup loader, not the legacy seeded schedule grades.
+Byes are excluded; missing opponents/evidence or unsupported scoring/positions
+are Unavailable. Preseason current-season evidence may be insufficient. A higher
+0–100 average means easier historical opponents, not guaranteed player output.
+
 Player Analytics draws transparent team logos directly on the chart without
 square background plates. Table team logos (including defense avatars) have no
 background fill, padding or circular clipping. Chart positions, connectors,

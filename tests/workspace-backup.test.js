@@ -62,6 +62,21 @@ test("workspace preserves optional career history while retaining support for ol
   assert.throws(() => workspace.validateBackup(backup), /Duplicate historical roster/);
 });
 
+test("workspace preserves separate draft-day boards and rejects malformed recorded picks", () => {
+  const backup = fixture(), key = "fantasy-draft-v1:yahoo:2026:test";
+  const draft = { settings: { type: "redraft", teams: 12, slot: 2, rounds: 15, scoring: "ppr", rosterFormat: "standard" },
+    userPicks: ["practice-player"], adpByName: {}, keepers: [],
+    companion: { mode: "manual", manualPicks: [{ playerId: "p1", overallPick: 1, teamSlot: 1 }],
+      livePicks: [], liveSettings: null, draftId: "", status: "", checkedAt: 0 } };
+  backup.storage[key] = JSON.stringify(draft);
+  const restored = JSON.parse(workspace.parseBackup(JSON.stringify(backup)).storage[key]);
+  assert.equal(restored.companion.manualPicks[0].playerId, "p1");
+  assert.equal(restored.userPicks[0], "practice-player");
+  draft.companion.manualPicks[0].overallPick = 2;
+  backup.storage[key] = JSON.stringify(draft);
+  assert.throws(() => workspace.validateBackup(backup), /Invalid draft companion/);
+});
+
 test("workspace validation rejects malformed or unsupported backups before mutation", () => {
   assert.throws(() => workspace.parseBackup("{"), /valid JSON/);
   for (const change of [

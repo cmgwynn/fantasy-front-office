@@ -418,6 +418,11 @@ canvas.chart-canvas { width:100%; height:300px; background:var(--bg-card); borde
 .analytics-chart { width:100%; height:380px; background:var(--bg-card); border-radius:10px; display:block; }
 #analyticsTable .team-logo-sm, #analyticsTable .avatar[src*="/team_logos/"] { background:transparent; border-radius:0; padding:0; object-fit:contain; }
 .analytics-chart-help { color:var(--text-muted); font-size:10px; line-height:1.4; }
+.draft-companion-controls { display:flex; flex-direction:column; gap:10px; }
+.draft-companion-controls label { display:flex; flex-direction:column; gap:5px; }
+#draftLiveControls:not([hidden]) { display:flex; gap:8px; flex-wrap:wrap; align-items:end; }
+#draftLiveControls label { flex:1 1 220px; min-width:0; }
+.draft-schedule-rating { display:block; font-size:11px; white-space:normal; min-width:110px; }
 .portfolio-player-picker { display:flex; flex-direction:column; gap:6px; max-width:420px; color:var(--text-muted); font-size:11px; font-weight:700; }
 .portfolio-player-picker select { min-width:0; }
 .portfolio-claim-plan { display:flex; flex-direction:column; gap:10px; }

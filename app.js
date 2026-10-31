@@ -51,6 +51,9 @@ function activateTab(tabId, { navigate = false, focus = false } = {}) {
     loadLeagueRecords();
     if (document.getElementById("careerHistoryPanel")?.open) loadCareerHistory();
   }
+  if (tabId === "tab-draft") {
+    ensureWeeklyMatchups().then(() => { if (targetPage.classList.contains("active")) renderDraftRoom(); });
+  }
   rememberWorkspaceSelection();
   return targetPage;
 }
@@ -235,6 +238,11 @@ const draftState = {
   settings: { ...DEFAULT_DRAFT_SETTINGS },
   userPicks: [], adpByName: {}, keepers: [], loadedSessionKey: ""
 };
+let draftCompanion = { mode: "practice", manualPicks: [], livePicks: [], liveSettings: null, draftId: "", status: "", checkedAt: 0 };
+let draftLivePolling = null;
+let draftLiveLoadVersion = 0;
+let draftLiveBusy = false;
+let draftLiveFollowing = false;
 const faabState = { budget: 100, weeksRemaining: 12, strategy: "balanced", claims: [], loadedKey: "" };
 const weeklyMatchupLoads = new Map();
 const weeklyMatchupData = new Map();
@@ -6399,6 +6407,221 @@ function updateDraftTypeSettings() {
   if (keeperPanel) keeperPanel.hidden = type !== "keeper";
 }
 
+function getActiveDraftSettings() {
+  return draftCompanion.mode === "sleeper" && draftCompanion.liveSettings ? draftCompanion.liveSettings : draftState.settings;
+}
+
+function validateDraftCompanion(companion) {
+  if (!companion || !["practice", "manual", "sleeper"].includes(companion.mode) ||
+      !Array.isArray(companion.manualPicks) || !Array.isArray(companion.livePicks) ||
+      typeof companion.draftId !== "string" || typeof companion.status !== "string" || !Number.isFinite(companion.checkedAt)) {
+    throw new Error("Invalid saved draft companion.");
+  }
+  for (const picks of [companion.manualPicks, companion.livePicks]) {
+    const ids = new Set();
+    if (picks.length > 960) throw new Error("Draft exceeds the supported pick limit.");
+    picks.forEach((pick, index) => {
+      if (pick.overallPick !== index + 1 || typeof pick.playerId !== "string" || !pick.playerId ||
+          !Number.isInteger(pick.teamSlot) || pick.teamSlot < 1 || pick.teamSlot > 32 || ids.has(pick.playerId)) {
+        throw new Error("Saved draft picks are missing, duplicated or invalid.");
+      }
+      ids.add(pick.playerId);
+    });
+  }
+  const settings = companion.liveSettings;
+  if (settings && (!Number.isInteger(settings.teams) || settings.teams < 4 || settings.teams > 32 ||
+      !Number.isInteger(settings.rounds) || settings.rounds < 1 || settings.rounds > 30 ||
+      !Number.isInteger(settings.slot) || settings.slot < 1 || settings.slot > settings.teams ||
+      !["standard", "half", "ppr"].includes(settings.scoring) || settings.rosterFormat !== "league" ||
+      !Array.isArray(settings.starterSlots) || !settings.starterSlots.length ||
+      settings.starterSlots.some(slot => !["QB", "RB", "WR", "TE", "K", "DEF"].some(pos => isPosEligible(pos, slot))))) {
+    throw new Error("Unsupported saved Sleeper draft settings.");
+  }
+}
+
+function buildCompanionBoard(settings = getActiveDraftSettings()) {
+  const records = draftCompanion.mode === "manual" ? draftCompanion.manualPicks : draftCompanion.livePicks;
+  const picks = records.map(record => {
+    const player = state.players[record.playerId];
+    if (!player) throw new Error(`Draft player ${record.playerId} is not in the loaded database. Refresh player data before following this draft.`);
+    return { player, overallPick: record.overallPick, teamSlot: record.teamSlot,
+      round: Math.floor((record.overallPick - 1) / settings.teams) + 1, isUserPick: record.teamSlot === settings.slot };
+  });
+  return { picks, draftedIds: new Set(records.map(pick => pick.playerId)), nextPick: records.length + 1,
+    complete: records.length >= settings.teams * settings.rounds };
+}
+
+function recordCompanionPick(playerId) {
+  const notice = document.getElementById("draftNotice");
+  if (draftCompanion.mode !== "manual") { notice.textContent = "Sleeper picks are read-only. Switch to manual tracking to record picks."; return; }
+  const settings = getActiveDraftSettings(), board = buildCompanionBoard(settings);
+  const player = getDraftPlayerPool(settings).find(entry => entry.player.id === playerId)?.player;
+  if (!player || board.complete || board.draftedIds.has(playerId)) { notice.textContent = "This pick is no longer available. Check the current board."; return; }
+  draftCompanion.manualPicks.push({ playerId, overallPick: board.nextPick, teamSlot: getDraftTeamAtPick(board.nextPick, settings.teams) });
+  saveDraftSession();
+  renderDraftRoom();
+}
+
+function pauseLiveDraft() {
+  clearInterval(draftLivePolling);
+  draftLivePolling = null;
+  draftLiveFollowing = false;
+  draftLiveBusy = false;
+  draftLiveLoadVersion++;
+}
+
+async function findSleeperDrafts() {
+  pauseLiveDraft();
+  const league = state.activeLeague;
+  const status = document.getElementById("draftTrackingStatus");
+  if (league?.provider !== "sleeper" || league.isDemo) { status.textContent = "Connect a real Sleeper league first, or use manual tracking."; return; }
+  const version = ++draftLiveLoadVersion;
+  try {
+    const drafts = await fetchJson(`https://api.sleeper.app/v1/league/${encodeURIComponent(league.leagueId)}/drafts`);
+    if (version !== draftLiveLoadVersion || state.activeLeague !== league) return;
+    if (!Array.isArray(drafts) || !drafts.length) throw new Error("No drafts were returned for this league.");
+    const select = document.getElementById("draftLiveSelect");
+    const eligible = drafts.filter(draft => draft.league_id === league.leagueId && String(draft.season) === String(league.season) && draft.sport === "nfl");
+    if (!eligible.length) throw new Error("No NFL drafts match this league and season.");
+    select.innerHTML = eligible.map(draft => `<option value="${draftEscapeHtml(draft.draft_id)}">${draftEscapeHtml(`${draft.metadata?.name || "Draft"} · ${draft.status} · ${draft.type} · ${draft.draft_id}`)}</option>`).join("");
+    if (eligible.some(draft => draft.draft_id === draftCompanion.draftId)) select.value = draftCompanion.draftId;
+    status.textContent = "Choose the actual draft, then follow it. No picks are submitted.";
+  } catch (error) { status.textContent = `Draft discovery failed: ${error.message}`; }
+}
+
+function normalizeSleeperDraft(draft, records, tradedPicks, manager, league) {
+  const teams = draft.settings?.teams, rounds = draft.settings?.rounds;
+  const slot = draft.draft_order?.[manager?.ownerId];
+  if (draft.league_id !== league.leagueId || String(draft.season) !== String(league.season) ||
+      draft.sport !== "nfl" || draft.type !== "snake" || draft.settings?.reversal_round ||
+      draft.settings?.player_type || !["pre_draft", "drafting", "paused", "complete"].includes(draft.status) ||
+      !Number.isInteger(teams) || teams < 4 || teams > 32 || !Number.isInteger(rounds) || rounds < 1 || rounds > 30 ||
+      !Number.isInteger(slot) || slot < 1 || slot > teams) {
+    throw new Error("This draft or selected roster is unsupported. Choose a standard NFL snake draft with an assigned draft order (no auction, rookie-only or reversal rounds).");
+  }
+  if (!Array.isArray(tradedPicks) || tradedPicks.length) throw new Error("Traded draft picks are not supported. Use your provider for this board.");
+  const slots = (league.rosterPositions || []).filter(position => !["BN", "IR", "TAXI"].includes(position));
+  const scoring = { std: "standard", standard: "standard", half_ppr: "half", ppr: "ppr" }[draft.metadata?.scoring_type];
+  if (!slots.length || slots.some(position => !["QB", "RB", "WR", "TE", "K", "DEF"].some(pos => isPosEligible(pos, position))) || !scoring) {
+    throw new Error("Unsupported starter slots or draft scoring preset.");
+  }
+  if (!Array.isArray(records) || records.length > teams * rounds) throw new Error("Invalid draft pick feed.");
+  const ids = new Set();
+  const picks = [...records].sort((a, b) => a.pick_no - b.pick_no).map((record, index) => {
+    const playerId = String(record.player_id || "");
+    const teamSlot = getDraftTeamAtPick(index + 1, teams);
+    if (record.draft_id !== draft.draft_id || record.pick_no !== index + 1 || record.draft_slot !== teamSlot ||
+        record.round !== Math.floor(index / teams) + 1 || record.is_keeper || !playerId || ids.has(playerId) ||
+        draft.draft_order?.[record.picked_by] !== teamSlot || !state.players[playerId] ||
+        Boolean(state.players[playerId].isDemo) !== Boolean(league.isDemo)) {
+      throw new Error("Draft feed has missing/duplicate picks, unsupported keepers/ownership or an unknown player. The prior verified board is retained.");
+    }
+    ids.add(playerId);
+    return { playerId, overallPick: index + 1, teamSlot };
+  });
+  if (draft.status === "complete" && picks.length !== teams * rounds) throw new Error("Completed draft has incomplete pick coverage.");
+  return { picks, settings: { ...draftState.settings, type: league.leagueType === 2 ? "dynasty" : league.leagueType === 1 ? "keeper" : "redraft",
+    teams, rounds, slot, scoring, rosterFormat: "league", starterSlots: slots } };
+}
+
+async function syncSleeperDraft(follow = false) {
+  const league = state.activeLeague;
+  const manager = state.managers[Number(document.getElementById("teamSelect").value)];
+  const draftId = document.getElementById("draftLiveSelect").value || draftCompanion.draftId;
+  if (draftLiveBusy) return;
+  if (league?.provider !== "sleeper" || league.isDemo || !draftId || draftCompanion.mode !== "sleeper") {
+    document.getElementById("draftTrackingStatus").textContent = "Choose Sleeper mode, connect a league and select its draft first.";
+    return;
+  }
+  const version = ++draftLiveLoadVersion, key = getDraftSessionKey();
+  draftLiveBusy = true;
+  try {
+    const [draft, records, trades] = await Promise.all([
+      fetchJson(`https://api.sleeper.app/v1/draft/${encodeURIComponent(draftId)}`),
+      fetchJson(`https://api.sleeper.app/v1/draft/${encodeURIComponent(draftId)}/picks`),
+      fetchJson(`https://api.sleeper.app/v1/draft/${encodeURIComponent(draftId)}/traded_picks`)
+    ]);
+    if (version !== draftLiveLoadVersion || key !== getDraftSessionKey() || state.activeLeague !== league ||
+        state.managers[Number(document.getElementById("teamSelect").value)]?.rosterId !== manager?.rosterId) return;
+    const result = normalizeSleeperDraft(draft, records, trades, manager, league);
+    draftCompanion.livePicks = result.picks;
+    draftCompanion.liveSettings = result.settings;
+    draftCompanion.draftId = draftId;
+    draftCompanion.checkedAt = Date.now();
+    draftCompanion.status = `${draft.status} · ${result.picks.length} verified picks · Checked ${new Date().toLocaleTimeString()}`;
+    saveDraftSession();
+    if (draft.status === "complete") pauseLiveDraft();
+    else if (follow && !draftLivePolling) {
+      draftLiveFollowing = true;
+      draftLivePolling = setInterval(() => {
+        if (draftCompanion.mode === "sleeper" && document.getElementById("tab-draft")?.classList.contains("active") && !document.hidden) syncSleeperDraft();
+      }, 15000);
+    }
+    renderDraftRoom();
+  } catch (error) {
+    if (version !== draftLiveLoadVersion) return;
+    pauseLiveDraft();
+    draftCompanion.status = `Live sync failed: ${error.message} Last successful board is a snapshot; follow again to retry.`;
+    renderDraftTrackingControls();
+  } finally { if (version === draftLiveLoadVersion) draftLiveBusy = false; }
+}
+
+function renderDraftTrackingControls() {
+  document.getElementById("draftMode").value = draftCompanion.mode;
+  document.getElementById("draftLiveControls").hidden = draftCompanion.mode !== "sleeper";
+  const status = document.getElementById("draftTrackingStatus");
+  status.textContent = draftCompanion.mode === "practice" ? "Practice: opponent picks are simulated." :
+    draftCompanion.mode === "manual" ? "Manual snake companion: record every team's pick in order. No simulated opponents. Undo removes the last pick; reset clears only this manual board. Confirm settings first. No traded picks or keeper costs." :
+    `${draftCompanion.status || "Find your connected league's draft to get started."} ${draftLiveFollowing ? "Checking every 15 seconds while Draft Room is visible." : "Automatic syncing is off."}`;
+  const select = document.getElementById("draftLiveSelect");
+  if (draftCompanion.draftId && ![...select.options].some(option => option.value === draftCompanion.draftId)) {
+    select.add(new Option(`Saved draft ${draftCompanion.draftId}`, draftCompanion.draftId));
+    select.value = draftCompanion.draftId;
+  }
+  document.getElementById("draftStartBtn").disabled = draftCompanion.mode === "sleeper";
+}
+
+function getDraftScheduleRating(player, weeks, settings) {
+  if (state.workspaceSnapshot || state.activeLeague?.isDemo || state.activeLeague?.provider === "yahoo" || player.isDemo) return { reason: "Snapshot/demo" };
+  if (!["QB", "RB", "WR", "TE"].includes(player.position) || !["standard", "half", "ppr"].includes(settings.scoring)) return { reason: "Position/scoring unsupported" };
+  const season = String(state.activeLeague?.season || state.season);
+  const schedule = plannerScheduleSources.get(season)?.schedule?.[normalizeTeamCode(player.team)];
+  const dataset = weeklyMatchupData.get(getWeeklyMatchupKey());
+  if (!schedule || state.dataErrors.schedule || !state.dataFreshness.schedule) return { reason: "Schedule unverified" };
+  if (!dataset || dataset.loading || !dataset.weeks.length) return { reason: "Matchup evidence unavailable" };
+  const receptionPoints = settings.scoring === "standard" ? 0 : settings.scoring === "half" ? 0.5 : 1;
+  const key = `${player.position}:${receptionPoints}`;
+  if (!dataset.models.has(key)) {
+    try { dataset.models.set(key, FFOWeeklyMatchups.aggregate(dataset.rows, { season, weeks: dataset.weeks, position: player.position, receptionPoints, teams: Object.keys(NFL_TEAM_NAMES) })); }
+    catch (error) { dataset.models.set(key, { error: error.message }); }
+  }
+  const model = dataset.models.get(key);
+  if (model.error) return { reason: `Invalid evidence: ${model.error}` };
+  const ratings = [];
+  for (const week of weeks) {
+    const game = schedule[week];
+    if (!game) {
+      if (CURRENT_BYE_WEEKS[normalizeTeamCode(player.team)] === week) continue;
+      return { reason: `Week ${week} opponent unverified` };
+    }
+    const rating = model.ratings[normalizeTeamCode(game.opp)]?.rating;
+    if (!Number.isFinite(rating)) return { reason: "Insufficient opponent coverage" };
+    ratings.push(rating);
+  }
+  return ratings.length ? { rating: Math.round(ratings.reduce((sum, rating) => sum + rating, 0) / ratings.length), games: ratings.length,
+    partial: dataset.errors.length > 0 } : { reason: "No rated games" };
+}
+
+function renderDraftScheduleRating(player, settings) {
+  const playoffs = state.activeLeague ? getPlayoffWeeksForActiveLeague() : [15, 16, 17];
+  const regularSeason = Array.from({ length: Math.min(...playoffs) - 1 }, (_, index) => index + 1);
+  return [[regularSeason, "Season"], [playoffs, "Playoffs"]]
+    .map(([weeks, label]) => {
+      const result = getDraftScheduleRating(player, weeks, settings);
+      return `<span class="draft-schedule-rating" title="${draftEscapeHtml(result.reason || `${result.games} games; higher is easier; historical evidence${result.partial ? "; partial sample" : ""}`)}">${label}: ${result.rating === undefined ? "Unavailable" : `${result.rating}/100${result.partial ? "*" : ""}`}</span>`;
+    }).join("");
+}
+
 function getDraftSessionKey() {
   const season = state.activeLeague?.season || state.season || DEFAULT_SEASON;
   const leagueId = state.activeLeague?.leagueId || "custom";
@@ -6413,6 +6636,7 @@ function saveDraftSession() {
       userPicks: draftState.userPicks,
       adpByName: draftState.adpByName,
       keepers: draftState.keepers,
+      companion: draftCompanion,
       savedAt: Date.now()
     }));
     draftState.loadedSessionKey = key;
@@ -6429,6 +6653,8 @@ function restoreDraftSession() {
   if (draftState.loadedSessionKey === key) return;
   draftState.loadedSessionKey = key;
   Object.assign(draftState, { settings: { ...DEFAULT_DRAFT_SETTINGS }, userPicks: [], adpByName: {}, keepers: [] });
+  pauseLiveDraft();
+  draftCompanion = { mode: "practice", manualPicks: [], livePicks: [], liveSettings: null, draftId: "", status: "", checkedAt: 0 };
   try {
     const saved = JSON.parse(localStorage.getItem(key) || "{}");
     if (!saved || typeof saved !== "object" || Array.isArray(saved)) throw new Error("Saved draft is invalid.");
@@ -6436,6 +6662,12 @@ function restoreDraftSession() {
     draftState.userPicks = Array.isArray(saved.userPicks) ? saved.userPicks : [];
     draftState.adpByName = saved.adpByName && typeof saved.adpByName === "object" ? saved.adpByName : {};
     draftState.keepers = Array.isArray(saved.keepers) ? saved.keepers : [];
+    if (saved.companion) {
+      validateDraftCompanion(saved.companion);
+      draftCompanion = saved.companion;
+      if (draftCompanion.mode === "sleeper") draftCompanion.status = "Saved draft snapshot. Follow selected draft to verify live picks.";
+    }
+    document.getElementById("draftMode").value = draftCompanion.mode;
     const controls = {
       draftType: draftState.settings.type, draftTeams: draftState.settings.teams,
       draftSlot: draftState.settings.slot, draftRounds: draftState.settings.rounds,
@@ -6532,6 +6764,7 @@ function getDraftStarterTargets(settings) {
 }
 
 function getDraftKeptPlayers(settings = draftState.settings, mineOnly = false) {
+  if (draftCompanion.mode !== "practice") return [];
   if (settings.type !== "keeper") return [];
   const manager = state.managers[Number(document.getElementById("teamSelect").value || 0)];
   return draftState.keepers.filter(keeper => (!mineOnly || String(keeper.managerId) === String(manager?.rosterId)) &&
@@ -6541,7 +6774,9 @@ function getDraftKeptPlayers(settings = draftState.settings, mineOnly = false) {
 }
 
 function getDraftRosterCounts(settings = draftState.settings) {
-  const players = [...getDraftKeptPlayers(settings, true), ...draftState.userPicks.map(id => state.players[id]).filter(Boolean)];
+  const ids = draftCompanion.mode === "practice" ? draftState.userPicks :
+    (draftCompanion.mode === "manual" ? draftCompanion.manualPicks : draftCompanion.livePicks).filter(pick => pick.teamSlot === settings.slot).map(pick => pick.playerId);
+  const players = [...getDraftKeptPlayers(settings, true), ...ids.map(id => state.players[id]).filter(Boolean)];
   return [...new Map(players.map(player => [player.id, player])).values()].reduce((counts, player) => {
     counts[player.position] = (counts[player.position] || 0) + 1;
     return counts;
@@ -6638,7 +6873,7 @@ function renderDraftBoard(simulation) {
     wrap.addEventListener("wheel", () => { wrap.dataset.userScrolled = "true"; }, { passive: true });
     wrap.addEventListener("touchstart", () => { wrap.dataset.userScrolled = "true"; }, { passive: true });
   }
-  const { teams, rounds, slot } = draftState.settings;
+  const { teams, rounds, slot } = getActiveDraftSettings();
   const picksByOverall = new Map(simulation.picks.map(pick => [pick.overallPick, pick]));
   grid.style.gridTemplateColumns = `58px repeat(${teams}, minmax(138px, 1fr))`;
   grid.innerHTML = `<div class="draft-grid-cell draft-grid-header draft-grid-round">Round</div>${Array.from({ length: teams }, (_, index) => {
@@ -6731,6 +6966,10 @@ function simulateDraft(rankedPlayers) {
 
 function applyDraftSettings() {
   restoreDraftSession();
+  if (draftCompanion.mode === "sleeper") {
+    document.getElementById("draftNotice").textContent = "Sleeper settings come from the selected draft. Switch to manual or practice to reset a local board.";
+    return;
+  }
   updateDraftSlotOptions();
   const settings = {
     type: document.getElementById("draftType")?.value || "redraft",
@@ -6754,7 +6993,8 @@ function applyDraftSettings() {
     settings.starterSlots = [...slots];
   }
   draftState.settings = settings;
-  draftState.userPicks = [];
+  if (draftCompanion.mode === "manual") draftCompanion.manualPicks = [];
+  else draftState.userPicks = [];
   saveDraftSession();
   renderDraftRoom();
 }
@@ -6835,6 +7075,7 @@ function addDraftKeeper() {
 
 function draftPlayer(playerId) {
   restoreDraftSession();
+  if (draftCompanion.mode !== "practice") { recordCompanionPick(playerId); return; }
   const ranking = getDraftPlayerPool(draftState.settings, getDraftRosterCounts());
   const simulation = simulateDraft(ranking);
   if (simulation.complete || simulation.draftedIds.has(playerId)) return;
@@ -6874,12 +7115,12 @@ function renderPersonalizedDraftPlan(settings, simulation, availablePlayers) {
   const { needs, upcoming, candidates } = buildPersonalizedDraftPlan(settings, simulation, availablePlayers);
   const escape = draftEscapeHtml;
   const formatPick = pick => `R${Math.floor((pick - 1) / settings.teams) + 1} · #${pick}`;
-  container.innerHTML = `<div class="draft-eyebrow">PERSONALIZED DRAFT PLAN${state.activeLeague?.isDemo ? " · FICTIONAL DEMO" : ""}</div><h3>${simulation.complete ? "Review your completed mock" : "Plan your next turn"}</h3>
+  container.innerHTML = `<div class="draft-eyebrow">PERSONALIZED DRAFT PLAN${state.activeLeague?.isDemo ? " · FICTIONAL DEMO" : ""}</div><h3>${simulation.complete ? "Review your completed draft" : "Plan your next turn"}</h3>
     <p>${upcoming.length ? `Your next snake picks: ${upcoming.map(formatPick).join(" / ")}` : "No remaining picks in this configured draft."}</p>
     <p>Unfilled model roster targets: ${escape(needs.length ? needs.join(" · ") : "All base targets met; review flexible depth.")}</p>
     ${settings.type === "dynasty" ? "<p>Dynasty model applies age adjustments; balance immediate production against your selected value horizon.</p>" : settings.rosterFormat === "superflex" ? "<p>Superflex model targets two quarterbacks; compare QB availability before filling bench depth.</p>" : "<p>Balance starter coverage with model value. Do not treat a positional target as a requirement to reach for a player.</p>"}
     <ul class="team-grade-priorities">${candidates.length ? candidates.map(({ player, reason }) => `<li><strong>${escape(player.name)}</strong> (${escape(player.position)}) — ${escape(reason)}</li>`).join("") : "<li>No next-pick candidates available. Review your roster and the configured draft size.</li>"}</ul>
-    <details class="gm-action-details"><summary>Draft assumptions</summary><p class="comparison-note">Based on recorded mock picks and simulated opponent selections, not a connected live draft. ${settings.rosterFormat === "league" ? `Exact saved starter slots: ${escape((settings.starterSlots || []).join(", "))}.` : "Targets follow the standard/superflex model."} ${escape(settings.scoring)} reception preset and ${escape(settings.type)} values apply; custom scoring bonuses are not modeled. In keeper mode, saved keepers are removed from the pool and your keepers count toward roster needs. Keeper costs are a ledger only: no rounds or auction budget are consumed. Verify team ownership and your selected roster before drafting. No picks are submitted to a provider.</p></details>`;
+    <details class="gm-action-details"><summary>Draft assumptions</summary><p class="comparison-note">${draftCompanion.mode === "practice" ? "Based on recorded mock picks and simulated opponent selections, not a connected live draft." : "Based only on recorded draft-day picks. Future opponents are not simulated; recommendations can change before your turn. Only standard snake drafts without traded picks/reversal rounds are supported."} ${settings.rosterFormat === "league" ? `Exact saved starter slots: ${escape((settings.starterSlots || []).join(", "))}.` : "Targets follow the standard/superflex model."} ${escape(settings.scoring)} reception preset and ${escape(settings.type)} values apply; custom scoring bonuses are not modeled. In practice keeper mode, saved keepers are removed from the pool and your keepers count toward roster needs. Keeper costs are a ledger only: no rounds or auction budget are consumed. Verify team ownership and your selected roster before drafting. No picks are submitted to a provider.</p></details>`;
 }
 
 function getDraftAdpGrade(roundValue) {
@@ -6926,24 +7167,28 @@ function renderDraftGrades(settings, simulation, rankedPlayers) {
   const escape = draftEscapeHtml;
   const title = report.gradedCount === report.rows.length ? "ADP value grade" : "Partial ADP value grade";
   const rows = report.rows.map(row => `<tr><th scope="row">R${row.round} · #${row.overallPick}</th><td>${escape(row.player.name)}<br><small>${escape(row.fit)}</small></td><td>${row.adp.rank === null ? "Unavailable" : `${row.adp.rank.toFixed(1)} (${escape(row.adp.source)})`}</td><td>${row.roundValue === null ? "Unrated" : `${row.roundValue > 0 ? "+" : ""}${row.roundValue.toFixed(2)}`}</td><td>${row.letter}</td><td>${row.alternative ? escape(row.alternative.name) : "No higher-scoring available model alternative"}</td></tr>`).join("");
-  container.innerHTML = `<h3>Mock Draft Grades</h3>${report.rows.length ? `<p class="comparison-note">${title}: <strong>${report.letter}</strong> · ${report.gradedCount} of ${report.rows.length} recorded picks have ADP.${report.mean === null ? "" : ` Mean round value: ${report.mean > 0 ? "+" : ""}${report.mean.toFixed(2)}.`} ${simulation.complete ? "Configured mock complete." : "Draft in progress; this is not a final draft assessment."}</p>
-    <div class="table-wrap"><table class="comparison-table"><caption>Recorded user picks only; opponent picks are simulated</caption><thead><tr><th scope="col">Pick</th><th scope="col">Player / roster fit</th><th scope="col">Current ADP</th><th scope="col">Round value</th><th scope="col">ADP grade</th><th scope="col">Higher model alternative at this pick</th></tr></thead><tbody>${rows}</tbody></table></div>` : `<p class="draft-empty">Make a pick to see its grade and roster-fit explanation. Import ADP CSV if your player pool has no ADP.</p>`}
+  container.innerHTML = `<h3>${draftCompanion.mode === "practice" ? "Mock Draft" : "Draft-day"} Grades</h3>${report.rows.length ? `<p class="comparison-note">${title}: <strong>${report.letter}</strong> · ${report.gradedCount} of ${report.rows.length} recorded picks have ADP.${report.mean === null ? "" : ` Mean round value: ${report.mean > 0 ? "+" : ""}${report.mean.toFixed(2)}.`} ${simulation.complete ? "Configured draft complete." : "Draft in progress; this is not a final draft assessment."}</p>
+    <div class="table-wrap"><table class="comparison-table"><caption>Recorded user picks only; ${draftCompanion.mode === "practice" ? "opponent picks are simulated" : "opponent picks are recorded, not simulated"}</caption><thead><tr><th scope="col">Pick</th><th scope="col">Player / roster fit</th><th scope="col">Current ADP</th><th scope="col">Round value</th><th scope="col">ADP grade</th><th scope="col">Higher model alternative at this pick</th></tr></thead><tbody>${rows}</tbody></table></div>` : `<p class="draft-empty">Make a pick to see its grade and roster-fit explanation. Import ADP CSV if your player pool has no ADP.</p>`}
     <p class="comparison-note">Round value = (overall pick − current ADP) ÷ number of teams; positive means selecting later than ADP. A: at least +1 round; B: +0.5 to under +1; C: −0.5 to under +0.5; D: −1 to under −0.5; F: below −1. Overall grade uses the unrounded mean of rated picks only; missing ADP is Unrated, never zero. ADP grades measure price versus consensus, not player quality or future performance.</p>
-    <p class="comparison-note">Model alternatives are recalculated using earlier picks and your roster needs at that turn, excluding players already taken on this mock board. They are separate from ADP grades. Reviews use currently loaded player data and ADP, not draft-time snapshots, so they can change after updates. ADP source dates and scoring/format compatibility are not verified; confirm your CSV matches this draft. Keeper costs, custom starter slots, and live provider picks are not modeled.</p>`;
+    <p class="comparison-note">Model alternatives are recalculated using earlier picks and your roster needs at that turn, excluding players already taken on this board. They are separate from ADP grades. Reviews use currently loaded player data and ADP, not draft-time snapshots, so they can change after updates. ADP source dates and scoring/format compatibility are not verified; confirm your CSV matches this draft. Keeper costs and custom scoring bonuses are not modeled.</p>`;
 }
 
 function renderDraftRoom() {
   restoreDraftSession();
-  const settings = draftState.settings;
+  const settings = getActiveDraftSettings();
+  renderDraftTrackingControls();
   document.getElementById("draftSetupSummary").textContent = `${settings.teams} teams / Pick ${settings.slot} / ${settings.scoring.toUpperCase()}`;
   updateDraftSlotOptions();
   updateDraftTypeSettings();
+  document.getElementById("draftOpponentStrategy").closest("label").hidden = draftCompanion.mode !== "practice";
+  if (draftCompanion.mode !== "practice") document.getElementById("draftKeeperPanel").hidden = true;
   const seasonBadge = document.getElementById("draftSeasonBadge");
   if (seasonBadge) seasonBadge.textContent = `${state.activeLeague?.season || state.season} Season`;
 
   const rosterCounts = getDraftRosterCounts(settings);
-  const rankedPlayers = getDraftPlayerPool(settings, rosterCounts, getNextUserDraftPick(settings));
-  const simulation = simulateDraft(rankedPlayers);
+  const recordedUserPicks = draftCompanion.mode === "practice" ? draftState.userPicks.length : Object.values(rosterCounts).reduce((sum, count) => sum + count, 0);
+  const rankedPlayers = getDraftPlayerPool(settings, rosterCounts, getNextUserDraftPick(settings, recordedUserPicks));
+  const simulation = draftCompanion.mode === "practice" ? simulateDraft(rankedPlayers) : buildCompanionBoard(settings);
   const availablePlayers = rankedPlayers.filter(entry => !simulation.draftedIds.has(entry.player.id));
   renderPersonalizedDraftPlan(settings, simulation, availablePlayers);
   renderDraftGrades(settings, simulation, rankedPlayers);
@@ -6957,7 +7202,7 @@ function renderDraftRoom() {
   const slotSummary = document.getElementById("draftSlotSummary");
   if (slotSummary) slotSummary.textContent = `${settings.slot} of ${settings.teams}`;
   const pickCount = document.getElementById("draftPickCount");
-  if (pickCount) pickCount.textContent = String(draftState.userPicks.length);
+  if (pickCount) pickCount.textContent = String(simulation.picks.filter(pick => pick.isUserPick).length);
   const availableCount = document.getElementById("draftAvailableCount");
   if (availableCount) availableCount.textContent = String(availablePlayers.length);
 
@@ -6980,15 +7225,20 @@ function renderDraftRoom() {
   const table = document.getElementById("draftBoardTable");
   if (table) {
     const entries = displayPlayers.slice(0, 80);
-    table.innerHTML = `<thead><tr><th>Rank</th><th style="text-align:left;">Player</th><th>Pos</th><th>Team</th><th>ADP</th><th>Age</th><th>PPG</th><th></th></tr></thead><tbody></tbody>`;
+    table.innerHTML = `<thead><tr><th>Rank</th><th style="text-align:left;">Player</th><th>Pos</th><th>Team</th><th>ADP</th><th>Age</th><th>PPG</th><th>Schedule · season / playoffs</th><th></th></tr></thead><tbody></tbody>`;
     const body = table.querySelector("tbody");
     if (!entries.length) {
-      body.innerHTML = `<tr><td colspan="8" class="draft-empty">${Object.keys(state.players).length ? "No players match these filters." : "Player database is loading."}</td></tr>`;
+      body.innerHTML = `<tr><td colspan="9" class="draft-empty">${Object.keys(state.players).length ? "No players match these filters." : "Player database is loading."}</td></tr>`;
     } else {
       entries.forEach(({ player, score }, index) => {
         const row = document.createElement("tr");
         const adp = getDraftAdp(player);
         row.innerHTML = `<td class="draft-rank">${index + 1}</td><td class="draft-name"><span class="draft-player-cell"><img src="${draftEscapeHtml(avatarUrl(player))}" alt="" loading="lazy" onerror="this.style.visibility='hidden'" /><span>${draftEscapeHtml(player.name)}<small class="draft-mobile-meta">${draftEscapeHtml(player.position)} / ${draftEscapeHtml(player.team || "FA")} / Age ${player.age || "--"}</small></span></span></td><td><span class="pos-pill">${draftEscapeHtml(player.position)}</span></td><td>${draftEscapeHtml(player.team || "FA")}</td><td>${adp.rank === null ? "--" : `${adp.rank.toFixed(1)} <span class="draft-adp-source">${adp.source}</span>`}</td><td>${player.age || "--"}</td><td>${Number(player.seasonPpg || player.projectedPoints || 0).toFixed(1)}</td><td><button class="draft-pick-btn" type="button" data-draft-pick="${draftEscapeHtml(player.id)}" title="Draft ${draftEscapeHtml(player.name)}">Draft</button></td>`;
+        const actionCell = row.lastElementChild;
+        actionCell.insertAdjacentHTML("beforebegin", `<td>${renderDraftScheduleRating(player, settings)}</td>`);
+        const pickButton = row.querySelector("button");
+        pickButton.textContent = draftCompanion.mode === "practice" ? "Draft" : `Record #${simulation.nextPick}`;
+        pickButton.disabled = simulation.complete || draftCompanion.mode === "sleeper";
         row.dataset.draftScore = String(Math.round(score));
         body.appendChild(row);
       });
@@ -7015,14 +7265,17 @@ function renderDraftRoom() {
   if (takenCount) {
     const simulatedCount = simulation.picks.filter(pick => !pick.isUserPick).length;
     const savedUserPickCount = simulation.picks.filter(pick => pick.isUserPick).length;
-    takenCount.textContent = simulation.complete
+    takenCount.textContent = draftCompanion.mode !== "practice" ? `${simulation.picks.length} actual picks recorded · ${simulation.complete ? "Draft complete" : `Team ${slotPosition} on the clock at #${simulation.nextPick}`}` : simulation.complete
       ? `Draft complete · ${savedUserPickCount} of your picks recorded`
       : `${simulatedCount} opponent picks simulated · ${savedUserPickCount} of your picks saved · Your turn at #${simulation.nextPick}`;
   }
   renderDraftBoard(simulation);
 
   const undoButton = document.getElementById("draftUndoBtn");
-  if (undoButton) undoButton.disabled = draftState.userPicks.length === 0;
+  if (undoButton) {
+    undoButton.disabled = draftCompanion.mode === "sleeper" || (draftCompanion.mode === "manual" ? !draftCompanion.manualPicks.length : !draftState.userPicks.length);
+    undoButton.title = draftCompanion.mode === "manual" ? "Undo the last recorded pick (any team)" : "Undo your last mock pick";
+  }
   renderDraftKeeperLedger();
 }
 
@@ -8137,6 +8390,28 @@ function bindControlEvents() {
   updateDraftSlotOptions();
   updateDraftTypeSettings();
   document.getElementById("draftType")?.addEventListener("change", updateDraftTypeSettings);
+  document.getElementById("draftMode")?.addEventListener("change", event => {
+    pauseLiveDraft();
+    draftCompanion.mode = event.target.value;
+    saveDraftSession();
+    renderDraftRoom();
+    if (draftCompanion.mode !== "practice") {
+      document.getElementById("draftPlan").closest("details").open = true;
+      document.getElementById("draftGrades").closest("details").open = true;
+    }
+  });
+  document.getElementById("draftLoadLiveBtn")?.addEventListener("click", findSleeperDrafts);
+  document.getElementById("draftSyncLiveBtn")?.addEventListener("click", () => { pauseLiveDraft(); syncSleeperDraft(true); });
+  document.getElementById("draftLiveSelect")?.addEventListener("change", () => {
+    pauseLiveDraft();
+    draftCompanion.status = "Selection changed. Follow this draft to verify its picks; the displayed board is still the prior snapshot.";
+    renderDraftTrackingControls();
+  });
+  document.getElementById("draftPauseLiveBtn")?.addEventListener("click", () => {
+    pauseLiveDraft();
+    draftCompanion.status = "Paused. Displayed picks are the last successful snapshot.";
+    renderDraftTrackingControls();
+  });
   document.getElementById("draftTeams")?.addEventListener("change", updateDraftSlotOptions);
   document.getElementById("draftStartBtn")?.addEventListener("click", applyDraftSettings);
   document.getElementById("draftImportLeagueBtn")?.addEventListener("click", importDraftLeagueSettings);
@@ -8148,7 +8423,9 @@ function bindControlEvents() {
     if (button) draftPlayer(button.dataset.draftPick);
   });
   document.getElementById("draftUndoBtn")?.addEventListener("click", () => {
-    draftState.userPicks.pop();
+    if (draftCompanion.mode === "sleeper") return;
+    if (draftCompanion.mode === "manual") draftCompanion.manualPicks.pop();
+    else draftState.userPicks.pop();
     saveDraftSession();
     renderDraftRoom();
   });
@@ -8321,6 +8598,14 @@ function bindControlEvents() {
     if (document.getElementById("inboxRecap")?.open) renderLeagueNewsletter();
   });
   document.getElementById("teamSelect")?.addEventListener("change", e => {
+    if (!resumingReloadWorkspace && draftCompanion.mode === "sleeper") {
+      pauseLiveDraft();
+      draftCompanion.livePicks = [];
+      draftCompanion.liveSettings = null;
+      draftCompanion.checkedAt = 0;
+      draftCompanion.status = "Selected roster changed. Follow the draft again to verify your draft slot and picks.";
+      saveDraftSession();
+    }
     rememberWorkspaceSelection();
     const idx = parseInt(e.target.value, 10);
     if (document.getElementById("tradeTeamA")) document.getElementById("tradeTeamA").value = idx;

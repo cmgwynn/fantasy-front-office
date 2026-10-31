@@ -10,7 +10,7 @@
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
   <link rel="icon" href="icons/app-icon.svg" type="image/svg+xml" />
   <title>Fantasy Front Office</title>
-  <link rel="stylesheet" href="styles.css?v=20261031-analytics-logos-1" />
+  <link rel="stylesheet" href="styles.css?v=20261031-draft-companion-1" />
 </head>
 <body>
 
@@ -847,7 +847,7 @@
         </div>
         <span id="draftSeasonBadge" class="badge badge-blue">2026 Season</span>
       </div>
-      <p class="tool-intro-copy">Practice only. No picks are sent to your league.</p>
+      <p class="tool-intro-copy">Practice a mock or follow your actual snake draft. No picks are sent to your league.</p>
 
       <details id="draftSetup" class="tool-disclosure">
       <summary>Draft settings <span id="draftSetupSummary"></span></summary>
@@ -923,6 +923,19 @@
       </section>
       </details>
 
+      <section class="card-banner draft-companion-controls" aria-label="Draft tracking">
+        <label for="draftMode">Draft mode
+          <select id="draftMode"><option value="practice">Practice mock</option><option value="manual">Draft-day companion · manual snake picks</option><option value="sleeper">Draft-day companion · Sleeper sync</option></select>
+        </label>
+        <div id="draftLiveControls" hidden>
+          <label for="draftLiveSelect">Sleeper draft<select id="draftLiveSelect"><option value="">Load drafts from your connected league</option></select></label>
+          <button id="draftLoadLiveBtn" type="button" class="btn-builder-action">Find league drafts</button>
+          <button id="draftSyncLiveBtn" type="button" class="btn-builder-action">Follow selected draft</button>
+          <button id="draftPauseLiveBtn" type="button" class="btn-builder-action">Pause syncing</button>
+        </div>
+        <p id="draftTrackingStatus" class="comparison-note" role="status"></p>
+        <details class="gm-action-details"><summary>Schedule rating method</summary><p class="comparison-note">Regular season runs from NFL Week 1 to your league's playoff start; playoffs use your connected league's playoff weeks (otherwise Weeks 1–14 and 15–17). Higher 0–100 ratings mean easier opponents for the position. Ratings average verified opponents' historical positional fantasy-points-allowed percentiles from the loaded completed-week sample, not future performance. At least three games per defense and 24 qualifying defenses are required. Every scheduled game in a window must have a rating; byes are excluded. QB/RB/WR/TE and standard/half/PPR only. No seeded rankings, unknown opponents or custom-scoring guesses. Ratings do not change draft recommendations. Preseason ratings may be unavailable until enough current-season games are completed.</p></details>
+      </section>
       <div id="draftNotice" class="draft-notice" aria-live="polite"></div>
 
       <div class="draft-summary">
@@ -937,7 +950,7 @@
       <section id="draftPlan" class="gm-briefing" aria-label="Personalized draft plan" aria-live="polite"></section>
       </details>
       <details class="tool-disclosure"><summary>Grades</summary>
-      <section id="draftGrades" class="comparison-card" aria-label="Mock draft grades" aria-live="polite"></section>
+      <section id="draftGrades" class="comparison-card" aria-label="Draft grades" aria-live="polite"></section>
       </details>
 
       <details class="tool-disclosure"><summary>Board</summary>
@@ -1026,14 +1039,14 @@
 </footer>
 
 <p id="appInstallStatus" class="app-install-status" role="status"></p>
-<script src="pwa.js?v=20261031-analytics-logos-1"></script>
-<script src="monetization-config.js?v=20261031-analytics-logos-1"></script>
-<script src="data-fetch.js?v=20261031-analytics-logos-1"></script>
-<script src="demo-league.js?v=20261031-analytics-logos-1"></script>
-<script src="league-records.js?v=20261031-analytics-logos-1"></script>
-<script src="workspace-backup.js?v=20261031-analytics-logos-1"></script>
-<script src="playoff-simulator.js?v=20261031-analytics-logos-1"></script>
-<script src="weekly-matchups.js?v=20261031-analytics-logos-1"></script>
-<script src="app.js?v=20261031-analytics-logos-1"></script>
+<script src="pwa.js?v=20261031-draft-companion-1"></script>
+<script src="monetization-config.js?v=20261031-draft-companion-1"></script>
+<script src="data-fetch.js?v=20261031-draft-companion-1"></script>
+<script src="demo-league.js?v=20261031-draft-companion-1"></script>
+<script src="league-records.js?v=20261031-draft-companion-1"></script>
+<script src="workspace-backup.js?v=20261031-draft-companion-1"></script>
+<script src="playoff-simulator.js?v=20261031-draft-companion-1"></script>
+<script src="weekly-matchups.js?v=20261031-draft-companion-1"></script>
+<script src="app.js?v=20261031-draft-companion-1"></script>
 </body>
 </html>
