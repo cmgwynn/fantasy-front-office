@@ -14,17 +14,19 @@ HTML assets and the regression iframe use a shared release query version.
 Bump those versions together whenever publishing changed assets to avoid a new
 HTML page reusing older cached scripts or styles.
 Fresh visits start on GM Inbox unless a previous league or manually saved workspace resumes.
-Player Compare and Team Grades are separate navigation items, and draft
-features are inside Draft Room. Loading a provider
-league is separate from loading the UI; a provider authorization failure does
-not mean the release is missing. Connect or import a league to use roster-based features.
+Navigation groups organize the tools into Overview, My Team, League, Players,
+and Draft. Labels describe the job each view performs; in-view notes explain
+where outputs are estimates, local plans, or dependent on provider data.
+Loading a provider league is separate from loading the UI; a provider
+authorization failure does not mean the release is missing. Connect or import
+a league to use roster-based features.
 
 ## Current release
 
 ### Compact sidebar
 
-The desktop sidebar uses five native accordion groups: **Home**, **Roster**,
-**League**, **Research**, and **Draft**. One group is expanded at a time.
+The desktop sidebar uses five native accordion groups: **Overview**, **My
+Team**, **League**, **Players**, and **Draft**. One group is expanded at a time.
 Selecting a tool through a shortcut also opens its group and synchronizes the
 mobile picker and `aria-current`. Collapsing the current group leaves the
 selected tool's name visible in its summary. Native summaries support keyboard

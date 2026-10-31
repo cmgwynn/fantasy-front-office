@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Fantasy Front Office</title>
-  <link rel="stylesheet" href="styles.css?v=20261031-league-refresh-1" />
+  <link rel="stylesheet" href="styles.css?v=20261031-navigation-clarity-1" />
 </head>
 <body>
 
@@ -64,30 +64,30 @@
     <div class="sidebar-heading"><span>Front Office</span><small>Your league, organized.</small></div>
     <label class="mobile-nav-label" for="mobileTabSelect">VIEW</label>
     <select id="mobileTabSelect" class="mobile-nav-select" aria-label="Navigate to section">
-      <optgroup label="Home">
+      <optgroup label="Overview">
       <option value="tab-inbox" selected>GM Inbox</option>
       <option value="tab-workspace">Workspace &amp; Backups</option>
       </optgroup>
-      <optgroup label="Roster">
-      <option value="tab-roster">Roster Overview</option>
-      <option value="tab-grades">Team Grades</option>
+      <optgroup label="My Team">
+      <option value="tab-roster">My Roster</option>
       <option value="tab-opt">Lineup Optimizer</option>
-      <option value="tab-planner">Multiweek Planner</option>
-      <option value="tab-waiver">Waiver Wire</option>
-      <option value="tab-trade">Trade Center</option>
+      <option value="tab-planner">Plan Ahead</option>
+      <option value="tab-waiver">Waiver Planner</option>
+      <option value="tab-trade">Trade Analyzer</option>
+      <option value="tab-grades">Team Grade</option>
       </optgroup>
       <optgroup label="League">
-      <option value="tab-records">Records &amp; Rivalries</option>
       <option value="tab-power">Power Rankings</option>
       <option value="tab-intel">League Intel</option>
-      <option value="tab-newsletter">League Newsletter</option>
-      <option value="tab-bracket">Playoff Bracket</option>
+      <option value="tab-records">Records &amp; Rivalries</option>
+      <option value="tab-bracket">Playoff Scenarios</option>
       <option value="tab-matchup">Matchup Simulator</option>
+      <option value="tab-newsletter">League Newsletter</option>
       </optgroup>
-      <optgroup label="Research">
+      <optgroup label="Players">
       <option value="tab-analytics">Player Analytics</option>
-      <option value="tab-compare">Player Compare</option>
-      <option value="tab-sos">SOS Heat-Map</option>
+      <option value="tab-compare">Compare Players</option>
+      <option value="tab-sos">Strength of Schedule</option>
       </optgroup>
       <optgroup label="Draft">
       <option value="tab-draft">Draft Room</option>
@@ -95,21 +95,21 @@
     </select>
     <div class="sidebar-groups">
       <details class="nav-group has-current" name="sidebar-section" open>
-        <summary><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m3 10 9-7 9 7v10H3Z M9 20v-7h6v7"/></svg><span>Home<small class="nav-current">GM Inbox</small></span><span class="nav-chevron" aria-hidden="true"></span></summary>
+        <summary><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m3 10 9-7 9 7v10H3Z M9 20v-7h6v7"/></svg><span>Overview<small class="nav-current">GM Inbox</small></span><span class="nav-chevron" aria-hidden="true"></span></summary>
         <div class="nav-group-items">
           <button class="nav-btn active" data-tab="tab-inbox" aria-current="page">GM Inbox</button>
           <button class="nav-btn" data-tab="tab-workspace">Workspace &amp; Backups</button>
         </div>
       </details>
       <details class="nav-group" name="sidebar-section">
-        <summary><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5h14v16H5Z M9 3h6v4H9Z M9 11h6 M9 15h6"/></svg><span>Roster<small class="nav-current"></small></span><span class="nav-chevron" aria-hidden="true"></span></summary>
+        <summary><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5h14v16H5Z M9 3h6v4H9Z M9 11h6 M9 15h6"/></svg><span>My Team<small class="nav-current"></small></span><span class="nav-chevron" aria-hidden="true"></span></summary>
         <div class="nav-group-items">
-          <button class="nav-btn" data-tab="tab-roster">Roster Overview</button>
-          <button class="nav-btn" data-tab="tab-grades">Team Grades</button>
+          <button class="nav-btn" data-tab="tab-roster">My Roster</button>
           <button class="nav-btn" data-tab="tab-opt">Lineup Optimizer</button>
-          <button class="nav-btn" data-tab="tab-planner">Multiweek Planner</button>
-          <button class="nav-btn" data-tab="tab-waiver">Waiver Wire</button>
-          <button class="nav-btn" data-tab="tab-trade">Trade Center</button>
+          <button class="nav-btn" data-tab="tab-planner">Plan Ahead</button>
+          <button class="nav-btn" data-tab="tab-waiver">Waiver Planner</button>
+          <button class="nav-btn" data-tab="tab-trade">Trade Analyzer</button>
+          <button class="nav-btn" data-tab="tab-grades">Team Grade</button>
         </div>
       </details>
       <details class="nav-group" name="sidebar-section">
@@ -118,17 +118,17 @@
           <button class="nav-btn" data-tab="tab-records">Records &amp; Rivalries</button>
           <button class="nav-btn" data-tab="tab-power">Power Rankings</button>
           <button class="nav-btn" data-tab="tab-intel">League Intel</button>
-          <button class="nav-btn" data-tab="tab-newsletter">League Newsletter</button>
-          <button class="nav-btn" data-tab="tab-bracket">Playoff Bracket</button>
+          <button class="nav-btn" data-tab="tab-bracket">Playoff Scenarios</button>
           <button class="nav-btn" data-tab="tab-matchup">Matchup Simulator</button>
+          <button class="nav-btn" data-tab="tab-newsletter">League Newsletter</button>
         </div>
       </details>
       <details class="nav-group" name="sidebar-section">
-        <summary><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="10" cy="10" r="6"/><path d="m15 15 6 6"/></svg><span>Research<small class="nav-current"></small></span><span class="nav-chevron" aria-hidden="true"></span></summary>
+        <summary><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="10" cy="10" r="6"/><path d="m15 15 6 6"/></svg><span>Players<small class="nav-current"></small></span><span class="nav-chevron" aria-hidden="true"></span></summary>
         <div class="nav-group-items">
           <button class="nav-btn" data-tab="tab-analytics">Player Analytics</button>
-          <button class="nav-btn" data-tab="tab-compare">Player Compare</button>
-          <button class="nav-btn" data-tab="tab-sos">SOS Heat-Map</button>
+          <button class="nav-btn" data-tab="tab-compare">Compare Players</button>
+          <button class="nav-btn" data-tab="tab-sos">Strength of Schedule</button>
         </div>
       </details>
       <details class="nav-group" name="sidebar-section">
@@ -164,6 +164,7 @@
     </div>
     <!-- TAB 1: ROSTER -->
     <div id="tab-roster" class="tab-page">
+      <div class="tool-intro"><h2>My Roster</h2><p>Review your lineup, bench, record, and roster health for the selected week. Choose your team and week in Current League.</p></div>
       <div class="card-banner">
         <div class="banner-inner">
           <div id="rTeamName" style="font-size:16px; font-weight:800; flex:1;">Team: --</div>
@@ -261,7 +262,7 @@
     <!-- TAB 2: POWER RANKINGS -->
     <div id="tab-power" class="tab-page">
       <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
-        <div style="font-size:15px; font-weight:800;">LEAGUE POWER RANKINGS, WEEKLY TRAJECTORY & ROS PROJECTIONS</div>
+        <div><div style="font-size:15px; font-weight:800;">POWER RANKINGS</div><p class="tool-intro-copy">Compare teams using loaded results and model estimates. Projected wins and playoff chances are estimates, not official league standings.</p></div>
         <div style="display:flex; align-items:center; gap:8px;">
           <label style="font-size:12px; color:var(--text-muted);">Chart View:</label>
           <select id="powerChartMode" style="min-width:360px;">
@@ -285,6 +286,7 @@
         </div>
         <span id="tradeFormatBadge" class="badge badge-blue">REDRAFT MODE</span>
       </div>
+      <p class="tool-intro-copy">Compare player packages, review completed league trades, or explore roster-fit ideas. Values are model estimates; this tool does not send offers.</p>
 
       <!-- SUB-MODE 0: TRADE BUILDER -->
       <div id="tmode-0" class="trade-grid">
@@ -424,6 +426,7 @@
 
     <!-- TAB 4: OPTIMIZER -->
     <div id="tab-opt" class="tab-page">
+      <p class="tool-intro-copy">See how your current starters compare with the highest-projected eligible lineup for this week. Recommendations use loaded projections and do not change your provider lineup.</p>
       <div class="optimizer-heading">
         <div id="optHeader">WEEK LINEUP COMPARISON: CURRENT VS. OPTIMAL</div>
         <div class="optimizer-heading-actions">
@@ -442,6 +445,7 @@
 
     <!-- TAB 5: WAIVERS -->
     <div id="tab-waiver" class="tab-page">
+      <p class="tool-intro-copy">Review unowned players as possible pickups using model value and roster need. Provider availability may differ; FAAB claims stay on this device until you submit them in your league.</p>
       <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
         <div style="font-size:15px; font-weight:800;">WAIVER WIRE PICKUP ANALYTICS</div>
         <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
@@ -518,6 +522,7 @@
           <button id="toggleAnalyticsFormulaBtn" class="btn-builder-action" style="padding:7px 12px;">Metric Formulas</button>
         </div>
       </div>
+      <p class="tool-intro-copy">Explore loaded player stats, projections, and model metrics. Values depend on available data and scoring settings; they are not expert-consensus rankings.</p>
 
       <div id="analyticsFormulaCard" class="card-banner" style="display:none; background:#12151E; border:1px solid var(--accent); font-size:12px; line-height:1.6;">
         <div style="font-weight:800; color:var(--accent); font-size:13px;">HOW PLAYER ANALYTICS & TRADE VALUE ARE CALCULATED</div>
@@ -575,6 +580,7 @@
 
     <!-- TAB 7: SOS HEAT-MAP -->
     <div id="tab-sos" class="tab-page">
+      <p class="tool-intro-copy">Compare upcoming opponent difficulty by position and schedule window. Strength-of-schedule ranks provide context, not a player-points forecast.</p>
       <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
         <div>
           <div id="sosTitleHdr" style="font-size:15px; font-weight:800;">POSITIONAL STRENGTH OF SCHEDULE (SOS) HEAT-MAP</div>
@@ -669,6 +675,7 @@
 
     <!-- TAB 9: MATCHUP SIMULATOR -->
     <div id="tab-matchup" class="tab-page">
+      <p class="tool-intro-copy">Compare two teams using the loaded roster projections and current scores. Win chances are model estimates, not live provider odds.</p>
       <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
         <div style="font-size:15px; font-weight:800;">HEAD-TO-HEAD MATCHUP & WIN-PROBABILITY SIMULATOR</div>
         <div style="display:flex; align-items:center; gap:8px;">
@@ -698,6 +705,7 @@
         <div><div class="draft-eyebrow">MULTI-LEAGUE VIEW</div><h2>League Intel</h2></div>
         <button id="refreshIntelBtn" class="btn-builder-action" type="button">Refresh analysis</button>
       </div>
+      <p class="tool-intro-copy">Track selected rosters across connected leagues, review available season history, save pick'em choices, and monitor player availability. Coverage depends on provider access and loaded league data.</p>
       <section class="portfolio-panel">
         <div class="draft-panel-heading"><div><h3>Tracked Rosters</h3><span id="portfolioMeta" class="draft-subtitle">Choose your roster for each connected league.</span></div></div>
         <div id="portfolioRosterSelectors" class="portfolio-roster-selectors"></div>
@@ -796,6 +804,7 @@
         <div><div class="draft-eyebrow">WEEKLY LEAGUE EDITION</div><h2>League Newsletter</h2></div>
         <span id="newsletterLeagueBadge" class="newsletter-league-badge">No league selected</span>
       </div>
+      <p class="tool-intro-copy">Generate a shareable weekly summary from the league data currently loaded. Review it before sharing; it is an app-generated report, not independent news coverage.</p>
       <section class="portfolio-panel newsletter-controls-panel">
         <label>League<select id="newsletterLeagueSelect" aria-label="Newsletter league"></select></label>
         <label>Saved issues<select id="newsletterArchiveSelect" aria-label="Saved newsletter issues"></select></label>
@@ -820,6 +829,7 @@
         </div>
         <span id="draftSeasonBadge" class="badge badge-blue">2026 Season</span>
       </div>
+      <p class="tool-intro-copy">Run a local mock draft, import ADP, and review roster-fit suggestions and pick grades. Drafts are not connected to your provider and picks are not submitted.</p>
 
       <section class="draft-settings">
         <label>Draft format
@@ -976,12 +986,12 @@
   <div id="monetizationDisclosure" class="monetization-disclosure" hidden></div>
 </footer>
 
-<script src="monetization-config.js?v=20261031-league-refresh-1"></script>
-<script src="data-fetch.js?v=20261031-league-refresh-1"></script>
-<script src="demo-league.js?v=20261031-league-refresh-1"></script>
-<script src="league-records.js?v=20261031-league-refresh-1"></script>
-<script src="workspace-backup.js?v=20261031-league-refresh-1"></script>
-<script src="playoff-simulator.js?v=20261031-league-refresh-1"></script>
-<script src="app.js?v=20261031-league-refresh-1"></script>
+<script src="monetization-config.js?v=20261031-navigation-clarity-1"></script>
+<script src="data-fetch.js?v=20261031-navigation-clarity-1"></script>
+<script src="demo-league.js?v=20261031-navigation-clarity-1"></script>
+<script src="league-records.js?v=20261031-navigation-clarity-1"></script>
+<script src="workspace-backup.js?v=20261031-navigation-clarity-1"></script>
+<script src="playoff-simulator.js?v=20261031-navigation-clarity-1"></script>
+<script src="app.js?v=20261031-navigation-clarity-1"></script>
 </body>
 </html>

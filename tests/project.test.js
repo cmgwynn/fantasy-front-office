@@ -41,7 +41,7 @@ test("HTML references existing local assets in the expected script order", () =>
   ].map(match => match[1]).filter(asset => !/^(?:[a-z]+:)?\/\//i.test(asset));
 
   assert.ok(assets.length > 0, "Expected local CSS or JavaScript assets.");
-  assert.ok(assets.every(asset => asset.endsWith("?v=20261031-league-refresh-1")), "All local assets must use the current release version.");
+  assert.ok(assets.every(asset => asset.endsWith("?v=20261031-navigation-clarity-1")), "All local assets must use the current release version.");
   for (const asset of assets) {
     assert.ok(fs.existsSync(path.join(root, asset.split("?")[0])), `Missing local asset: ${asset}`);
   }
@@ -87,6 +87,10 @@ test("static interface IDs, labels, and tab navigation targets are consistent", 
   assert.deepEqual([...mobileTargets].sort(), [...tabIds].sort(), "Mobile and desktop navigation must expose identical pages.");
   assert.equal((html.match(/name="sidebar-section"/g) || []).length, 5, "Sidebar must contain five native accordion groups.");
   assert.equal((html.match(/<optgroup label=/g) || []).length, 5, "Mobile navigation must preserve the same five groups.");
+  assert.deepEqual([...html.matchAll(/<optgroup label="([^"]+)"/g)].map(match => match[1]), ["Overview", "My Team", "League", "Players", "Draft"], "Navigation groups should describe the user's main tasks.");
+  for (const label of ["My Roster", "Plan Ahead", "Waiver Planner", "Trade Analyzer", "Team Grade", "Playoff Scenarios", "Compare Players", "Strength of Schedule"]) {
+    assert.ok(html.includes(`>${label}</option>`) || html.includes(`>${label}</button>`), `Navigation should use a clear label for ${label}.`);
+  }
   assert.match(html, /<button class="nav-btn active" data-tab="tab-inbox" aria-current="page">/, "Initial active section must be the first navigation item.");
   assert.match(html, /<option value="tab-inbox" selected>/, "Initial mobile navigation must match the active section.");
   assert.match(html, /<div id="tab-inbox" class="tab-page active">/, "Initial content panel must match the active navigation item.");
@@ -120,7 +124,7 @@ test("browser regression harness is wired to the app and includes saved-state co
   const html = read("tests/optimizer-regression.html");
   const appHtml = read("index.html");
 
-  assert.match(html, /src="\.\.\/index\.html\?v=20261031-league-refresh-1&amp;resume=0"/, "Regression harness must load the current app release without resuming personal snapshots.");
+  assert.match(html, /src="\.\.\/index\.html\?v=20261031-navigation-clarity-1&amp;resume=0"/, "Regression harness must load the current app release without resuming personal snapshots.");
   assert.doesNotMatch(appHtml, /id="loadRecordsBtn"/, "Records must load automatically without a manual refresh button.");
   assert.match(html, /runOptimizerFixtures/, "Regression harness must execute its fixtures.");
   assert.match(html, /Cross-league queue saves to target budget/, "Saved FAAB state should remain covered.");
