@@ -26,6 +26,12 @@ a league to use roster-based features.
 
 ### Inbox matchup and scoreboard
 
+The dark theme uses slightly brighter green-gray surfaces and muted text.
+The matchup is centered with teal/blue team panels, larger scores, gold VS,
+and a restrained gradient border/background. League games and the disclosure
+heading are centered too; leader highlighting remains green, and the layout
+keeps 44px controls without adding explanatory banners.
+
 The selected roster's actual fantasy matchup scores appear above Recommended
 moves. Other head-to-head games are available in a compact League scoreboard
 disclosure. Compare lineups routes to the exact two teams in Matchup Simulator;
