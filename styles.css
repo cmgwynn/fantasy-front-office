@@ -460,6 +460,9 @@ canvas.chart-canvas { width:100%; height:300px; background:var(--bg-card); borde
 .decision-checklist a { color:var(--accent); }
 .trade-impact-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr)); gap:16px; }
 .trade-impact-grid span { color:var(--text-muted); }
+.weekly-matchups { margin-bottom:18px; }
+#startSitAdvice { margin:12px 0; }
+#startSitAdvice .comparison-cards { margin-top:12px; }
 .faab-claim-actions { flex-wrap:wrap; }
 .comparison-table { min-width:480px; }
 .comparison-table th:first-child, .comparison-table td:first-child { text-align:left; }

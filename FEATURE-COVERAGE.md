@@ -65,7 +65,8 @@ matchups rather than assuming a period equals a week. Explicit provider
 unpaired entries are distinguished from missing or unresolved pairings.
 Future playoff opponents may not be assigned yet. This view shows pairings,
 not inferred final scores or simulated opponents.
-Results are cached for one minute per league/season/week, with a refresh action.
+Results are cached for one minute per league/season/week. Reload the page to
+update data; there is no separate refresh action.
 Failures are visible and clear the displayed rows. Saved/imported snapshots
 use only supplied current pairings or completed-game records, never network
 requests or invented future schedules.
@@ -145,13 +146,13 @@ the real current NFL week.
 
 ### Provider league refresh
 
-When a connected league is active, **Refresh league** reloads current
-provider data without requiring the account to be reconnected. Sleeper refreshes
-league settings, rosters, matchups, and projections. ESPN refetches the league
-endpoint before rebuilding the roster and matchup views rather than reusing the
-initial connection response. Refresh failures remain visible in the status and
-data-freshness indicators; **Retry sync** remains available when a data source
-has failed. Yahoo file imports are snapshots and must be re-imported to refresh.
+Reloading the page resumes the saved connected league, checks player statuses
+without relying solely on the 24-hour player cache, and loads provider rosters,
+matchups and projections. ESPN refetches its league response. Selected roster,
+week and tool are retained when still available. Failed reloads retain the
+explicitly labeled saved snapshot and report the provider error. All manual
+refresh/retry controls have been removed, including Inbox, portfolio, schedule
+and live-score controls. Yahoo imports remain snapshots: re-import to update.
 
 GM Inbox now includes a weekly briefing, projection provenance, roster risks,
 and waiver comparisons against an optimized lineup with a bench drop candidate.
@@ -217,8 +218,15 @@ Standard and superflex starter targets share the existing draft-score model;
 superflex targets two QBs. Dynasty age adjustments remain part of that model.
 
 This is not a live-provider draft integration or a player-availability forecast.
-Custom league slots and keeper-ledger entries are not incorporated into the
-plan; the UI states these limits. No pick is submitted to a provider. Candidate
+Choose **Use League Settings**, then **Start / Reset Draft**, to apply exact
+supported offensive/K/DEF starter slots, including flexible slots and leagues
+without kickers/defenses. Unknown/IDP slots are refused instead of mapped to a
+standard template. In keeper mode, valid saved keepers leave the player pool
+and the selected roster's keepers count toward roster needs. A keeper whose
+ownership changed is explicitly marked unverified and not applied. Keeper
+costs remain a ledger only: no draft-round forfeiture, contract or auction
+budget engine is implied. Scoring still uses reception-based presets rather
+than every custom league bonus. No pick is submitted to a provider. Candidate
 scoring is heuristic, not a calibrated draft grade. Demo drafts now exclude
 the real player pool.
 
@@ -418,10 +426,10 @@ NFL results.
 
 | Tool | Verified behavior | Remaining limitation |
 | --- | --- | --- |
-| Scoring/format-aware rankings | Standard, half-PPR, PPR and TE-premium reception adjustments; standard/superflex replacement and roster-need models | Approximate presets, not complete custom scoring, custom slots or IDP draft support |
+| Scoring/format-aware rankings | Reception presets; standard/superflex models and exact supported league starter-slot needs | Not complete custom scoring or IDP draft support |
 | ADP/value comparison | Imported CSV or supplied player ADP; source retained; absent ADP stays unavailable | No licensed/current consensus ADP feed or draft-time data snapshots |
-| Snake mock draft | Correct reversing order; recorded user picks; simulated opponents; unique picks; local save/undo | Practice only: no connected live draft, auction engine or keeper removal |
-| Roster-needs and next-pick plan | Filled targets remove the starter-need bonus; next three snake picks; excludes taken players | Standard/superflex targets only; keeper ledger and exact league slots are not incorporated |
+| Snake mock draft | Correct reversing order; recorded user picks; simulated opponents; unique picks; local save/undo; saved keepers removed in keeper mode | Practice only: no connected live draft, round-cost forfeiture or auction engine |
+| Roster-needs and next-pick plan | Standard/superflex or exact imported supported slots; retained players count toward needs; next three snake picks | No full keeper-cost, IDP or arbitrary custom scoring engine |
 | Draft review | Actual mock pick versus available ADP; exact round-value grade thresholds; missing ADP excluded from summary | Measures ADP value, not team win probability, draft-time consensus or actual NFL outcomes |
 
 ### In-season management
@@ -429,16 +437,15 @@ NFL results.
 | Tool | Verified behavior | Remaining limitation |
 | --- | --- | --- |
 | Start/sit and game-day checklist | Empty/ineligible/injury/bye starter flags; replacement review; known kickoffs; clock-crossing locks; locked starters stay in their exact slots and locked bench players cannot enter | Unknown kickoff coverage is explicit; official inactive lists and provider-specific lock rules take precedence |
-| Waiver/FAAB planning | Owned-player exclusion; optimized lineup gains; ordered saved claims; over-budget and shared-drop fallback warnings; acquired claims excluded from pending totals | Manual remaining budget; no verified provider balance/deadline, conditional-claim engine or claim submission |
+| Waiver/FAAB planning | Owned-player exclusion; lineup gains; ordered claims; budget/fallback warnings; Sleeper remaining balance when total/used metadata is verified | Planning budget remains manually controlled; deadlines, other-provider balances, conditional execution and submission remain unavailable |
 | Two-team trade analysis | Ownership, duplication, projection and kickoff validation; both eligible starting lineups before/after; collapsed ROS/playoff model estimates; cleared packages clear stale output | Assumes immediate availability; no provider roster-limit, deadline or processing-time validation; asset values are heuristics |
 | Schedule and bye coverage | Published league pairings; incomplete-data warnings; multiweek roster gaps; add/drop coverage scenarios | Provider/input dependent; unknown schedules are not inferred as byes; unsupported playoff/provider rules remain explicit |
 | Relevant player updates | Selected-starter status sources/check times in the kickoff checklist; watchlist status changes, including recoveries, observed on sync | Partial: no licensed injury/role/news feed, official active-list integration or closed-browser push service |
 
 ### Reliability and data boundaries
 
-- Refresh checks the player database and preserves the stable selected roster
-  and active tool. Retrying source sync also restores the selected league,
-  roster, week and tool when still available.
+- Page reload checks the player database and preserves selected context when
+  still available. Data caches and snapshot provenance remain explicit.
 - The compact status line distinguishes demo/imported/saved snapshots, failed
   syncs, unverified projections, player statuses older than six hours, and
   rosters at least fifteen minutes old. A different league's last sync cannot
@@ -472,13 +479,61 @@ and Premium workflows have not been independently exercised.
 | Trade comparison and mutually beneficial packages | Validated builder packages and both-team weekly starting-lineup changes; heuristic finder | Provider legality/processing rules, calibration and finder-model completeness |
 | All-time records, finishes, head-to-head, rivalries | Season record book plus bounded Sleeper linked-season career records, owner-ID identity mapping and cross-season heat map | ESPN/imported career mapping, championships/finishes, streaks, disconnected seasons and broader provider rules |
 | League Historian questions | Fixed season and career fact lookup over loaded scores with source/season context | Broader grounded questions, richer narratives and additional providers |
-| FAAB planner | Ordered local claims, fallback/drop-conflict and budget warnings, outcome comparisons | Provider balances, deadlines, conditional-claim execution and authoritative reconciliation |
+| FAAB planner | Ordered claims, fallback/budget warnings, outcome comparisons; Sleeper reported remaining balance | Other-provider balances, deadlines, conditional execution and authoritative reconciliation |
 | Rate my team and player comparison | Dedicated player comparison, roster scenarios, explained league-relative weekly team grades with starter-group breakdowns | Validated historical production, calibrated season/dynasty grades, and provider-rule completeness |
 | Weekly lineup analyzer | Partial: optimizer and kickoff locks | Provider rule verification and missing-input warnings |
 | Dynasty analyzer | Partial: dynasty value/trade modes | Contract, pick, and long-term scenario validation |
-| Draft grades and personalized draft plans | Mock-draft plan; pick-by-pick ADP value grades, coverage-aware summary, roster fit and model alternatives | Actual draft imports/outcomes, draft-time data snapshots, keeper-aware/custom-slot plans and live draft integration |
+| Draft grades and personalized draft plans | Mock plan; ADP grades; exact supported slots; keeper pool exclusion and roster needs | Actual draft imports/outcomes, draft-time snapshots, keeper-cost engine and live draft integration |
 | Video recaps | Not implemented | Original shareable video generation and export |
 | Sleeper, ESPN, Yahoo connections | Sleeper API; ESPN access-dependent; Yahoo file import | Secure backend/provider-supported authentication where available |
+
+## Weekly positional matchups and start/sit guide
+
+**Player Analytics → Best matchups this week** defaults to wide receivers, with
+QB/RB/TE filters and all/selected-roster/unrostered scopes. The shortlist is
+ordered by matchup rating, then projected points, and links to the existing
+Compare Players destination. **Compare Players → Who should I start?** presents
+a projection-based lean with availability, known kickoff locks, positional
+matchup evidence and verified season workload context. It distinguishes an
+actionable roster comparison from informational comparisons of unowned or
+opponent-owned players.
+
+The shared weekly-matchups module aggregates Sleeper's public enriched weekly
+stat records from at most six prior completed NFL weeks (three concurrent
+requests at most). It uses each record's historical team/opponent metadata, not
+the player's current team, and only the active season and weeks before both the
+selected week and current NFL week. Failed weeks, invalid metadata and missing
+scores remain explicit. Verified sparse zero-point participants require played
+snaps, all three unranked sentinels, no supplied fantasy totals and no scoring
+counters; other missing scores invalidate that defense's game sample. Legitimate
+zero and negative scores are preserved.
+
+Ratings require three observed games per defense and 24 qualifying defenses.
+Higher 0–100 percentiles mean easier positional allowances; tied defenses share
+a percentile. Ratings use standard/half/PPR totals, not custom bonuses,
+opponent-quality adjustments, individual CB assignments or weather/news inputs.
+Confidence is sample-based (low at 3–5 games, moderate at 6), not calibrated
+predictive confidence. Snapshot/demo/imported data receives no live rating.
+Upcoming opponents must come from the verified schedule cache; seeded schedule
+grades never enter this tool. Per-page results and in-flight loads are keyed by
+season/selected week, so changing context cannot display a different week's
+results as current.
+
+When both matchup inputs exist, the start/sit guide shows a clearly labeled
+sensitivity estimate: 25% of positional allowance deviation from the sampled
+mean, capped at +/-10% of each weekly projection. This is a heuristic, not a new
+forecast or an extra guaranteed edge; projections may already include matchup.
+Missing either input leaves the recommendation projection-only. Injury/bye/
+inactive-roster availability takes precedence; kickoff-locked players receive
+no actionable recommendation. Workload is displayed as context, not awarded a
+second numerical bonus. Close calls are labeled. The optimizer's scoring is
+not modified by this model.
+
+Browser source validation against public historical 2025 Weeks 1–6 returned
+4,036 records and 32 qualifying WR defense ratings. This proves source shape
+and browser accessibility, not future data availability or predictive accuracy.
+Private ESPN auth, full custom scoring, keeper-cost rules, provider waiver
+deadlines, licensed news and background alerts remain outside this release.
 
 ## Multiweek roster planning
 

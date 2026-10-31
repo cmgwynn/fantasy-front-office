@@ -20,7 +20,7 @@
   <h1>Optimizer Regression Checks</h1>
   <p id="summary" role="status">Loading the app runtime...</p>
   <ol id="results"></ol>
-  <iframe id="appFrame" src="../index.html?v=20261031-decision-tools-1&amp;resume=0" title="Optimizer test runtime"></iframe>
+  <iframe id="appFrame" src="../index.html?v=20261031-weekly-matchups-1&amp;resume=0" title="Optimizer test runtime"></iframe>
   <script>
     async function runOptimizerFixtures() {
       const results = [];
@@ -59,6 +59,8 @@
       const savedPortfolioRosterSelections = { ...state.portfolioRosterSelections };
       const savedFaabState = { budget: faabState.budget, weeksRemaining: faabState.weeksRemaining, strategy: faabState.strategy, claims: [...faabState.claims], loadedKey: faabState.loadedKey };
       const savedFetch = window.fetch;
+      const savedEnsureWeeklyMatchups = ensureWeeklyMatchups;
+      ensureWeeklyMatchups = async () => { renderWeeklyMatchups(); renderStartSitAdvice(); };
       const providerSelect = document.getElementById("providerSelect");
       const savedProvider = providerSelect.value;
       const savedStateProvider = state.provider;
@@ -930,7 +932,149 @@
         renderPersonalizedDraftPlan(planSettings, planSimulation, planPool);
         check("Draft plan explains simulation and keeper limitations",
           document.getElementById("draftPlan").textContent.includes("not a connected live draft") &&
-          document.getElementById("draftPlan").textContent.includes("Keeper ledger entries are not incorporated"));
+          document.getElementById("draftPlan").textContent.includes("no rounds or auction budget are consumed"));
+        const exactSettings = { ...planSettings, rosterFormat: "league", starterSlots: ["QB", "WR", "WR", "WR", "FLEX"] };
+        const exactPlan = buildPersonalizedDraftPlan(exactSettings, planSimulation, planPool);
+        check("Imported exact starter slots drive roster planning instead of standard presets",
+          exactPlan.needs.includes("WR: 3 more") && exactPlan.needs.includes("FLEX: 1 more") &&
+          !exactPlan.needs.some(need => need.startsWith("K:") || need.startsWith("RB:")));
+        check("Exact draft slot assignment fills flexible slots without double-counting players",
+          getDraftSlotNeeds({ ...exactSettings, starterSlots: ["RB", "FLEX"] }, [state.players.fixture_claim_rb]).FLEX === 1);
+        const importDraftBefore = structuredClone(draftState);
+        const importControlIds = ["draftType", "draftTeams", "draftSlot", "draftRounds", "draftScoring", "draftRosterFormat", "draftOpponentStrategy", "draftDynastyYears", "draftKeeperSlots", "draftKeeperYears"];
+        const importControlsBefore = Object.fromEntries(importControlIds.map(id => [id, document.getElementById(id).value]));
+        const draftImportKey = getDraftSessionKey(), draftImportSaved = localStorage.getItem(draftImportKey);
+        try {
+          state.activeLeague = { ...claimLeague, rosterPositions: [...exactSettings.starterSlots, "BN"], totalTeams: 12, draftRounds: 3 };
+          draftState.loadedSessionKey = draftImportKey;
+          importDraftLeagueSettings();
+          applyDraftSettings();
+          check("Use League Settings and Start apply and persist exact supported slots end to end",
+            document.getElementById("draftRosterFormat").value === "league" &&
+            draftState.settings.starterSlots.join(",") === exactSettings.starterSlots.join(",") &&
+            JSON.parse(localStorage.getItem(draftImportKey)).settings.starterSlots.join(",") === exactSettings.starterSlots.join(","));
+        } finally {
+          state.activeLeague = claimLeague;
+          Object.assign(draftState, importDraftBefore);
+          for (const [id, value] of Object.entries(importControlsBefore)) document.getElementById(id).value = value;
+          if (draftImportSaved === null) localStorage.removeItem(draftImportKey); else localStorage.setItem(draftImportKey, draftImportSaved);
+        }
+        const keeperStateBefore = { keepers: draftState.keepers, settings: draftState.settings, picks: draftState.userPicks };
+        try {
+          draftState.keepers = [{ playerId: "fixture_owned_qb", managerId: state.managers[0].rosterId }, { playerId: "fixture_owned_rb", managerId: state.managers[1].rosterId }];
+          const keeperSettings = { ...planSettings, type: "keeper" };
+          draftState.settings = keeperSettings;
+          draftState.userPicks = [];
+          const keptPlan = buildPersonalizedDraftPlan(keeperSettings, { picks: [], draftedIds: new Set(getDraftKeptPlayers().map(player => player.id)), nextPick: 6 }, planPool);
+          check("Keeper plan counts only the selected manager's retained players toward roster needs",
+            keptPlan.counts.QB === 1 && !keptPlan.counts.RB && !keptPlan.needs.some(need => need.startsWith("QB:")));
+          check("All saved keepers leave the mock pool and cannot become simulated opponent picks",
+            !getDraftPlayerPool(keeperSettings).some(entry => ["fixture_owned_qb", "fixture_owned_rb"].includes(entry.player.id)) &&
+            simulateDraft(planPool.filter(entry => !getDraftKeptPlayers().some(player => player.id === entry.player.id))).draftedIds.has("fixture_owned_rb"));
+          check("Redraft mode does not silently remove keeper-ledger players",
+            getDraftKeptPlayers(planSettings).length === 0);
+        } finally {
+          draftState.keepers = keeperStateBefore.keepers;
+          draftState.settings = keeperStateBefore.settings;
+          draftState.userPicks = keeperStateBefore.picks;
+        }
+        const budgetLeagueBefore = state.activeLeague;
+        state.activeLeague = { ...claimLeague, waiverBudget: 100 };
+        check("Sleeper remaining FAAB preserves a verified zero balance",
+          getProviderFaabBalance({ waiverBudgetUsed: 100, waiverBudgetCheckedAt: fixedNow }).remaining === 0);
+        check("Missing/invalid provider FAAB inputs do not become a fabricated balance",
+          getProviderFaabBalance({ waiverBudgetUsed: null, waiverBudgetCheckedAt: fixedNow }) === null &&
+          getProviderFaabBalance({ waiverBudgetUsed: 101, waiverBudgetCheckedAt: fixedNow }) === null);
+        state.activeLeague = budgetLeagueBefore;
+        const matchupKey = getWeeklyMatchupKey(), previousMatchup = weeklyMatchupData.get(matchupKey);
+        const priorMatchupPosition = document.getElementById("weeklyMatchupPosition").value;
+        const priorMatchupScope = document.getElementById("weeklyMatchupScope").value;
+        const originalMatchupPlayer = { ...state.players.fixture_claim_rb };
+        const compareIdsBefore = [document.getElementById("comparePlayerA").value, document.getElementById("comparePlayerB").value];
+        try {
+          const teams = Object.keys(NFL_TEAM_NAMES);
+          const rows = teams.flatMap((opponent, index) => [1, 2, 3].map(week => ({
+            player_id: `matchup-${index}`, player: { position: "RB" }, team: teams[(index + 1) % teams.length], opponent,
+            season: String(claimLeague.season), season_type: "regular", week, game_id: `${index}-${week}`,
+            stats: { gp: 1, off_snp: 10, pts_ppr: index + 10 }
+          })));
+          weeklyMatchupData.set(matchupKey, { rows, weeks: [1, 2, 3], errors: [], checkedAt: Date.now(), loading: false, models: new Map() });
+          plannerScheduleSources.set(String(claimLeague.season), { timestamp: Date.now(), schedule: { NE: { [state.week]: { opp: teams.at(-1), isHome: true } } } });
+          state.players.fixture_claim_rb.team = "NE";
+          document.getElementById("weeklyMatchupPosition").value = "RB";
+          document.getElementById("weeklyMatchupScope").value = "ALL";
+          const matchup = getWeeklyPlayerMatchup(state.players.fixture_claim_rb);
+          check("Weekly player ratings use verified opponent and completed positional evidence",
+            matchup.rating === 100 && matchup.games === 3 && matchup.confidence === "Low");
+          renderWeeklyMatchups();
+          check("Weekly matchup shortlist shows rating, sample size, projection and comparison action",
+            document.getElementById("weeklyMatchupResults").textContent.includes("100") &&
+            document.getElementById("weeklyMatchupResults").textContent.includes("3 games") &&
+            document.querySelector('[data-matchup-compare="fixture_claim_rb"]'));
+          document.querySelector('[data-matchup-compare="fixture_claim_rb"]').click();
+          check("Matchup shortlist routes to the existing comparison tab and selects its player",
+            document.querySelector(".tab-page.active").id === "tab-compare" &&
+            document.getElementById("comparePlayerA").value === "fixture_claim_rb");
+          openPlayerComparison("fixture_claim_rb", "fixture_owned_rb");
+          renderStartSitAdvice();
+          check("Start/sit guide explains incomplete matchup coverage instead of inventing a second rating",
+            document.getElementById("startSitAdvice").textContent.includes("coverage incomplete") &&
+            document.getElementById("startSitAdvice").textContent.includes("Informational only"));
+          const frozenMap = state.gameDayByTeam, frozenAvailable = state.gameDayScheduleAvailable;
+          state.gameDayByTeam = { NE: { status: "live", kickoff: Date.now() - 60000 } };
+          state.gameDayScheduleAvailable = true;
+          renderStartSitAdvice();
+          check("Start/sit guide does not recommend acting on kickoff-locked players",
+            document.getElementById("startSitAdvice").textContent.includes("no current-week start recommendation"));
+          state.gameDayByTeam = frozenMap;
+          state.gameDayScheduleAvailable = frozenAvailable;
+          state.players.fixture_claim_rb.name = "<img src=x onerror=alert(1)>";
+          renderWeeklyMatchups();
+          renderStartSitAdvice();
+          check("New matchup and start/sit surfaces escape provider player names",
+            !document.querySelector("#weeklyMatchupResults img, #startSitAdvice img") &&
+            document.getElementById("weeklyMatchupResults").textContent.includes("<img src=x"));
+          state.activeLeague = { ...claimLeague, isDemo: true };
+          check("Fictional/snapshot data never borrows real weekly matchup ratings",
+            getWeeklyPlayerMatchup(state.players.fixture_claim_rb).reason.includes("Snapshot/demo"));
+        } finally {
+          state.activeLeague = claimLeague;
+          state.players.fixture_claim_rb = originalMatchupPlayer;
+          if (previousMatchup) weeklyMatchupData.set(matchupKey, previousMatchup); else weeklyMatchupData.delete(matchupKey);
+          document.getElementById("weeklyMatchupPosition").value = priorMatchupPosition;
+          document.getElementById("weeklyMatchupScope").value = priorMatchupScope;
+          document.getElementById("comparePlayerA").value = compareIdsBefore[0];
+          document.getElementById("comparePlayerB").value = compareIdsBefore[1];
+        }
+        const loaderBefore = { fetch: window.fetch, nfl: sleeperNflStateCache, week: state.week };
+        state.week = 5;
+        const loaderKey = getWeeklyMatchupKey(), previousLoaderData = weeklyMatchupData.get(loaderKey);
+        const requestedWeeks = [];
+        try {
+          weeklyMatchupData.delete(loaderKey);
+          sleeperNflStateCache = { data: { season: "2026", season_type: "regular", week: 4 }, checkedAt: Date.now() };
+          window.fetch = async url => {
+            const week = Number(new URL(String(url)).pathname.split("/").pop());
+            requestedWeeks.push(week);
+            return week === 2 ? { ok: false, status: 503 } : { ok: true, json: async () => [{ week, season: "2026", season_type: "regular", player_id: "loader", player: { position: "WR" }, team: "NE", opponent: "BUF", game_id: `game-${week}`, stats: { gp: 1, off_snp: 20, pts_ppr: 10 } }] };
+          };
+          await Promise.all([savedEnsureWeeklyMatchups(), savedEnsureWeeklyMatchups()]);
+          const loaded = weeklyMatchupData.get(loaderKey);
+          check("Matchup loader deduplicates loads and excludes current/future NFL weeks",
+            requestedWeeks.length === 3 && requestedWeeks.every(week => week < 4));
+          check("Failed matchup weeks stay explicit and are excluded from the loaded sample",
+            loaded.weeks.join(",") === "1,3" && loaded.errors.some(error => error.includes("503")) &&
+            document.getElementById("weeklyMatchupStatus").textContent.includes("Partial/unavailable"));
+          state.activeLeague = { ...claimLeague, isDemo: true };
+          await savedEnsureWeeklyMatchups();
+          check("Snapshot matchup views never trigger public data requests", requestedWeeks.length === 3);
+        } finally {
+          state.activeLeague = claimLeague;
+          window.fetch = loaderBefore.fetch;
+          sleeperNflStateCache = loaderBefore.nfl;
+          state.week = loaderBefore.week;
+          if (previousLoaderData) weeklyMatchupData.set(loaderKey, previousLoaderData); else weeklyMatchupData.delete(loaderKey);
+        }
         state.activeLeague = { ...claimLeague, isDemo: true };
         check("Draft player pool isolates demo players from live players",
           getDraftPlayerPool(planSettings).length === 0);
@@ -1236,6 +1380,7 @@
           document.getElementById("careerHistoryStatus").textContent.includes("cycle"));
         state.activeLeague = claimLeague;
         window.fetch = savedFetch;
+        ensureWeeklyMatchups = savedEnsureWeeklyMatchups;
 
         state.activeLeague = { ...claimLeague, isDemo: true };
         await runPlayoffForecast();

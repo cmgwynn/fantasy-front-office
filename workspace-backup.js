@@ -52,7 +52,9 @@
         Number.isInteger(settings.slot) && settings.slot >= 1 && settings.slot <= settings.teams &&
         Number.isInteger(settings.rounds) && settings.rounds >= 1 && settings.rounds <= 30 &&
         ["standard", "half", "ppr", "tep"].includes(settings.scoring) &&
-        ["standard", "superflex"].includes(settings.rosterFormat) &&
+        ["standard", "superflex", "league"].includes(settings.rosterFormat) &&
+        (settings.rosterFormat !== "league" || (Array.isArray(settings.starterSlots) && settings.starterSlots.length > 0 &&
+          settings.starterSlots.length <= 40 && settings.starterSlots.every(slot => typeof slot === "string" && slot.length > 0 && slot.length <= 30))) &&
         Array.isArray(value.userPicks) && value.userPicks.every(id) &&
         object(value.adpByName) && Object.values(value.adpByName).every(number) && Array.isArray(value.keepers),
       `Invalid draft session: ${key}`);

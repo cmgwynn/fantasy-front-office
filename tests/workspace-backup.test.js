@@ -40,6 +40,18 @@ test("workspace round trip preserves explicit zero points, selected view and loc
   assert.equal(backup.storage[faabKey], faabValue);
 });
 
+test("saved draft plans preserve exact supported league slots and reject empty exact configurations", () => {
+  const backup = fixture();
+  const key = "fantasy-draft-v1:yahoo:2026:test";
+  const draft = { settings: { type: "keeper", teams: 12, slot: 2, rounds: 15, scoring: "ppr", rosterFormat: "league", starterSlots: ["QB", "WR", "WR", "WR", "FLEX"] },
+    userPicks: [], adpByName: {}, keepers: [] };
+  backup.storage[key] = JSON.stringify(draft);
+  assert.equal(JSON.parse(workspace.parseBackup(JSON.stringify(backup)).storage[key]).settings.starterSlots.length, 5);
+  draft.settings.starterSlots = [];
+  backup.storage[key] = JSON.stringify(draft);
+  assert.throws(() => workspace.validateBackup(backup), /Invalid draft session/);
+});
+
 test("workspace preserves optional career history while retaining support for older backups", () => {
   const backup = fixture();
   backup.careerHistory = { seasons: [{ season: "2025", leagueId: "older", coverage: "Fixture", errors: [],

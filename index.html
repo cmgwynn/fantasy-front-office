@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Fantasy Front Office</title>
-  <link rel="stylesheet" href="styles.css?v=20261031-decision-tools-1" />
+  <link rel="stylesheet" href="styles.css?v=20261031-weekly-matchups-1" />
 </head>
 <body>
 
@@ -13,7 +13,6 @@
     <div class="title-label">FANTASY FRONT OFFICE</div>
     <div class="header-status-group">
       <div id="statusLabel" class="status-pill">Choose ESPN or Sleeper, then connect a league.</div>
-      <button id="retryDataBtn" class="btn-builder-action" type="button" hidden>Retry sync</button>
       <details class="data-health">
         <summary>Data status</summary>
         <span id="dataFreshnessLabel" class="data-freshness">Data sources waiting</span>
@@ -173,7 +172,7 @@
         <p class="comparison-note">Your league matchups, upcoming byes, and coverage options.</p>
       </div>
       <section class="comparison-card">
-        <div class="draft-panel-heading"><h3>League schedule</h3><button id="refreshLeagueScheduleBtn" class="btn-builder-action" type="button">Refresh schedule</button></div>
+        <div class="draft-panel-heading"><h3>League schedule</h3></div>
         <div class="planner-controls">
           <label for="leagueScheduleWeek">Week<select id="leagueScheduleWeek"></select></label>
           <label for="leagueScheduleScope">Teams<select id="leagueScheduleScope"><option value="all">Entire league</option><option value="mine">My selected team</option></select></label>
@@ -414,7 +413,6 @@
         <div class="optimizer-heading-actions">
           <span id="optimizerLockStatus" aria-live="polite">Checking kickoff times...</span>
           <span id="optLiveStatus" aria-live="polite">Actual points reflect the last league sync.</span>
-          <button id="refreshOptimizerScoresBtn" class="btn-builder-action" type="button">Refresh points</button>
           <div id="optSubAlert"></div>
         </div>
       </div>
@@ -506,6 +504,17 @@
         </div>
       </div>
       <p class="tool-intro-copy">Compare stats and model projections for your scoring. Not expert-consensus rankings.</p>
+      <section class="comparison-card weekly-matchups" aria-label="Best weekly player matchups">
+        <div class="draft-panel-heading"><h3>Best matchups this week</h3><span id="weeklyMatchupWeek" class="badge badge-green"></span></div>
+        <div class="comparison-controls">
+          <label for="weeklyMatchupPosition">Position<select id="weeklyMatchupPosition"><option value="WR" selected>Wide receivers</option><option value="RB">Running backs</option><option value="TE">Tight ends</option><option value="QB">Quarterbacks</option></select></label>
+          <label for="weeklyMatchupScope">Players<select id="weeklyMatchupScope"><option value="ALL">All loaded players</option><option value="ROSTER">My roster</option><option value="AVAILABLE">Unrostered</option></select></label>
+        </div>
+        <p id="weeklyMatchupStatus" class="comparison-note" role="status">Matchup data loads when you open this tool.</p>
+        <details id="weeklyMatchupErrors" class="gm-action-details" hidden><summary>Data coverage issues</summary><p id="weeklyMatchupErrorDetails" class="comparison-note"></p></details>
+        <div id="weeklyMatchupResults"></div>
+        <details class="gm-action-details"><summary>How matchup ratings work</summary><p class="comparison-note">Higher is easier: 0–100 percentile of fantasy points allowed to the entire position, using up to six prior completed NFL weeks. At least three games per defense and 24 qualifying defenses are required. Standard/half/PPR scoring only; custom bonuses are not included. Descriptive, not opponent-strength adjusted; not a receiver-versus-cornerback grade. Low samples, injuries, role changes and weather can outweigh the matchup. No seeded schedule grades are used here.</p></details>
+      </section>
 
       <div id="analyticsFormulaCard" class="card-banner" style="display:none; background:#12151E; border:1px solid var(--accent); font-size:12px; line-height:1.6;">
         <div style="font-weight:800; color:var(--accent); font-size:13px;">HOW PLAYER ANALYTICS & TRADE VALUE ARE CALCULATED</div>
@@ -536,9 +545,10 @@
     <div id="tab-compare" class="tab-page">
       <div>
         <div class="draft-eyebrow">PLAYER DECISION DESK</div>
-        <h2>Player Compare</h2>
+        <h2>Who should I start?</h2>
         <p class="comparison-note">Compare two players using the active league's scoring and selected roster. No transactions or lineup changes are submitted.</p>
       </div>
+      <section id="startSitAdvice" class="comparison-card" aria-label="Weekly start sit guidance" aria-live="polite"></section>
       <div class="comparison-controls card-banner">
         <label for="compareSearch">Find players by name or NFL team
           <input id="compareSearch" type="search" placeholder="Search the loaded player pool..." />
@@ -664,7 +674,6 @@
       <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
         <div style="font-size:15px; font-weight:800;">HEAD-TO-HEAD MATCHUP & WIN-PROBABILITY SIMULATOR</div>
         <div style="display:flex; align-items:center; gap:8px;">
-          <button id="refreshMatchupsBtn" class="btn-builder-action" type="button">Refresh live scores</button>
           <select id="simTeamA" style="min-width:210px;"></select>
           <span style="font-size:13px; font-weight:800; color:var(--accent); padding:0 6px;">VS</span>
           <select id="simTeamB" style="min-width:210px;"></select>
@@ -688,7 +697,6 @@
     <div id="tab-intel" class="tab-page">
       <div class="draft-heading">
         <div><div class="draft-eyebrow">MULTI-LEAGUE VIEW</div><h2>Across My Leagues</h2></div>
-        <button id="refreshIntelBtn" class="btn-builder-action" type="button">Refresh analysis</button>
       </div>
       <p class="tool-intro-copy">Check shared injury risks, bye clashes, and pickup opportunities across your leagues.</p>
       <section class="portfolio-panel">
@@ -748,7 +756,6 @@
     <div id="tab-inbox" class="tab-page active">
       <div class="draft-heading">
         <div><div class="draft-eyebrow">THIS WEEK'S DECISIONS</div><h2>GM Inbox</h2></div>
-        <button id="refreshGmInboxBtn" class="btn-builder-action" type="button">Refresh analysis</button>
       </div>
       <div id="gmInboxSummary" class="gm-inbox-summary"></div>
       <section id="gmBriefing" class="gm-briefing" aria-label="Weekly GM briefing"></section>
@@ -850,6 +857,7 @@
           <select id="draftRosterFormat">
             <option value="standard">1 QB</option>
             <option value="superflex">Superflex</option>
+            <option value="league">Exact connected-league slots</option>
           </select>
         </label>
         <label>Opponent picks
@@ -975,12 +983,13 @@
   <div id="monetizationDisclosure" class="monetization-disclosure" hidden></div>
 </footer>
 
-<script src="monetization-config.js?v=20261031-decision-tools-1"></script>
-<script src="data-fetch.js?v=20261031-decision-tools-1"></script>
-<script src="demo-league.js?v=20261031-decision-tools-1"></script>
-<script src="league-records.js?v=20261031-decision-tools-1"></script>
-<script src="workspace-backup.js?v=20261031-decision-tools-1"></script>
-<script src="playoff-simulator.js?v=20261031-decision-tools-1"></script>
-<script src="app.js?v=20261031-decision-tools-1"></script>
+<script src="monetization-config.js?v=20261031-weekly-matchups-1"></script>
+<script src="data-fetch.js?v=20261031-weekly-matchups-1"></script>
+<script src="demo-league.js?v=20261031-weekly-matchups-1"></script>
+<script src="league-records.js?v=20261031-weekly-matchups-1"></script>
+<script src="workspace-backup.js?v=20261031-weekly-matchups-1"></script>
+<script src="playoff-simulator.js?v=20261031-weekly-matchups-1"></script>
+<script src="weekly-matchups.js?v=20261031-weekly-matchups-1"></script>
+<script src="app.js?v=20261031-weekly-matchups-1"></script>
 </body>
 </html>

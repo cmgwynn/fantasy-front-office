@@ -78,9 +78,10 @@ document.addEventListener("click", e => {
       case "tab-grades": renderTeamGrades(); break;
       case "tab-planner": renderRosterPlanner(); break;
       case "tab-waiver": drawWaiverChart(); break;
-      case "tab-analytics": drawSingleAnalyticsChart(); break;
+      case "tab-analytics": drawSingleAnalyticsChart(); ensureWeeklyMatchups(); break;
       case "tab-compare":
         renderPlayerComparison();
+        ensureWeeklyMatchups();
         refreshGameDaySchedule().then(() => {
           if (document.getElementById("tab-compare")?.classList.contains("active")) renderPlayerComparison(false);
         });
@@ -228,11 +229,14 @@ const gmOutcomeCache = new Map();
 const leagueRecordsCache = new Map();
 let sleeperNflStateCache = { data: null, checkedAt: 0 };
 const playerAlertState = { loaded: false, watchlist: [], events: [], snapshots: {} };
+const DEFAULT_DRAFT_SETTINGS = { type: "redraft", teams: 12, slot: 6, rounds: 15, scoring: "ppr", rosterFormat: "standard", opponentStrategy: "adp", dynastyYears: 3, keeperSlots: 2, keeperYears: 2 };
 const draftState = {
-  settings: { type: "redraft", teams: 12, slot: 6, rounds: 15, scoring: "ppr", rosterFormat: "standard", opponentStrategy: "adp", dynastyYears: 3, keeperSlots: 2, keeperYears: 2 },
+  settings: { ...DEFAULT_DRAFT_SETTINGS },
   userPicks: [], adpByName: {}, keepers: [], loadedSessionKey: ""
 };
 const faabState = { budget: 100, weeksRemaining: 12, strategy: "balanced", claims: [], loadedKey: "" };
+const weeklyMatchupLoads = new Map();
+const weeklyMatchupData = new Map();
 
 let dbSortKey = "matchPct", dbSortDir = -1;
 let finderSortKey = "Composite", finderSortDir = -1;
@@ -657,7 +661,6 @@ function markDataSource(source, error = null, timestamp = Date.now()) {
 
 function renderDataFreshness() {
   const label = document.getElementById("dataFreshnessLabel");
-  const retryButton = document.getElementById("retryDataBtn");
   if (!label) return;
   const names = { season: "Season", schedule: "Schedule", players: "Players", stats: "Stats", projections: "Projections", account: "Account", matchups: "Matchups", league: "League", kickoffs: "Kickoffs" };
   const sources = Object.entries(state.dataFreshness)
@@ -668,10 +671,6 @@ function renderDataFreshness() {
     ? `Unavailable: ${failed.join(", ")}${sources.length ? ` · Updated ${sources.join(" · ")}` : ""}`
     : (sources.length ? `Updated ${sources.join(" · ")}` : "Data sources waiting");
   label.classList.toggle("has-errors", failed.length > 0);
-  if (retryButton) {
-    retryButton.hidden = failed.length === 0 && !state.activeLeague;
-    retryButton.textContent = failed.length ? "Retry sync" : "Refresh league";
-  }
   renderDecisionDataStatus();
 }
 
@@ -686,7 +685,7 @@ function getDecisionDataStatus(now = Date.now()) {
   const warnings = [];
   if (state.dataErrors.league || state.dataErrors.account) warnings.push("Sync failed; displayed roster may be outdated");
   if (!checked) warnings.push("Roster sync not verified");
-  else if (age >= 15 * 60000) warnings.push("Roster over 15 minutes old; refresh before acting");
+  else if (age >= 15 * 60000) warnings.push("Roster over 15 minutes old; reload the page before acting");
   if (!state.dataFreshness.projections || state.dataErrors.projections) warnings.push("Projections unverified / may use model fallbacks");
   if (!state.dataFreshness.players || state.dataErrors.players || now - state.dataFreshness.players > 6 * 3600000) warnings.push("Player statuses need a fresh check");
   return { text: `${checked ? `Roster checked ${new Date(checked).toLocaleString()} · ` : ""}${warnings.join(" · ") || "Verify provider rules before submitting moves."}`, warning: warnings.length > 0 };
@@ -719,11 +718,9 @@ function restoreLeagueView(view) {
 }
 
 async function retryDataSync() {
-  const button = document.getElementById("retryDataBtn");
   const usernameInput = document.getElementById("usernameInput");
   const username = usernameInput?.value.trim() || "";
   const view = captureLeagueView();
-  if (button) button.disabled = true;
   setStatus("Retrying data sources...");
   try {
     await initApp(true, true);
@@ -748,13 +745,11 @@ async function retryDataSync() {
     markDataSource("league", error);
     setStatus(`Data sync failed: ${error.message}`);
   } finally {
-    if (button) button.disabled = false;
     renderDataFreshness();
   }
 }
 
 async function refreshActiveLeagueData() {
-  const button = document.getElementById("retryDataBtn");
   const league = state.activeLeague;
   if (!league) return retryDataSync();
   if (league.isDemo) {
@@ -775,7 +770,6 @@ async function refreshActiveLeagueData() {
     return;
   }
 
-  if (button) button.disabled = true;
   setStatus(`Refreshing ${league.name}...`);
   try {
     await refreshPlayerStatuses();
@@ -793,7 +787,6 @@ async function refreshActiveLeagueData() {
     const message = error instanceof Error ? error.message : String(error);
     setStatus(`Could not refresh ${league.name}. ${message}`);
   } finally {
-    if (button) button.disabled = false;
     renderDataFreshness();
   }
 }
@@ -1517,7 +1510,7 @@ async function syncNflSeasonSelection() {
   }
 }
 
-async function initApp(skipUrlAccountSync = false, forceRefreshSources = false) {
+async function initApp(skipUrlAccountSync = false, forceRefreshSources = false, forcePlayerRefresh = false) {
   leaveWorkspaceSnapshot();
   const weekSelect = document.getElementById("weekSelect");
   if (weekSelect && !weekSelect.options.length) {
@@ -1551,18 +1544,19 @@ async function initApp(skipUrlAccountSync = false, forceRefreshSources = false) 
   updateDynamicSeasonLabels();
   await syncFullSeasonNflSchedule(state.season, forceRefreshSources || Boolean(state.dataErrors.schedule));
 
-  let rawPlayers = await getCachedPlayers(forceRefreshSources || Boolean(state.dataErrors.players));
+  let rawPlayers = await getCachedPlayers(forcePlayerRefresh || forceRefreshSources || Boolean(state.dataErrors.players));
   if (!rawPlayers) {
     setStatus(`Downloading ${state.season} NFL player database (cached for 24h)...`);
     try {
       rawPlayers = await fetchJson("https://api.sleeper.app/v1/players/nfl");
+      if (!rawPlayers || typeof rawPlayers !== "object" || Array.isArray(rawPlayers) || !Object.keys(rawPlayers).length) throw new Error("Player database response is empty or invalid.");
+      await setCachedPlayers(rawPlayers);
     } catch (error) {
+      rawPlayers = await getCachedPlayers();
       markDataSource("players", error);
-      setStatus("Player database unavailable. Use Retry sync to try again.");
-      if (!Object.keys(state.players).length) return;
-      rawPlayers = null;
+      setStatus(rawPlayers ? "Player update failed; cached statuses are unverified. Reload the page to try again." : "Player database unavailable. Reload the page to try again.");
+      if (!rawPlayers && !Object.keys(state.players).length) return;
     }
-    if (rawPlayers) await setCachedPlayers(rawPlayers);
   }
   ESPN_PLAYER_TO_INTERNAL_ID.clear();
   for (const [pid, p] of Object.entries(rawPlayers || {})) {
@@ -1870,7 +1864,7 @@ function getEspnMatchupWeeks(league, game) {
   const periods = league.espnData?.settings?.scheduleSettings?.matchupPeriods;
   const weeks = periods?.[game.matchupPeriodId];
   if (!Array.isArray(weeks) || !weeks.length || !weeks.every(week => Number.isInteger(week) && week >= 1 && week <= 18)) {
-    throw new Error("ESPN matchup scoring-week mapping is unavailable or invalid. Refresh the league.");
+    throw new Error("ESPN matchup scoring-week mapping is unavailable or invalid. Reload the page.");
   }
   return weeks;
 }
@@ -2130,10 +2124,12 @@ async function loadLeague(idx) {
   document.getElementById("tradeFormatBadge").textContent = state.activeLeague.leagueType === 2 ? "DYNASTY MODE" : (state.activeLeague.leagueType === 1 ? "KEEPER MODE" : "REDRAFT MODE");
 
   const lid = state.activeLeague.leagueId;
+  delete state.activeLeague.waiverBudget;
   try {
     const lgMeta = await fetchJson(`https://api.sleeper.app/v1/league/${lid}`);
     if (lgMeta && lgMeta.settings) {
       const st = lgMeta.settings;
+      if (typeof st.waiver_budget === "number" && Number.isFinite(st.waiver_budget) && st.waiver_budget >= 0) state.activeLeague.waiverBudget = st.waiver_budget;
       const totTeams = lgMeta.total_rosters || state.activeLeague.totalTeams || 12;
       state.activeLeague.totalTeams = totTeams;
       state.activeLeague.draftRounds = st.draft_rounds || 4;
@@ -2141,8 +2137,11 @@ async function loadLeague(idx) {
       state.activeLeague.playoffWeekStart = st.playoff_week_start > 0 ? st.playoff_week_start : (state.activeLeague.playoffTeams <= 4 ? 16 : 15);
       state.activeLeague.playoffSeedType = st.playoff_seed_type || 0;
       state.activeLeague.playoffRoundType = st.playoff_round_type || 0;
+      markDataSource("leagueSettings");
     }
-  } catch {}
+  } catch (error) {
+    markDataSource("leagueSettings", error);
+  }
 
   await fetchWeeklyProjections();
   const [users, rosters, matchups, tradedPicks] = await Promise.all([
@@ -2167,6 +2166,8 @@ async function loadLeague(idx) {
     const rosPpg = starters.reduce((s, id) => s + (state.players[id]?.projectedPoints || state.players[id]?.seasonPpg || 0), 0) || 112;
     return {
       rosterId: r.roster_id, ownerId: r.owner_id,
+      waiverBudgetUsed: typeof st.waiver_budget_used === "number" ? st.waiver_budget_used : null,
+      waiverBudgetCheckedAt: Date.now(),
       teamName: uMap[r.owner_id] || `Team #${r.roster_id}`,
       wins: st.wins || 0, losses: st.losses || 0,
       pf, pa, maxPf: mpf, eff: mpf > 0.1 ? (pf / mpf) * 100 : 0,
@@ -3501,6 +3502,14 @@ function getQueuedFaabTotal() {
   return faabState.claims.filter(claim => claim.status !== "acquired").reduce((sum, claim) => sum + Math.max(0, Number(claim.bid) || 0), 0);
 }
 
+function getProviderFaabBalance(manager) {
+  const total = state.activeLeague?.waiverBudget, used = manager?.waiverBudgetUsed;
+  if (state.workspaceSnapshot || state.activeLeague?.isDemo || state.activeLeague?.provider !== "sleeper" ||
+      typeof total !== "number" || !Number.isFinite(total) || typeof used !== "number" || !Number.isFinite(used) ||
+      total < 0 || used < 0 || used > total || !manager.waiverBudgetCheckedAt) return null;
+  return { remaining: total - used, checkedAt: manager.waiverBudgetCheckedAt };
+}
+
 function getFaabPlanWarnings(manager) {
   const claims = faabState.claims.filter(claim => claim.status !== "acquired");
   const warnings = [];
@@ -3586,7 +3595,8 @@ function renderFaabPlanner() {
   if (planStatus) {
     const manager = state.managers[Number(document.getElementById("teamSelect")?.value || "0")];
     const warnings = getFaabPlanWarnings(manager);
-    planStatus.textContent = `${warnings.join(" ")}${warnings.length ? " " : ""}Manual remaining budget; provider balance and waiver deadline are not verified. Top-to-bottom priority is a local plan, not submitted claims.`;
+    const balance = getProviderFaabBalance(manager);
+    planStatus.textContent = `${warnings.join(" ")}${warnings.length ? " " : ""}${balance ? `Sleeper reports $${balance.remaining} remaining (checked ${new Date(balance.checkedAt).toLocaleString()}). Planning budget $${faabState.budget}${faabState.budget !== balance.remaining ? " differs; update it before planning" : " matches"}. Waiver deadline is not verified.` : "Manual remaining budget; provider balance and waiver deadline are not verified."} Top-to-bottom priority is a local plan, not submitted claims.`;
     planStatus.classList.toggle("has-errors", warnings.length > 0);
   }
   void reconcileWaiverClaimOutcomes();
@@ -5396,11 +5406,9 @@ async function renderGMInbox(forceRefresh = false) {
   const briefing = document.getElementById("gmBriefing");
   const moreButton = document.getElementById("gmShowMoreBtn");
   const inbox = document.getElementById("tab-inbox");
-  const refreshButton = document.getElementById("refreshGmInboxBtn");
   if (!summary || !list || !pressureList) return;
   if (!state.activeLeague || !state.managers.length) {
     inbox?.classList.add("is-empty");
-    if (refreshButton) refreshButton.hidden = true;
     if (briefing) {
       briefing.classList.add("is-empty");
       briefing.innerHTML = `<h3>Your league, at a glance.</h3><p>Connect ESPN or Sleeper above to see lineup decisions, roster risks, and waiver moves here.</p>`;
@@ -5422,7 +5430,6 @@ async function renderGMInbox(forceRefresh = false) {
   }
   const context = `${getNewsletterLeagueKey()}:${state.week}:${document.getElementById("teamSelect")?.value}`;
   inbox?.classList.remove("is-empty");
-  if (refreshButton) refreshButton.hidden = false;
   briefing?.classList.remove("is-empty");
   if (gmInboxContext !== context) { gmInboxExpanded = false; gmInboxContext = context; }
   if (forceRefresh && !state.workspaceSnapshot) {
@@ -6188,13 +6195,10 @@ function restoreDraftSession() {
   const key = getDraftSessionKey();
   if (draftState.loadedSessionKey === key) return;
   draftState.loadedSessionKey = key;
+  Object.assign(draftState, { settings: { ...DEFAULT_DRAFT_SETTINGS }, userPicks: [], adpByName: {}, keepers: [] });
   try {
-    const saved = JSON.parse(localStorage.getItem(key) || "null");
-    if (!saved || typeof saved !== "object") {
-      const notice = document.getElementById("draftNotice");
-      if (notice) notice.textContent = "Opponent picks before your slot are simulated; your draft is still waiting for your first pick.";
-      return;
-    }
+    const saved = JSON.parse(localStorage.getItem(key) || "{}");
+    if (!saved || typeof saved !== "object" || Array.isArray(saved)) throw new Error("Saved draft is invalid.");
     draftState.settings = { ...draftState.settings, ...(saved.settings || {}) };
     draftState.userPicks = Array.isArray(saved.userPicks) ? saved.userPicks : [];
     draftState.adpByName = saved.adpByName && typeof saved.adpByName === "object" ? saved.adpByName : {};
@@ -6215,7 +6219,10 @@ function restoreDraftSession() {
     if (notice) notice.textContent = draftState.userPicks.length
       ? `Resumed your saved draft with ${draftState.userPicks.length} pick${draftState.userPicks.length === 1 ? "" : "s"}. Opponent picks are simulated.`
       : "Draft settings restored. Opponent picks before your slot are simulated; you have not made a pick yet.";
-  } catch {}
+  } catch (error) {
+    const notice = document.getElementById("draftNotice");
+    if (notice) notice.textContent = `Saved draft could not be loaded: ${error.message}`;
+  }
 }
 
 function normalizeDraftPlayerName(name) {
@@ -6283,9 +6290,37 @@ function getNextUserDraftPick(settings, picksMade = draftState.userPicks.length)
 }
 
 function getDraftStarterTargets(settings) {
+  if (settings.rosterFormat === "league" && settings.starterSlots?.length) {
+    return settings.starterSlots.reduce((counts, slot) => { counts[slot] = (counts[slot] || 0) + 1; return counts; }, {});
+  }
   return settings.rosterFormat === "superflex"
     ? { QB: 2, RB: 2, WR: 3, TE: 1, K: 1, DEF: 1 }
     : { QB: 1, RB: 2, WR: 2, TE: 1, K: 1, DEF: 1 };
+}
+
+function getDraftKeptPlayers(settings = draftState.settings, mineOnly = false) {
+  if (settings.type !== "keeper") return [];
+  const manager = state.managers[Number(document.getElementById("teamSelect").value || 0)];
+  return draftState.keepers.filter(keeper => (!mineOnly || String(keeper.managerId) === String(manager?.rosterId)) &&
+    state.managers.some(team => String(team.rosterId) === String(keeper.managerId) && team.players?.includes(keeper.playerId)))
+    .map(keeper => state.players[keeper.playerId]).filter(player => player && !player.isPick &&
+      Boolean(player.isDemo) === Boolean(state.activeLeague?.isDemo));
+}
+
+function getDraftRosterCounts(settings = draftState.settings) {
+  const players = [...getDraftKeptPlayers(settings, true), ...draftState.userPicks.map(id => state.players[id]).filter(Boolean)];
+  return [...new Map(players.map(player => [player.id, player])).values()].reduce((counts, player) => {
+    counts[player.position] = (counts[player.position] || 0) + 1;
+    return counts;
+  }, {});
+}
+
+function getDraftSlotNeeds(settings, players) {
+  const slots = settings.rosterFormat === "league" && settings.starterSlots?.length ? settings.starterSlots :
+    Object.entries(getDraftStarterTargets(settings)).flatMap(([slot, count]) => Array(count).fill(slot));
+  const candidates = [...new Map(players.map(player => [player.id, player])).values()].map(m => ({ m, score: 1 }));
+  const assigned = assignLineupPlayersToSlots(slots, candidates);
+  return slots.filter((_, index) => !assigned[index]).reduce((needs, slot) => { needs[slot] = (needs[slot] || 0) + 1; return needs; }, {});
 }
 
 function scoreDraftPlayer(player, settings, rosterCounts, currentPick) {
@@ -6297,8 +6332,10 @@ function scoreDraftPlayer(player, settings, rosterCounts, currentPick) {
   let points = scoringPoints + (targetReceptionPoints - activeReceptionPoints) * receptions;
   if (settings.scoring === "tep" && position === "TE") points += receptions * 0.5;
 
+  const superflex = settings.rosterFormat === "superflex" || (settings.rosterFormat === "league" &&
+    ((settings.starterSlots || []).filter(slot => slot === "QB").length >= 2 || (settings.starterSlots || []).some(slot => ["SUPER_FLEX", "Q/W/R/T"].includes(slot))));
   const replacement = {
-    QB: settings.rosterFormat === "superflex" ? 16 : 13.5,
+    QB: superflex ? 16 : 13.5,
     RB: 8, WR: 8.2, TE: 5.3, K: 6.3, DEF: 6
   }[position] || 0;
   let score = (points - replacement) * 100;
@@ -6306,9 +6343,13 @@ function scoreDraftPlayer(player, settings, rosterCounts, currentPick) {
   score += Math.max(0, 2500 - searchRank) * 0.03;
 
   const starterCounts = getDraftStarterTargets(settings);
-  if ((rosterCounts[position] || 0) < starterCounts[position]) score += 150;
+  if (settings.rosterFormat === "league") {
+    const roster = Object.entries(rosterCounts).flatMap(([pos, count]) => Array.from({ length: count }, (_, index) => ({ id: `${pos}:${index}`, position: pos })));
+    const open = getDraftSlotNeeds(settings, roster);
+    if (Object.keys(open).some(slot => isPosEligible(position, slot))) score += 150;
+  } else if ((rosterCounts[position] || 0) < starterCounts[position]) score += 150;
   const skillCount = (rosterCounts.RB || 0) + (rosterCounts.WR || 0) + (rosterCounts.TE || 0);
-  const flexTarget = settings.rosterFormat === "superflex" ? 8 : 6;
+  const flexTarget = settings.rosterFormat === "league" ? (settings.starterSlots || []).filter(slot => ["RB", "WR", "TE"].some(pos => isPosEligible(pos, slot))).length : settings.rosterFormat === "superflex" ? 8 : 6;
   if (["RB", "WR", "TE"].includes(position) && skillCount < flexTarget) score += 45;
 
   if (player.age > 0 && ["QB", "RB", "WR", "TE"].includes(position)) {
@@ -6331,9 +6372,10 @@ function scoreDraftPlayer(player, settings, rosterCounts, currentPick) {
 
 function getDraftPlayerPool(settings, rosterCounts = {}, currentPick = getNextUserDraftPick(settings)) {
   const eligiblePositions = new Set(["QB", "RB", "WR", "TE", "K", "DEF"]);
+  const kept = new Set(getDraftKeptPlayers(settings).map(player => player.id));
   return Object.values(state.players)
     .filter(player => {
-      if (player.isPick || !eligiblePositions.has(player.position)) return false;
+      if (player.isPick || kept.has(player.id) || !eligiblePositions.has(player.position)) return false;
       if (Boolean(player.isDemo) !== Boolean(state.activeLeague?.isDemo)) return false;
       if (["Retired", "Inactive"].includes(player.status)) return false;
       if (player.isCurrentNfl) return true;
@@ -6426,7 +6468,7 @@ function simulateDraft(rankedPlayers) {
   const settings = draftState.settings;
   const maxPicks = settings.teams * settings.rounds;
   const playerById = new Map(rankedPlayers.map(entry => [entry.player.id, entry]));
-  const draftedIds = new Set();
+  const draftedIds = new Set(getDraftKeptPlayers(settings).map(player => player.id));
   const picks = [];
   let manualPickIndex = 0;
   let overallPick = 1;
@@ -6470,6 +6512,14 @@ function applyDraftSettings() {
     keeperYears: parseInt(document.getElementById("draftKeeperYears")?.value, 10) || 2
   };
   settings.slot = Math.min(settings.teams, settings.slot);
+  if (settings.rosterFormat === "league") {
+    const slots = (state.activeLeague?.rosterPositions || []).filter(slot => !["BN", "IR", "TAXI"].includes(slot));
+    if (!slots.length || slots.some(slot => !["QB", "RB", "WR", "TE", "K", "DEF"].some(pos => isPosEligible(pos, slot)))) {
+      document.getElementById("draftNotice").textContent = "Exact slots require a connected league with supported offensive/K/DEF starter slots. IDP/custom unknown slots are not supported.";
+      return;
+    }
+    settings.starterSlots = [...slots];
+  }
   draftState.settings = settings;
   draftState.userPicks = [];
   saveDraftSession();
@@ -6493,13 +6543,12 @@ function importDraftLeagueSettings() {
     ? "tep"
     : (receptionPoints >= 0.9 ? "ppr" : (receptionPoints >= 0.4 ? "half" : "standard"));
   const rosterPositions = league.rosterPositions || [];
-  document.getElementById("draftRosterFormat").value = rosterPositions.filter(slot => slot === "QB").length >= 2 || rosterPositions.some(slot => ["SUPER_FLEX", "Q/W/R/T"].includes(slot))
-    ? "superflex"
-    : "standard";
+  const slots = rosterPositions.filter(slot => !["BN", "IR", "TAXI"].includes(slot));
+  document.getElementById("draftRosterFormat").value = slots.length && slots.every(slot => ["QB", "RB", "WR", "TE", "K", "DEF"].some(pos => isPosEligible(pos, slot))) ? "league" : "standard";
   updateDraftSlotOptions();
   updateDraftTypeSettings();
   const notice = document.getElementById("draftNotice");
-  if (notice) notice.textContent = `Imported approximate settings from ${league.name}. Confirm your slot. Only standard/superflex targets and reception-based scoring presets are supported; custom slots, bonuses, keeper costs and live draft picks are not imported.`;
+  if (notice) notice.textContent = `Loaded settings from ${league.name}. Confirm your slot, then Start / Reset Draft to apply. Supported starter slots import exactly; scoring remains a reception-based preset, not full custom bonuses. Keeper costs do not consume draft rounds; live picks are not imported.`;
 }
 
 function renderDraftKeeperLedger() {
@@ -6520,8 +6569,9 @@ function renderDraftKeeperLedger() {
     const player = state.players[keeper.playerId];
     const name = player?.name || keeper.playerName || "Unknown player";
     const owner = state.managers.find(item => item.rosterId === keeper.managerId)?.teamName?.split(" (")[0] || "Roster";
+    const validOwner = state.managers.some(team => String(team.rosterId) === String(keeper.managerId) && team.players?.includes(keeper.playerId));
     const cost = keeper.costType === "salary" ? `$${keeper.cost}` : `Round ${keeper.cost}`;
-    return `<div class="draft-picked-player"><span class="draft-picked-round">${draftEscapeHtml(owner)} · ${draftEscapeHtml(cost)} · ${keeper.years} yr${keeper.years === 1 ? "" : "s"}</span><strong>${draftEscapeHtml(name)}</strong><button class="draft-remove-keeper" type="button" data-remove-keeper="${index}" aria-label="Remove ${draftEscapeHtml(name)}">Remove</button></div>`;
+    return `<div class="draft-picked-player"><span class="draft-picked-round">${draftEscapeHtml(owner)} · ${draftEscapeHtml(cost)} · ${keeper.years} yr${keeper.years === 1 ? "" : "s"}${validOwner ? "" : " · Ownership changed/unverified; not applied"}</span><strong>${draftEscapeHtml(name)}</strong><button class="draft-remove-keeper" type="button" data-remove-keeper="${index}" aria-label="Remove ${draftEscapeHtml(name)}">Remove</button></div>`;
   }).join("") : `<div class="draft-empty">No keeper commitments saved.</div>`;
 }
 
@@ -6534,8 +6584,9 @@ function addDraftKeeper() {
   const years = Math.min(5, Math.max(1, Number(document.getElementById("draftKeeperContractYears")?.value) || 1));
   const notice = document.getElementById("draftNotice");
   if (!manager || !player) { if (notice) notice.textContent = "Select a player from the chosen roster."; return; }
+  if (draftState.userPicks.length) { if (notice) notice.textContent = "Reset or undo the mock picks before changing keepers, so recorded picks stay consistent."; return; }
   if (!Number.isFinite(cost) || cost < 0) { if (notice) notice.textContent = "Enter a valid keeper cost."; return; }
-  if (draftState.keepers.some(keeper => keeper.playerId === playerId && keeper.managerId === manager.rosterId)) {
+  if (draftState.keepers.some(keeper => keeper.playerId === playerId)) {
     if (notice) notice.textContent = `${player.name} is already in this keeper ledger.`;
     return;
   }
@@ -6546,16 +6597,12 @@ function addDraftKeeper() {
   }
   draftState.keepers.push({ playerId, playerName: player.name, managerId: manager.rosterId, costType, cost, years });
   saveDraftSession();
-  renderDraftKeeperLedger();
+  renderDraftRoom();
 }
 
 function draftPlayer(playerId) {
   restoreDraftSession();
-  const ranking = getDraftPlayerPool(draftState.settings, draftState.userPicks.reduce((counts, id) => {
-    const player = state.players[id];
-    if (player) counts[player.position] = (counts[player.position] || 0) + 1;
-    return counts;
-  }, {}));
+  const ranking = getDraftPlayerPool(draftState.settings, getDraftRosterCounts());
   const simulation = simulateDraft(ranking);
   if (simulation.complete || simulation.draftedIds.has(playerId)) return;
   if (!ranking.some(entry => entry.player.id === playerId)) return;
@@ -6565,14 +6612,14 @@ function draftPlayer(playerId) {
 }
 
 function buildPersonalizedDraftPlan(settings, simulation, availablePlayers) {
-  const userPlayers = simulation.picks.filter(pick => pick.isUserPick).map(pick => pick.player);
+  const userPlayers = [...getDraftKeptPlayers(settings, true), ...simulation.picks.filter(pick => pick.isUserPick).map(pick => pick.player)];
   const counts = userPlayers.reduce((result, player) => {
     result[player.position] = (result[player.position] || 0) + 1;
     return result;
   }, {});
   const targets = getDraftStarterTargets(settings);
-  const needs = Object.entries(targets).filter(([position, count]) => (counts[position] || 0) < count)
-    .map(([position, count]) => `${position}: ${count - (counts[position] || 0)} more`);
+  const needs = settings.rosterFormat === "league" ? Object.entries(getDraftSlotNeeds(settings, userPlayers)).map(([slot, count]) => `${slot}: ${count} more`) :
+    Object.entries(targets).filter(([position, count]) => (counts[position] || 0) < count).map(([position, count]) => `${position}: ${count - (counts[position] || 0)} more`);
   const upcoming = [];
   for (let pick = simulation.nextPick; pick <= settings.teams * settings.rounds && upcoming.length < 3; pick++) {
     if (getDraftTeamAtPick(pick, settings.teams) === settings.slot) upcoming.push(pick);
@@ -6582,8 +6629,8 @@ function buildPersonalizedDraftPlan(settings, simulation, availablePlayers) {
     .map(({ player }) => ({ player, score: scoreDraftPlayer(player, settings, counts, currentPick) }))
     .filter(entry => Number.isFinite(entry.score)).sort((a, b) => b.score - a.score).slice(0, 3).map(({ player }) => {
       const adp = getDraftAdp(player);
-      const need = (counts[player.position] || 0) < (targets[player.position] || 0);
-      return { player, reason: `${need ? `Addresses ${player.position} target` : "Depth / model-value option"}; ${adp.rank === null ? "ADP unavailable" : `${adp.source} ADP ${adp.rank.toFixed(1)} vs your pick #${currentPick}`}.` };
+      const need = settings.rosterFormat === "league" ? Object.keys(getDraftSlotNeeds(settings, userPlayers)).some(slot => isPosEligible(player.position, slot)) : (counts[player.position] || 0) < (targets[player.position] || 0);
+      return { player, reason: `${need ? "Addresses an open eligible starter target" : "Depth / model-value option"}; ${adp.rank === null ? "ADP unavailable" : `${adp.source} ADP ${adp.rank.toFixed(1)} vs your pick #${currentPick}`}.` };
     }) : [];
   return { needs, upcoming, candidates, counts };
 }
@@ -6599,7 +6646,7 @@ function renderPersonalizedDraftPlan(settings, simulation, availablePlayers) {
     <p>Unfilled model roster targets: ${escape(needs.length ? needs.join(" · ") : "All base targets met; review flexible depth.")}</p>
     ${settings.type === "dynasty" ? "<p>Dynasty model applies age adjustments; balance immediate production against your selected value horizon.</p>" : settings.rosterFormat === "superflex" ? "<p>Superflex model targets two quarterbacks; compare QB availability before filling bench depth.</p>" : "<p>Balance starter coverage with model value. Do not treat a positional target as a requirement to reach for a player.</p>"}
     <ul class="team-grade-priorities">${candidates.length ? candidates.map(({ player, reason }) => `<li><strong>${escape(player.name)}</strong> (${escape(player.position)}) — ${escape(reason)}</li>`).join("") : "<li>No next-pick candidates available. Review your roster and the configured draft size.</li>"}</ul>
-    <p class="comparison-note">Based on recorded mock picks and simulated opponent selections, not a connected live draft. Targets follow the Draft Room's standard/superflex model, not custom league slots; ${escape(settings.scoring)} scoring and ${escape(settings.type)} value settings apply. Rankings use estimated production, replacement baselines, roster needs, age adjustments where applicable, and ADP when available. They do not predict whether a player will reach your next pick. Keeper ledger entries are not incorporated into this plan. No picks are submitted to a provider.</p>`;
+    <details class="gm-action-details"><summary>Draft assumptions</summary><p class="comparison-note">Based on recorded mock picks and simulated opponent selections, not a connected live draft. ${settings.rosterFormat === "league" ? `Exact saved starter slots: ${escape((settings.starterSlots || []).join(", "))}.` : "Targets follow the standard/superflex model."} ${escape(settings.scoring)} reception preset and ${escape(settings.type)} values apply; custom scoring bonuses are not modeled. In keeper mode, saved keepers are removed from the pool and your keepers count toward roster needs. Keeper costs are a ledger only: no rounds or auction budget are consumed. Verify team ownership and your selected roster before drafting. No picks are submitted to a provider.</p></details>`;
 }
 
 function getDraftAdpGrade(roundValue) {
@@ -6608,8 +6655,9 @@ function getDraftAdpGrade(roundValue) {
 }
 
 function buildDraftGradeReport(settings, simulation, rankedPlayers) {
-  const taken = new Set();
-  const counts = {};
+  const taken = new Set(getDraftKeptPlayers(settings).map(player => player.id));
+  const rosterPlayers = [...getDraftKeptPlayers(settings, true)];
+  const counts = getDraftKeptPlayers(settings, true).reduce((result, player) => { result[player.position] = (result[player.position] || 0) + 1; return result; }, {});
   const rows = [];
   for (const pick of simulation.picks) {
     if (pick.isUserPick) {
@@ -6621,13 +6669,15 @@ function buildDraftGradeReport(settings, simulation, rankedPlayers) {
       const best = candidates[0];
       const selectedScore = scoreDraftPlayer(pick.player, settings, counts, pick.overallPick);
       const target = getDraftStarterTargets(settings)[pick.player.position] || 0;
+      const fillsTarget = settings.rosterFormat === "league" ? Object.keys(getDraftSlotNeeds(settings, rosterPlayers)).some(slot => isPosEligible(pick.player.position, slot)) : (counts[pick.player.position] || 0) < target;
       rows.push({
         player: pick.player, overallPick: pick.overallPick, round: pick.round,
         adp, roundValue, letter: roundValue === null ? "Unrated" : getDraftAdpGrade(roundValue),
-        fit: (counts[pick.player.position] || 0) < target ? "Filled a model starter target" : "Depth / surplus position",
+        fit: fillsTarget ? "Filled a model starter target" : "Depth / surplus position",
         alternative: best && Number.isFinite(selectedScore) && best.score > selectedScore + 0.01 ? best.player : null
       });
       counts[pick.player.position] = (counts[pick.player.position] || 0) + 1;
+      rosterPlayers.push(pick.player);
     }
     taken.add(pick.player.id);
   }
@@ -6657,11 +6707,7 @@ function renderDraftRoom() {
   const seasonBadge = document.getElementById("draftSeasonBadge");
   if (seasonBadge) seasonBadge.textContent = `${state.activeLeague?.season || state.season} Season`;
 
-  const rosterCounts = draftState.userPicks.reduce((counts, id) => {
-    const player = state.players[id];
-    if (player) counts[player.position] = (counts[player.position] || 0) + 1;
-    return counts;
-  }, {});
+  const rosterCounts = getDraftRosterCounts(settings);
   const rankedPlayers = getDraftPlayerPool(settings, rosterCounts, getNextUserDraftPick(settings));
   const simulation = simulateDraft(rankedPlayers);
   const availablePlayers = rankedPlayers.filter(entry => !simulation.draftedIds.has(entry.player.id));
@@ -6725,9 +6771,10 @@ function renderDraftRoom() {
   const userPicksEl = document.getElementById("draftUserPicks");
   if (userPicksEl) {
     const picks = simulation.picks.filter(pick => pick.isUserPick);
-    userPicksEl.innerHTML = picks.length ? picks.map(pick =>
+    const keepers = getDraftKeptPlayers(settings, true);
+    userPicksEl.innerHTML = keepers.map(player => `<div class="draft-picked-player"><span class="draft-picked-round">Keeper · cost tracked separately</span><strong>${draftEscapeHtml(player.name)}</strong></div>`).join("") + (picks.length ? picks.map(pick =>
       `<div class="draft-picked-player"><span class="draft-picked-round">R${pick.round} · #${pick.overallPick}</span><span class="draft-player-cell"><img src="${draftEscapeHtml(avatarUrl(pick.player))}" alt="" loading="lazy" onerror="this.style.visibility='hidden'" /><strong>${draftEscapeHtml(pick.player.name)}</strong></span><span>${draftEscapeHtml(pick.player.position)} · ${draftEscapeHtml(pick.player.team || "FA")}</span></div>`
-    ).join("") : `<div class="draft-empty">No players drafted yet.</div>`;
+    ).join("") : keepers.length ? "" : `<div class="draft-empty">No players drafted yet.</div>`);
   }
 
   const takenCount = document.getElementById("draftTakenCount");
@@ -6746,15 +6793,11 @@ function renderDraftRoom() {
 }
 
 async function refreshLiveMatchups() {
-  const button = document.getElementById("refreshMatchupsBtn");
-  const optimizerButton = document.getElementById("refreshOptimizerScoresBtn");
   const statuses = [document.getElementById("matchupLiveStatus"), document.getElementById("optLiveStatus")].filter(Boolean);
   const updateStatus = message => statuses.forEach(element => { element.textContent = message; });
   const league = state.activeLeague;
   if (!league) { updateStatus("Connect a league before refreshing scores."); return; }
   if (league.provider === "yahoo") { updateStatus("Yahoo import is a snapshot. Re-import an updated roster/matchup file to refresh."); return; }
-  if (button) button.disabled = true;
-  if (optimizerButton) optimizerButton.disabled = true;
   updateStatus("Refreshing matchup scores...");
   try {
     if (league.provider === "sleeper") {
@@ -6778,9 +6821,6 @@ async function refreshLiveMatchups() {
   } catch (error) {
     markDataSource("matchups", error);
     updateStatus(`Could not refresh live scores: ${error.message}`);
-  } finally {
-    if (button) button.disabled = false;
-    if (optimizerButton) optimizerButton.disabled = false;
   }
 }
 
@@ -7271,7 +7311,7 @@ function normalizeLeagueSchedule(league, data, week, managers = state.managers) 
     });
   } else if (league.provider === "espn") {
     const periods = league.espnData?.settings?.scheduleSettings?.matchupPeriods;
-    if (!periods || typeof periods !== "object") throw new Error("ESPN scoring-week mapping is unavailable. Refresh your league.");
+    if (!periods || typeof periods !== "object") throw new Error("ESPN scoring-week mapping is unavailable. Reload the page.");
     data.forEach(game => {
       const weeks = periods[game.matchupPeriodId];
       if (!Array.isArray(weeks) || !weeks.length || !weeks.every(value => Number.isInteger(value) && value >= 1 && value <= 18)) {
@@ -7353,7 +7393,7 @@ async function loadLeagueSchedule(force = false) {
     results.innerHTML = games.length ? `<div class="table-wrap"><table class="comparison-table"><caption>${mine ? "Selected team's matchup" : "Entire league"} · Week ${week}</caption><thead><tr><th>Team</th><th>Opponent</th><th>Details</th></tr></thead><tbody>${games.map(game => `<tr><td>${draftEscapeHtml(name(game.homeId))}</td><td>${game.awayId === null ? "No opponent assigned" : draftEscapeHtml(name(game.awayId))}</td><td>${draftEscapeHtml(game.note || "Published pairing")}</td></tr>`).join("")}</tbody></table></div>` : `<p class="draft-empty">No published matchup available${mine ? " for your selected team" : ""}. Future playoff opponents may not be assigned yet.</p>`;
   } catch (error) {
     if (!current()) return;
-    status.textContent = `Week ${week} schedule unavailable: ${error.message} Use Refresh schedule to retry.`;
+    status.textContent = `Week ${week} schedule unavailable: ${error.message} Reload the page to retry.`;
     results.innerHTML = "";
   }
 }
@@ -7489,6 +7529,147 @@ function getProjectionSourceNote() {
   return `Projections checked ${new Date(state.dataFreshness.projections).toLocaleString()}. Estimates are not guarantees.`;
 }
 
+function getWeeklyMatchupKey() {
+  return `${state.activeLeague?.season || state.season}:${state.week}`;
+}
+
+async function ensureWeeklyMatchups() {
+  const key = getWeeklyMatchupKey();
+  if (state.workspaceSnapshot || state.activeLeague?.isDemo || state.activeLeague?.provider === "yahoo") {
+    renderWeeklyMatchups();
+    renderStartSitAdvice();
+    return;
+  }
+  if (weeklyMatchupLoads.has(key)) return weeklyMatchupLoads.get(key);
+  if (weeklyMatchupData.has(key)) { renderWeeklyMatchups(); renderStartSitAdvice(); return; }
+  const [season, weekText] = key.split(":");
+  const selectedWeek = Number(weekText);
+  const result = { rows: [], weeks: [], errors: [], checkedAt: 0, models: new Map(), loading: true };
+  weeklyMatchupData.set(key, result);
+  const load = (async () => {
+    try {
+      const nfl = await fetchSleeperNflState();
+      const nflSeason = Number(nfl.season), nflWeek = Number(nfl.week);
+      if (!Number.isInteger(nflSeason) || !Number.isInteger(nflWeek) || nflWeek < 1 || nflWeek > 18 || !["regular", "post", "off"].includes(nfl.season_type)) throw new Error("Current NFL season/week could not be verified.");
+      const lastCompleted = Number(season) < nflSeason ? 18 : Number(season) === nflSeason ? nfl.season_type === "regular" ? nflWeek - 1 : nfl.season_type === "post" ? 18 : 0 : 0;
+      const last = Math.min(selectedWeek - 1, lastCompleted, 18);
+      const weeks = Array.from({ length: Math.min(6, Math.max(0, last)) }, (_, index) => last - index).reverse();
+      if (!weeks.length) throw new Error("No prior completed NFL weeks are available for this selection.");
+      for (let offset = 0; offset < weeks.length; offset += 3) {
+        await Promise.all(weeks.slice(offset, offset + 3).map(async week => {
+          try {
+            const url = new URL(`https://api.sleeper.com/stats/nfl/${season}/${week}`);
+            url.searchParams.set("season_type", "regular");
+            ["QB", "RB", "WR", "TE"].forEach(position => url.searchParams.append("position[]", position));
+            const rows = await fetchJson(url);
+            if (!Array.isArray(rows) || !rows.length) throw new Error("No usable weekly player stats returned.");
+            result.rows.push(...rows);
+            result.weeks.push(week);
+          } catch (error) { result.errors.push(`Week ${week}: ${error.message}`); }
+        }));
+      }
+      result.weeks.sort((a, b) => a - b);
+      result.checkedAt = Date.now();
+    } catch (error) { result.errors.push(error.message); }
+    finally {
+      result.loading = false;
+      weeklyMatchupLoads.delete(key);
+      if (key === getWeeklyMatchupKey()) { renderWeeklyMatchups(); renderStartSitAdvice(); }
+    }
+  })();
+  weeklyMatchupLoads.set(key, load);
+  renderWeeklyMatchups();
+  renderStartSitAdvice();
+  return load;
+}
+
+function getWeeklyPlayerMatchup(player) {
+  if (state.workspaceSnapshot || state.activeLeague?.isDemo || player?.isDemo || state.activeLeague?.provider === "yahoo") return { reason: "Snapshot/demo: live matchup rating unavailable." };
+  const season = String(state.activeLeague?.season || state.season);
+  const schedule = plannerScheduleSources.get(season)?.schedule;
+  const game = schedule?.[normalizeTeamCode(player?.team)]?.[state.week];
+  if (!game) return { reason: "Verified opponent unavailable / possible bye." };
+  const dataset = weeklyMatchupData.get(getWeeklyMatchupKey());
+  if (!dataset || dataset.loading) return { reason: dataset?.loading ? "Loading matchup evidence…" : "Matchup evidence not loaded.", opponent: game.opp };
+  const position = player.position, receptionPoints = Number(state.activeLeague?.scoringSettings?.rec ?? 1);
+  if (!["QB", "RB", "WR", "TE"].includes(position) || ![0, 0.5, 1].includes(receptionPoints)) return { reason: "Matchup rating unavailable for this position/scoring.", opponent: game.opp };
+  const modelKey = `${position}:${receptionPoints}`;
+  if (!dataset.models.has(modelKey)) {
+    try { dataset.models.set(modelKey, FFOWeeklyMatchups.aggregate(dataset.rows, { season, weeks: dataset.weeks, position, receptionPoints, teams: Object.keys(NFL_TEAM_NAMES) })); }
+    catch (error) { dataset.models.set(modelKey, { error: error.message }); }
+  }
+  const model = dataset.models.get(modelKey);
+  if (model.error) return { reason: `Invalid matchup evidence: ${model.error}`, opponent: game.opp };
+  const rating = model.ratings[normalizeTeamCode(game.opp)];
+  if (!rating || rating.rating === null) return { reason: `Insufficient coverage: ${model.qualifiedTeams}/32 defenses qualify (24 required); three games per defense required.`, opponent: game.opp };
+  return { ...rating, opponent: game.opp, isHome: game.isHome, partial: dataset.errors.length > 0, weeks: dataset.weeks, excluded: model.excluded };
+}
+
+function renderWeeklyMatchups() {
+  const target = document.getElementById("weeklyMatchupResults");
+  const status = document.getElementById("weeklyMatchupStatus");
+  if (!target || !status) return;
+  document.getElementById("weeklyMatchupWeek").textContent = `Week ${state.week}`;
+  const position = document.getElementById("weeklyMatchupPosition").value;
+  const scope = document.getElementById("weeklyMatchupScope").value;
+  const manager = state.managers[Number(document.getElementById("teamSelect").value || 0)];
+  const owned = new Set(state.managers.flatMap(roster => roster.players || []));
+  const data = weeklyMatchupData.get(getWeeklyMatchupKey());
+  const snapshot = state.workspaceSnapshot || state.activeLeague?.isDemo || state.activeLeague?.provider === "yahoo";
+  status.textContent = snapshot ? "Snapshot/demo data: weekly matchup evidence is unavailable. Connect a live league to use this tool." : data?.loading ? "Loading prior completed-week stats from Sleeper…" :
+    data ? `Sleeper · ${state.activeLeague?.season || state.season} · loaded weeks ${data.weeks.join(", ") || "none"} · ${data.checkedAt ? `checked ${new Date(data.checkedAt).toLocaleString()}` : "not verified"}. ${data.errors.length ? `Partial/unavailable: ${data.errors.length} source issue${data.errors.length === 1 ? "" : "s"}; see data coverage.` : ""}` : "Open Player Analytics or Compare Players to load matchup evidence.";
+  document.getElementById("weeklyMatchupErrors").hidden = Boolean(snapshot) || !data?.errors.length;
+  document.getElementById("weeklyMatchupErrorDetails").textContent = data?.errors.join(" ") || "";
+  let unrated = 0, unavailableReason = "";
+  const players = Object.values(state.players).filter(player => !player.isPick && !player.isDemo && player.isCurrentNfl && player.position === position &&
+    !["Out", "IR", "PUP", "Suspended"].includes(player.injuryStatus) && Number.isFinite(player.projectedPoints) && player.projectedPoints > 0 &&
+    (scope !== "ROSTER" || getPlannerRosterIds(manager || {}).includes(player.id)) && (scope !== "AVAILABLE" || !owned.has(player.id)))
+    .map(player => ({ player, matchup: getWeeklyPlayerMatchup(player) })).filter(entry => { if (entry.matchup.reason) { unrated++; unavailableReason ||= entry.matchup.reason; return false; } return true; })
+    .sort((a, b) => b.matchup.rating - a.matchup.rating || b.player.projectedPoints - a.player.projectedPoints).slice(0, 12);
+  target.innerHTML = players.length ? `<div class="table-wrap"><table class="comparison-table"><caption>${draftEscapeHtml(position)} matchup shortlist · higher rating is easier, not necessarily a better start</caption><thead><tr><th>Player</th><th>Opponent</th><th>Matchup / 100</th><th>Allowed / game</th><th>Sample</th><th>Projected</th><th>Review</th></tr></thead><tbody>${players.map(({ player, matchup }) => `<tr><th scope="row">${draftEscapeHtml(player.name)}${player.injuryStatus === "Questionable" ? " · Q" : ""}</th><td>${matchup.isHome ? "vs" : "@"} ${draftEscapeHtml(matchup.opponent)}</td><td>${matchup.rating}</td><td>${matchup.average.toFixed(1)}</td><td>${matchup.games} games · ${matchup.confidence}</td><td>${player.projectedPoints.toFixed(1)}</td><td><button class="btn-builder-action" type="button" data-matchup-compare="${draftEscapeHtml(player.id)}">Compare start</button></td></tr>`).join("")}</tbody></table></div>` :
+    `<p class="comparison-note">${data?.loading ? "Checking matchup coverage…" : `No rated players available for this position/filter. ${draftEscapeHtml(unavailableReason || "Ratings are withheld when opponent, scoring or completed-game coverage cannot be verified.")}`}</p>`;
+  if (unrated && !snapshot && !data?.loading) target.innerHTML += `<p class="comparison-note">${unrated} player${unrated === 1 ? "" : "s"} lack a verified rating and are not ranked.</p>`;
+}
+
+function renderStartSitAdvice() {
+  const target = document.getElementById("startSitAdvice");
+  if (!target) return;
+  const a = state.players[document.getElementById("comparePlayerA")?.value];
+  const b = state.players[document.getElementById("comparePlayerB")?.value];
+  const escape = draftEscapeHtml;
+  if (!a || !b || a.id === b.id) { target.innerHTML = '<h3>Weekly start/sit guide</h3><p class="comparison-note">Choose two players below for projections, matchup evidence, availability and recent workload.</p>'; return; }
+  const manager = state.managers[Number(document.getElementById("teamSelect").value || 0)];
+  const scenario = getComparisonRosterScenario(a, b, manager);
+  const active = getPlannerRosterIds(manager || {});
+  const actionable = active.includes(a.id) && active.includes(b.id) && !scenario.reason;
+  const matchups = [a, b].map(getWeeklyPlayerMatchup);
+  const unavailable = player => ["Out", "IR", "PUP", "Suspended"].includes(player.injuryStatus) ||
+    (player.byeWeek > 0 && player.byeWeek === state.week) || (manager?.players?.includes(player.id) && !active.includes(player.id));
+  const evidence = [a, b].map((player, index) => ({ projection: player.projectedPoints, unavailable: unavailable(player), adjustment: matchups[index].adjustment ?? null }));
+  const sharedPosition = a.position === b.position || (state.activeLeague?.rosterPositions || []).some(slot => !["BN", "IR", "TAXI"].includes(slot) && isPosEligible(a.position, slot) && isPosEligible(b.position, slot));
+  const advice = !sharedPosition ? { reason: "These players do not share an eligible starter slot." } :
+    getPlayerGameDayStatus(a).locked || getPlayerGameDayStatus(b).locked ? { reason: "A player is kickoff-locked; no current-week start recommendation." } :
+    FFOWeeklyMatchups.compare(...evidence);
+  const winner = advice.preferred === "a" ? a : advice.preferred === "b" ? b : null;
+  const heading = advice.reason ? "No start recommendation" : winner ? `${advice.close ? "Close call — lean" : "Lean"} ${winner.name}` : "Too close to separate";
+  const kickoffVerified = [a, b].every(player => getPlayerGameDayStatus(player).status !== "unknown");
+  const projectionWarning = !state.dataFreshness.projections || state.dataErrors.projections ? " Projection data is unverified; treat this as provisional." : "";
+  const workload = player => {
+    const stats = state.rawStats[player.id], games = Number(stats?.gp || stats?.gms_active);
+    if (!(games > 0)) return "Verified season workload unavailable.";
+    const values = [["rec_tgt", "targets"], ["rush_att", "carries"], ["pass_att", "pass attempts"]].filter(([key]) => Number.isFinite(stats[key]))
+      .map(([key, label]) => `${(stats[key] / games).toFixed(1)} ${label}/game`);
+    return values.length ? `Season workload: ${values.join(" · ")} (${games} games).` : "Verified season workload unavailable.";
+  };
+  target.innerHTML = `<h3>${escape(heading)}</h3><p class="comparison-note">${escape(advice.reason || advice.basis)}. ${actionable ? kickoffVerified ? "Both players are on your active roster; eligible slots and known kickoff locks checked." : "Provisional roster comparison: kickoff eligibility is unverified." : `Informational only: ${escape(scenario.reason || "Both players must be on your active roster to act on this start/sit comparison.")}`}${projectionWarning}</p>
+    <div class="comparison-cards">${[a, b].map((player, index) => {
+      const matchup = matchups[index], update = getPlayerStatusUpdate(player);
+      return `<div><strong>${escape(player.name)}</strong><p class="comparison-note">${Number.isFinite(player.projectedPoints) ? player.projectedPoints.toFixed(1) : "Unavailable"} projected · ${escape(player.injuryStatus || "Health unknown")} · ${escape(getPlayerGameDayStatus(player).label)}</p><p class="comparison-note">${matchup.reason ? escape(matchup.reason) : `${matchup.isHome ? "vs" : "@"} ${escape(matchup.opponent)} · matchup ${matchup.rating}/100 · ${matchup.average.toFixed(1)} positional points allowed/game · ${matchup.games} games · ${matchup.confidence} confidence${matchup.partial ? " · partial week coverage" : ""}`}</p><p class="comparison-note">${escape(workload(player))}</p><details class="gm-action-details"><summary>Status source</summary><p class="comparison-note">${escape(update.label)}</p></details></div>`;
+    }).join("")}</div>
+    ${advice.adjusted ? `<p class="comparison-note">Matchup sensitivity: ${escape(a.name)} ${advice.adjusted.a.toFixed(1)} vs ${escape(b.name)} ${advice.adjusted.b.toFixed(1)}. Illustrative, not a new projection.</p>` : ""}
+    <details class="gm-action-details"><summary>Decision limits &amp; method</summary><p class="comparison-note">${escape(getProjectionSourceNote())} Sensitivity applies 25% of defense-vs-position deviation from the sampled mean, capped at ±10%; projections may already include matchup. Workload is context, not an extra bonus on top of projections. Injury flags require official active-list confirmation. Matchups are positional totals, not individual CB coverage; no weather, betting lines or role-news feed is included. ${advice.close ? "Treat this close call as uncertain, not a decisive edge. " : ""}Unknown kickoffs do not confirm a player is unlocked. The Lineup Optimizer remains projection-based and unchanged by this sensitivity model.</p></details>`;
+}
+
 function getComparisonRosterScenario(playerA, playerB, manager) {
   if (!state.activeLeague || !manager) return { reason: "Connect a league and select a roster to compare lineup impact." };
   if (playerA.id === playerB.id) return { reason: "Choose two different players to compare." };
@@ -7508,6 +7689,7 @@ function getComparisonRosterScenario(playerA, playerB, manager) {
       !["BN", "IR", "TAXI"].includes(slot) && isPosEligible(playerA.position, slot) && isPosEligible(playerB.position, slot));
     if (!sharedSlot) return { reason: "Both players need a shared eligible unlocked starter slot for a direct start/sit comparison." };
     const withPlayer = (player, other) => calcOptimalLineup(rosterIds, false, {
+      ...constraints,
       requiredPlayerIds: [...constraints.requiredPlayerIds, player.id],
       excludedPlayerIds: [...constraints.excludedPlayerIds, other.id]
     });
@@ -7546,6 +7728,7 @@ function openPlayerComparison(playerAId, playerBId) {
 }
 
 function renderPlayerComparison(refreshChoices = true) {
+  renderStartSitAdvice();
   const selectA = document.getElementById("comparePlayerA");
   const selectB = document.getElementById("comparePlayerB");
   const results = document.getElementById("compareResults");
@@ -7575,6 +7758,7 @@ function renderPlayerComparison(refreshChoices = true) {
   }
   const playerA = pool.find(player => player.id === selectA.value);
   const playerB = pool.find(player => player.id === selectB.value);
+  renderStartSitAdvice();
   if (!playerA || !playerB || playerA.id === playerB.id) {
     results.innerHTML = `<p class="draft-empty">${playerA && playerB ? "Choose two different players to compare." : "Choose Player A and Player B above. Search by name or team to find players outside the first 100."}</p>`;
     return;
@@ -7610,6 +7794,8 @@ function renderAllViews(teamIdx) {
   renderOptimizerTab(teamIdx); renderWaiversTab();
   renderMatchupSim(); drawSingleAnalyticsChart();
   renderPlayerComparison();
+  renderWeeklyMatchups();
+  if (["tab-analytics", "tab-compare"].includes(document.querySelector(".tab-page.active")?.id)) ensureWeeklyMatchups();
   renderTeamGrades();
   renderRosterPlanner();
   renderLeagueRecords();
@@ -7700,9 +7886,13 @@ function bindControlEvents() {
   document.getElementById("draftKeeperLedger")?.addEventListener("click", e => {
     const button = e.target.closest("[data-remove-keeper]");
     if (!button) return;
+    if (draftState.userPicks.length) {
+      document.getElementById("draftNotice").textContent = "Reset or undo the mock picks before changing keepers, so recorded picks stay consistent.";
+      return;
+    }
     draftState.keepers.splice(parseInt(button.dataset.removeKeeper, 10), 1);
     saveDraftSession();
-    renderDraftKeeperLedger();
+    renderDraftRoom();
   });
   document.getElementById("faabBudget")?.addEventListener("change", updateFaabSettings);
   document.getElementById("faabWeeks")?.addEventListener("change", updateFaabSettings);
@@ -7768,15 +7958,9 @@ function bindControlEvents() {
   });
 
   document.getElementById("syncBtn")?.addEventListener("click", syncUserAccount);
-  document.getElementById("retryDataBtn")?.addEventListener("click", () => {
-    if (Object.keys(state.dataErrors).length) return retryDataSync();
-    return refreshActiveLeagueData();
-  });
   document.getElementById("mobileTabSelect")?.addEventListener("change", e => {
     document.querySelector(`.nav-btn[data-tab="${e.target.value}"]`)?.click();
   });
-  document.getElementById("refreshIntelBtn")?.addEventListener("click", () => { portfolioState.rostersByLeague.clear(); renderLeagueIntelTab(true); });
-  document.getElementById("refreshGmInboxBtn")?.addEventListener("click", () => renderGMInbox(true));
   document.getElementById("gmInboxFilter")?.addEventListener("change", () => { gmInboxExpanded = false; renderGMInbox(); });
   document.getElementById("gmShowMoreBtn")?.addEventListener("click", () => { gmInboxExpanded = !gmInboxExpanded; renderGMInbox(); });
   document.getElementById("gmInboxList")?.addEventListener("click", handleGMInboxClick);
@@ -7784,7 +7968,6 @@ function bindControlEvents() {
   document.getElementById("gmChecklist")?.addEventListener("click", handleGMInboxClick);
   document.getElementById("leagueScheduleWeek")?.addEventListener("change", () => loadLeagueSchedule());
   document.getElementById("leagueScheduleScope")?.addEventListener("change", () => loadLeagueSchedule());
-  document.getElementById("refreshLeagueScheduleBtn")?.addEventListener("click", () => loadLeagueSchedule(true));
   document.getElementById("gmInboxCompleted")?.addEventListener("click", handleGMInboxClick);
   document.getElementById("portfolioPressureList")?.addEventListener("click", handleGMInboxClick);
   document.getElementById("newsletterLeagueSelect")?.addEventListener("change", event => {
@@ -7815,8 +7998,6 @@ function bindControlEvents() {
   document.getElementById("downloadLeagueHomeBtn")?.addEventListener("click", downloadLeagueHome);
   document.getElementById("pickemMatchup")?.addEventListener("change", renderPickemChallenge);
   document.getElementById("savePickemBtn")?.addEventListener("click", savePickemPrediction);
-  document.getElementById("refreshMatchupsBtn")?.addEventListener("click", refreshLiveMatchups);
-  document.getElementById("refreshOptimizerScoresBtn")?.addEventListener("click", refreshLiveMatchups);
   document.getElementById("portfolioRosterSelectors")?.addEventListener("change", e => {
     const select = e.target.closest("[data-portfolio-league]");
     if (!select) return;
@@ -7857,7 +8038,7 @@ function bindControlEvents() {
     rememberWorkspaceSelection();
     const idx = parseInt(e.target.value, 10);
     if (document.getElementById("tradeTeamA")) document.getElementById("tradeTeamA").value = idx;
-    renderRosterTab(idx); renderOptimizerTab(idx); renderWaiversTab(); renderSosTab(); renderTradeFinder(); renderDraftKeeperLedger(); buildTradeDatabase();
+    renderRosterTab(idx); renderOptimizerTab(idx); renderWaiversTab(); renderSosTab(); renderTradeFinder(); renderDraftRoom(); buildTradeDatabase();
     if (document.getElementById("inboxRecap")?.open) renderLeagueNewsletter();
     if (document.getElementById("tab-intel")?.classList.contains("active")) renderLeagueIntelTab();
     if (document.getElementById("tab-inbox")?.classList.contains("active")) renderGMInbox();
@@ -7899,6 +8080,18 @@ function bindControlEvents() {
   document.getElementById("waiverPos")?.addEventListener("change", renderWaiversTab);
   document.getElementById("waiverChartMode")?.addEventListener("change", drawWaiverChart);
   document.getElementById("analyticsPos")?.addEventListener("change", () => { updateAnalyticsDropdownOptions(); drawSingleAnalyticsChart(); });
+  document.getElementById("weeklyMatchupPosition")?.addEventListener("change", renderWeeklyMatchups);
+  document.getElementById("weeklyMatchupScope")?.addEventListener("change", renderWeeklyMatchups);
+  document.getElementById("weeklyMatchupResults")?.addEventListener("click", event => {
+    const button = event.target.closest("[data-matchup-compare]");
+    if (!button) return;
+    const player = state.players[button.dataset.matchupCompare];
+    const manager = state.managers[Number(document.getElementById("teamSelect").value || 0)];
+    const alternative = getPlannerRosterIds(manager || {}).map(id => state.players[id]).filter(other => other && other.id !== player.id &&
+      other.position === player.position).sort((a, b) => b.projectedPoints - a.projectedPoints)[0];
+    openPlayerComparison(player.id, alternative?.id || "");
+    ensureWeeklyMatchups();
+  });
   document.getElementById("analyticsGraphSelect")?.addEventListener("change", drawSingleAnalyticsChart);
   document.getElementById("analyticsSortKey")?.addEventListener("change", () => { analyticsSortDir = -1; drawSingleAnalyticsChart(); });
   document.getElementById("toggleAnalyticsFormulaBtn")?.addEventListener("click", () => {
@@ -8089,7 +8282,7 @@ async function resumeReloadWorkspace(backup) {
     applyWorkspaceSnapshot(structuredClone(backup));
     if (backup.snapshot.provider !== "yahoo") {
       try {
-        await initApp(true);
+        await initApp(true, false, true);
         if (state.activeLeague.provider === "espn") {
           state.activeLeague.espnData = await fetchEspnLeague(state.activeLeague.leagueId, state.activeLeague.season);
         }
@@ -8220,7 +8413,7 @@ async function bootWorkspace() {
     restoreConnectionInput();
   } else if (!params.has("user") && !params.has("league")) restoreConnectionInput(true);
   if (params.get("resume") === "0" || params.has("user") || params.has("league")) {
-    await initApp();
+    await initApp(false, false, true);
     return;
   }
   let backup;
@@ -8233,12 +8426,12 @@ async function bootWorkspace() {
     const message = `Saved league could not resume: ${error.message} The saved copy has not been deleted. Reconnect your provider to load your league.`;
     const banner = document.getElementById("workspaceSnapshotBanner");
     banner.textContent = message; banner.hidden = false;
-    await initApp();
+    await initApp(false, false, true);
     banner.textContent = message; banner.hidden = false;
     return;
   }
   if (backup && params.has("provider") && params.get("provider") !== backup.snapshot.provider) {
-    await initApp();
+    await initApp(false, false, true);
     return;
   }
   if (backup) {
@@ -8256,7 +8449,7 @@ async function bootWorkspace() {
     }
     return;
   }
-  await initApp();
+  await initApp(false, false, true);
 }
 
 if (document.readyState === "loading") {

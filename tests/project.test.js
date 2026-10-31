@@ -41,7 +41,7 @@ test("HTML references existing local assets in the expected script order", () =>
   ].map(match => match[1]).filter(asset => !/^(?:[a-z]+:)?\/\//i.test(asset));
 
   assert.ok(assets.length > 0, "Expected local CSS or JavaScript assets.");
-  assert.ok(assets.every(asset => asset.endsWith("?v=20261031-decision-tools-1")), "All local assets must use the current release version.");
+  assert.ok(assets.every(asset => asset.endsWith("?v=20261031-weekly-matchups-1")), "All local assets must use the current release version.");
   for (const asset of assets) {
     assert.ok(fs.existsSync(path.join(root, asset.split("?")[0])), `Missing local asset: ${asset}`);
   }
@@ -103,10 +103,11 @@ test("static interface IDs, labels, and tab navigation targets are consistent", 
   assert.match(html, /<details class="control-section league-section">[\s\S]*?<summary class="control-section-heading">CURRENT LEAGUE<\/summary>/, "Secondary league selectors should stay tucked away until needed.");
 });
 
-test("connected provider leagues have a visible manual refresh action", () => {
+test("page reload updates connected leagues without manual refresh controls", () => {
   const app = read("app.js");
-  assert.match(app, /retryButton\.textContent = failed\.length \? "Retry sync" : "Refresh league"/, "The data status action should offer manual league refresh when a league is connected.");
-  assert.match(app, /async function refreshActiveLeagueData\(\)/, "A manual refresh handler should be available.");
+  assert.doesNotMatch(read("index.html"), /id="(?:retryDataBtn|refresh[^"]*Btn)"|>Refresh analysis</);
+  assert.match(app, /await initApp\(true, false, true\);/, "Resuming a league must update player statuses rather than relying solely on the 24-hour cache.");
+  assert.match(app, /await initApp\(false, false, true\);/, "A normal page load must also request fresh player statuses.");
   assert.match(app, /const data = await fetchEspnLeague\(league\.leagueId, league\.season\)/, "ESPN refresh must fetch current league data instead of reusing its saved response.");
   assert.match(app, /Yahoo roster data is a file snapshot\. Re-import the file to refresh it\./, "File-import leagues should explain how their data is refreshed.");
   assert.match(app, /markDataSource\("league", error\)/, "League refresh failures should be surfaced in data freshness.");
@@ -128,7 +129,7 @@ test("browser regression harness is wired to the app and includes saved-state co
   const html = read("tests/optimizer-regression.html");
   const appHtml = read("index.html");
 
-  assert.match(html, /src="\.\.\/index\.html\?v=20261031-decision-tools-1&amp;resume=0"/, "Regression harness must load the current app release without resuming personal snapshots.");
+  assert.match(html, /src="\.\.\/index\.html\?v=20261031-weekly-matchups-1&amp;resume=0"/, "Regression harness must load the current app release without resuming personal snapshots.");
   assert.doesNotMatch(appHtml, /id="loadRecordsBtn"/, "Records must load automatically without a manual refresh button.");
   assert.match(html, /runOptimizerFixtures/, "Regression harness must execute its fixtures.");
   assert.match(html, /Cross-league queue saves to target budget/, "Saved FAAB state should remain covered.");
