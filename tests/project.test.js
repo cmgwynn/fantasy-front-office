@@ -41,7 +41,7 @@ test("HTML references existing local assets in the expected script order", () =>
   ].map(match => match[1]).filter(asset => !/^(?:[a-z]+:)?\/\//i.test(asset));
 
   assert.ok(assets.length > 0, "Expected local CSS or JavaScript assets.");
-  assert.ok(assets.every(asset => asset.endsWith("?v=20261029-playoffs-1")), "All local assets must use the current release version.");
+  assert.ok(assets.every(asset => asset.endsWith("?v=20261031-layout-polish-1")), "All local assets must use the current release version.");
   for (const asset of assets) {
     assert.ok(fs.existsSync(path.join(root, asset.split("?")[0])), `Missing local asset: ${asset}`);
   }
@@ -91,13 +91,27 @@ test("static interface IDs, labels, and tab navigation targets are consistent", 
   assert.match(html, /<option value="tab-inbox" selected>/, "Initial mobile navigation must match the active section.");
   assert.match(html, /<div id="tab-inbox" class="tab-page active">/, "Initial content panel must match the active navigation item.");
   assert.match(html, /<div id="tab-roster" class="tab-page">/, "Roster Overview must not start active.");
+  assert.doesNotMatch(html, /id="demoLeagueBtn"|>Explore demo</, "The demo entry point should not clutter the main app header.");
+  assert.match(html, /<details class="control-section league-section">[\s\S]*?<summary class="control-section-heading">CURRENT LEAGUE<\/summary>/, "Secondary league selectors should stay tucked away until needed.");
+});
+
+test("phone landscape layout and player chart provide responsive reading affordances", () => {
+  const html = read("index.html");
+  const css = read("styles.css");
+  const app = read("app.js");
+
+  assert.match(css, /@media \(max-width:960px\) and \(orientation:landscape\) and \(max-height:500px\)/, "Phone landscape must use a compact horizontal layout.");
+  assert.match(css, /\.body-layout \{ flex-direction:row;/, "Landscape layout must keep navigation beside the content.");
+  assert.match(html, /id="analyticsChartHelp"/, "Chart should explain how to read its plotted points.");
+  assert.match(html, /class="analytics-chart" role="img"/, "Chart should have an accessible description.");
+  assert.match(app, /chartPoints\.filter\(point => point\.rank < 10\)/, "Only the top ten ranked players should receive chart labels to limit overlap.");
 });
 
 test("browser regression harness is wired to the app and includes saved-state coverage", () => {
   const html = read("tests/optimizer-regression.html");
   const appHtml = read("index.html");
 
-  assert.match(html, /src="\.\.\/index\.html\?v=20261029-playoffs-1&amp;resume=0"/, "Regression harness must load the current app release without resuming personal snapshots.");
+  assert.match(html, /src="\.\.\/index\.html\?v=20261031-layout-polish-1&amp;resume=0"/, "Regression harness must load the current app release without resuming personal snapshots.");
   assert.doesNotMatch(appHtml, /id="loadRecordsBtn"/, "Records must load automatically without a manual refresh button.");
   assert.match(html, /runOptimizerFixtures/, "Regression harness must execute its fixtures.");
   assert.match(html, /Cross-league queue saves to target budget/, "Saved FAAB state should remain covered.");

@@ -4,41 +4,59 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Fantasy Front Office</title>
-  <link rel="stylesheet" href="styles.css?v=20261029-playoffs-1" />
+  <link rel="stylesheet" href="styles.css?v=20261031-layout-polish-1" />
 </head>
 <body>
 
 <div class="top-nav">
   <div class="top-brand-row">
     <div class="title-label">FANTASY FRONT OFFICE</div>
-    <div class="header-status-group" style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
-      <button id="shareBtn" style="background:#232834; font-size:12px; padding:5px 12px;">Copy Share Link</button>
-      <div id="statusLabel" class="status-pill">Connect a fantasy league to get started</div>
-      <span id="dataFreshnessLabel" class="data-freshness">Data sources waiting</span>
+    <div class="header-status-group">
+      <div id="statusLabel" class="status-pill">Choose ESPN or Sleeper, then connect a league.</div>
       <button id="retryDataBtn" class="btn-builder-action" type="button" hidden>Retry sync</button>
+      <details class="data-health">
+        <summary>Data status</summary>
+        <span id="dataFreshnessLabel" class="data-freshness">Data sources waiting</span>
+      </details>
+      <button id="shareBtn" class="share-button" type="button">Copy share link</button>
     </div>
   </div>
-  <div class="controls-row">
-    <label for="providerSelect">PROVIDER</label>
-    <select id="providerSelect" aria-label="League provider">
-      <option value="" selected>Choose provider</option>
-      <option value="espn">ESPN Fantasy</option>
-      <option value="sleeper">Sleeper</option>
-      <option value="yahoo">Yahoo Fantasy (import file)</option>
-    </select>
-    <label id="providerInputLabel" for="usernameInput">ACCOUNT</label>
-    <input id="usernameInput" placeholder="Sleeper username..." style="width:175px;" />
-    <label id="yahooImportLabel" class="yahoo-import-label" hidden>Import Yahoo roster<input id="yahooImportFile" type="file" accept=".csv,.json,text/csv,application/json" /></label>
-    <button id="syncBtn">Connect</button>
-    <button id="demoLeagueBtn" type="button" class="btn-builder-action" disabled>Explore demo</button>
-    <label id="leagueInputLabel" style="margin-left:6px;">LEAGUE</label>
-    <select id="leagueSelect" class="grow"><option>-- Sync account first --</option></select>
-    <label id="rosterInputLabel" style="margin-left:6px;">ROSTER</label>
-    <select id="teamSelect" class="grow"><option>-- Select League --</option></select>
-    <label id="weekInputLabel" style="margin-left:6px;">WEEK</label>
-    <select id="weekSelect" style="width:115px;"></select>
+  <div class="workspace-controls">
+    <section class="control-section" aria-label="Connect a fantasy league">
+      <div class="control-section-heading">CONNECT A LEAGUE</div>
+      <div class="connection-fields">
+        <label class="control-field provider-field" for="providerSelect">Provider
+          <select id="providerSelect" aria-label="League provider">
+            <option value="" selected>Choose provider</option>
+            <option value="espn">ESPN Fantasy</option>
+            <option value="sleeper">Sleeper</option>
+            <option value="yahoo">Yahoo Fantasy (import file)</option>
+          </select>
+        </label>
+        <div class="control-field account-field">
+          <label id="providerInputLabel" for="usernameInput">Account</label>
+          <input id="usernameInput" placeholder="Choose a provider first" />
+        </div>
+        <label id="yahooImportLabel" class="yahoo-import-label" hidden>Import Yahoo roster<input id="yahooImportFile" type="file" accept=".csv,.json,text/csv,application/json" /></label>
+        <button id="syncBtn" class="connect-button" type="button" disabled>Connect</button>
+      </div>
+      <div id="providerHelp" class="provider-help" aria-live="polite" hidden></div>
+    </section>
+    <details class="control-section league-section">
+      <summary class="control-section-heading">CURRENT LEAGUE</summary>
+      <div class="league-fields">
+        <label id="leagueInputLabel" class="control-field" for="leagueSelect">League
+          <select id="leagueSelect"><option>-- Sync account first --</option></select>
+        </label>
+        <label id="rosterInputLabel" class="control-field" for="teamSelect">Roster
+          <select id="teamSelect"><option>-- Select League --</option></select>
+        </label>
+        <label id="weekInputLabel" class="control-field week-field" for="weekSelect">Week
+          <select id="weekSelect"></select>
+        </label>
+      </div>
+    </details>
   </div>
-  <div id="providerHelp" class="provider-help" aria-live="polite"></div>
 </div>
 
 <div class="body-layout">
@@ -192,7 +210,7 @@
         <label for="plannerDrop">Hypothetical drop<select id="plannerDrop"><option value="">No drop</option></select></label>
         <button id="plannerReset" class="btn-builder-action" type="button">Reset scenario</button>
       </section>
-      <div id="plannerResults" aria-live="polite"><p class="draft-empty">Connect a league or Explore demo to plan ahead.</p></div>
+      <div id="plannerResults" aria-live="polite"><p class="draft-empty">Connect a league to plan ahead.</p></div>
     </div>
 
     <div id="tab-grades" class="tab-page">
@@ -210,7 +228,7 @@
         <h2>Records &amp; Rivalries</h2>
         <p class="comparison-note">Season results and head-to-head heat maps, plus linked Sleeper career history below. Season identities use roster IDs; career identities use primary manager IDs.</p>
       </div>
-      <p id="recordsStatus" class="comparison-note" role="status">Connect a league or Explore demo to view records.</p>
+      <p id="recordsStatus" class="comparison-note" role="status">Connect a league to view records.</p>
       <div id="leagueRecordsResults"></div>
       <section class="comparison-card">
         <h3>League fact lookup</h3>
@@ -226,7 +244,7 @@
       </section>
       <details id="careerHistoryPanel" class="gm-secondary">
         <summary>Career history &amp; cross-season rivalries</summary>
-        <p class="comparison-note">Sleeper: automatically follows up to 10 linked seasons when opened. Explore demo illustrates two fictional seasons. Managers are matched by primary owner ID, never by team name or roster number. Only loaded regular-season games count; not verified championships or final finishes.</p>
+        <p class="comparison-note">Sleeper: automatically follows up to 10 linked seasons when opened. Managers are matched by primary owner ID, never by team name or roster number. Only loaded regular-season games count; not verified championships or final finishes.</p>
         <p id="careerHistoryStatus" class="comparison-note" role="status">Open to load linked Sleeper seasons.</p>
         <label for="careerHistoryQuestion">Ask the historical record book</label>
         <select id="careerHistoryQuestion">
@@ -475,25 +493,28 @@
 
     <!-- TAB 6: PLAYER ANALYTICS -->
     <div id="tab-analytics" class="tab-page">
-      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
-        <div style="font-size:15px; font-weight:800;">ADVANCED PLAYER METRICS & TREND GRAPHS (TOP 32 ACTIVE)</div>
-        <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
-          <label style="font-size:12px; color:var(--text-muted);">Position:</label>
-          <select id="analyticsPos" style="width:auto; min-width:175px;">
-            <option value="QB">Quarterbacks (QB)</option><option value="RB">Running Backs (RB)</option>
-            <option value="WR">Wide Receivers (WR)</option><option value="TE">Tight Ends (TE)</option><option value="DEF">Team Defense (DEF)</option>
-          </select>
-          <label style="font-size:12px; color:var(--text-muted);">Metric View:</label>
-          <select id="analyticsGraphSelect" style="width:auto; min-width:360px;"></select>
-          <label style="font-size:12px; color:var(--good); font-weight:800;">Sort Top 32 By:</label>
-          <select id="analyticsSortKey" style="width:auto; min-width:190px; border-color:rgba(48,209,88,0.5);">
-            <option value="baseValue" selected>Model Player Value</option>
-            <option value="seasonPpg">Season Fantasy PPG</option>
-            <option value="yKey">Active Y-Axis Metric</option>
-            <option value="xKey">Active X-Axis Metric</option>
-            <option value="projectedPoints">Weekly Projected Points</option>
-            <option value="vorpScore">VORP Score</option>
-          </select>
+      <div class="analytics-header">
+        <div class="analytics-heading">ADVANCED PLAYER METRICS & TREND GRAPHS (TOP 32 ACTIVE)</div>
+        <div class="analytics-controls">
+          <label class="analytics-field" for="analyticsPos">Position
+            <select id="analyticsPos">
+              <option value="QB">Quarterbacks (QB)</option><option value="RB">Running Backs (RB)</option>
+              <option value="WR">Wide Receivers (WR)</option><option value="TE">Tight Ends (TE)</option><option value="DEF">Team Defense (DEF)</option>
+            </select>
+          </label>
+          <label class="analytics-field" for="analyticsGraphSelect">Metric View
+            <select id="analyticsGraphSelect"></select>
+          </label>
+          <label class="analytics-field" for="analyticsSortKey">Sort Top 32 By
+            <select id="analyticsSortKey">
+              <option value="baseValue" selected>Model Player Value</option>
+              <option value="seasonPpg">Season Fantasy PPG</option>
+              <option value="yKey">Active Y-Axis Metric</option>
+              <option value="xKey">Active X-Axis Metric</option>
+              <option value="projectedPoints">Weekly Projected Points</option>
+              <option value="vorpScore">VORP Score</option>
+            </select>
+          </label>
           <button id="toggleAnalyticsFormulaBtn" class="btn-builder-action" style="padding:7px 12px;">Metric Formulas</button>
         </div>
       </div>
@@ -512,9 +533,10 @@
       <div id="analyticsValueSummary" class="analytics-value-summary"></div>
       <div class="analytics-insight"><span class="analytics-insight-label">CHART READ</span><p id="analyticsInsight">Select a position to compare value and production.</p></div>
 
-      <div class="card-banner" style="padding:16px;">
+      <div class="card-banner analytics-chart-card">
         <div id="singleGraphTitle" style="font-size:14px; font-weight:800; color:var(--accent); margin-bottom:8px;">Metric Graph</div>
-        <canvas id="analyticsCanvasSingle" style="width:100%; height:440px; background:var(--bg-card); border-radius:10px; display:block;"></canvas>
+        <p id="analyticsChartHelp" class="analytics-chart-help">Names label the top 10 players in the current sort; dots show the rest. The sortable table lists every plotted player and metric.</p>
+        <canvas id="analyticsCanvasSingle" class="analytics-chart" role="img" aria-label="Scatter plot of selected player metrics. The sortable player table below lists all plotted players and values." aria-describedby="analyticsChartHelp"></canvas>
       </div>
       <div style="display:flex; justify-content:space-between; align-items:center;">
         <div class="sec-hdr" style="color:var(--accent);">PLOTTED PLAYER DATA TABLE (CLICK ANY COLUMN HEADER TO SORT)</div>
@@ -954,12 +976,12 @@
   <div id="monetizationDisclosure" class="monetization-disclosure" hidden></div>
 </footer>
 
-<script src="monetization-config.js?v=20261029-playoffs-1"></script>
-<script src="data-fetch.js?v=20261029-playoffs-1"></script>
-<script src="demo-league.js?v=20261029-playoffs-1"></script>
-<script src="league-records.js?v=20261029-playoffs-1"></script>
-<script src="workspace-backup.js?v=20261029-playoffs-1"></script>
-<script src="playoff-simulator.js?v=20261029-playoffs-1"></script>
-<script src="app.js?v=20261029-playoffs-1"></script>
+<script src="monetization-config.js?v=20261031-layout-polish-1"></script>
+<script src="data-fetch.js?v=20261031-layout-polish-1"></script>
+<script src="demo-league.js?v=20261031-layout-polish-1"></script>
+<script src="league-records.js?v=20261031-layout-polish-1"></script>
+<script src="workspace-backup.js?v=20261031-layout-polish-1"></script>
+<script src="playoff-simulator.js?v=20261031-layout-polish-1"></script>
+<script src="app.js?v=20261031-layout-polish-1"></script>
 </body>
 </html>

@@ -21,17 +21,36 @@ button:active { transform:translateY(1px); }
 
 .top-nav {
   background:var(--bg-panel); border:1px solid var(--border);
-  border-radius:12px; padding:12px 18px; display:flex; flex-direction:column; gap:10px;
+  border-radius:12px; padding:14px 18px; display:flex; flex-direction:column; gap:14px;
 }
 .top-brand-row { display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; }
 .title-label { font-size:17px; font-weight:800; }
 .status-pill { font-size:12px; font-weight:600; color:var(--text-muted); background:var(--bg-card); border:1px solid var(--border); padding:4px 12px; border-radius:8px; }
 .data-freshness { color:var(--text-muted); font-size:10px; white-space:nowrap; }
 .data-freshness.has-errors { color:var(--warn); }
-.controls-row { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
-.controls-row label { font-size:11px; font-weight:700; color:var(--text-muted); }
-.controls-row select.grow { flex:1; min-width:175px; }
-.provider-help { color:var(--text-muted); font-size:10px; }
+.header-status-group { display:flex; align-items:center; gap:8px; min-width:0; }
+.header-status-group #statusLabel { max-width:min(48vw,560px); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.share-button { min-height:32px; padding:6px 10px; background:transparent; color:var(--text-muted); border:1px solid var(--border); font-size:11px; white-space:nowrap; }
+.share-button:hover { color:var(--text-main); background:var(--bg-card); }
+.data-health { position:relative; flex-shrink:0; }
+.data-health summary { cursor:pointer; color:var(--text-muted); font-size:10px; white-space:nowrap; }
+.data-health[open] { position:relative; }
+.data-health[open] .data-freshness { position:absolute; z-index:5; top:24px; right:0; min-width:240px; padding:10px; border:1px solid var(--border); border-radius:8px; background:var(--bg-card); white-space:normal; line-height:1.5; }
+.workspace-controls { display:grid; grid-template-columns:minmax(0,1.15fr) minmax(0,1fr); gap:22px; align-items:start; }
+.control-section { min-width:0; padding-top:10px; border-top:1px solid var(--border); }
+.control-section-heading { margin-bottom:8px; color:var(--text-muted); font-size:9px; font-weight:800; letter-spacing:.08em; }
+.league-section > summary { cursor:pointer; list-style:none; }
+.league-section > summary::-webkit-details-marker { display:none; }
+.league-section[open] > summary { margin-bottom:8px; }
+.connection-fields, .league-fields { display:flex; align-items:end; gap:9px; min-width:0; }
+.control-field { display:flex; flex:1 1 0; flex-direction:column; gap:5px; min-width:0; color:var(--text-muted); font-size:10px; font-weight:700; }
+.control-field select, .control-field input { width:100%; min-width:0; }
+.provider-field { flex:1 1 175px; }
+.account-field { flex:1.2 1 210px; }
+.week-field { flex:0 1 100px; }
+.connect-button { flex:0 0 auto; min-height:36px; }
+.provider-help { margin-top:7px; color:var(--text-muted); font-size:10px; line-height:1.4; }
+.provider-help[hidden] { display:none; }
 .yahoo-import-label { position:relative; display:inline-flex; align-items:center; min-height:36px; padding:7px 12px; border:1px solid var(--accent); border-radius:8px; background:var(--accent-bg); color:#8DE5CD; cursor:pointer; font-size:11px !important; }
 .yahoo-import-label[hidden] { display:none; }
 .yahoo-import-label input { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); }
@@ -347,6 +366,17 @@ canvas.chart-canvas { width:100%; height:300px; background:var(--bg-card); borde
 .analytics-insight-label { flex:0 0 auto; color:var(--warn); font-size:9px; font-weight:800; }
 .analytics-insight p { color:var(--text-muted); font-size:11px; line-height:1.5; }
 .analytics-legend { color:var(--text-muted); font-size:10px; }
+.analytics-header { display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; }
+.analytics-heading { font-size:15px; font-weight:800; }
+.analytics-controls { display:flex; align-items:center; gap:10px; flex-wrap:wrap; min-width:0; }
+.analytics-controls .analytics-field { display:flex; align-items:center; gap:6px; color:var(--text-muted); font-size:12px; }
+.analytics-controls .analytics-field[for="analyticsSortKey"] { color:var(--good); font-weight:800; }
+.analytics-controls #analyticsPos { width:auto; min-width:175px; }
+.analytics-controls #analyticsGraphSelect { width:auto; min-width:360px; }
+.analytics-controls #analyticsSortKey { width:auto; min-width:190px; border-color:rgba(48,209,88,0.5); }
+.analytics-chart-card { padding:16px; }
+.analytics-chart { width:100%; height:380px; background:var(--bg-card); border-radius:10px; display:block; }
+.analytics-chart-help { color:var(--text-muted); font-size:10px; line-height:1.4; }
 .portfolio-player-picker { display:flex; flex-direction:column; gap:6px; max-width:420px; color:var(--text-muted); font-size:11px; font-weight:700; }
 .portfolio-player-picker select { min-width:0; }
 .portfolio-claim-plan { display:flex; flex-direction:column; gap:10px; }
@@ -444,6 +474,15 @@ canvas.chart-canvas { width:100%; height:300px; background:var(--bg-card); borde
 #tab-inbox { gap:14px; }
 #tab-inbox #gmBriefing { padding:14px 16px; border-color:var(--border); border-left:3px solid var(--accent); background:var(--bg-card); gap:6px; }
 #tab-inbox #gmBriefing h3 { font-size:17px; }
+#tab-inbox.is-empty { gap:12px; }
+#tab-inbox.is-empty .draft-heading { margin-bottom:2px; }
+#tab-inbox.is-empty #gmBriefing { max-width:760px; padding:14px 0; border:0; background:transparent; }
+#tab-inbox.is-empty #gmBriefing h3 { font-size:20px; }
+#tab-inbox.is-empty #gmBriefing p { color:var(--text-muted); }
+#tab-inbox.is-empty .gm-queue { max-width:760px; padding:0; border:0; background:transparent; }
+#tab-inbox.is-empty .gm-queue .draft-panel-heading { padding-top:8px; border-top:1px solid var(--border); }
+#tab-inbox.is-empty .gm-inbox-filter-label, #tab-inbox.is-empty > .gm-secondary { display:none; }
+#tab-inbox.is-empty .gm-queue .draft-empty { padding:0; text-align:left; }
 #tab-inbox .gm-inbox-summary > div { padding:9px 12px; }
 #tab-inbox .gm-inbox-summary strong { font-size:12px; }
 .gm-queue { gap:14px; }
@@ -530,6 +569,7 @@ button:disabled { cursor:not-allowed; opacity:0.45; }
   .sidebar-heading, .sidebar-groups, .sidebar-caption { display:none; }
   .mobile-nav-label { display:block; color:var(--text-muted); font-size:11px; font-weight:600; }
   .mobile-nav-select { display:block; width:100%; min-width:0; min-height:44px; border-radius:12px; }
+  .workspace-controls { grid-template-columns:1fr; gap:10px; }
   .trade-grid, .opt-row { grid-template-columns:1fr; height:auto; }
   .draft-workspace { grid-template-columns:minmax(0,1fr); }
 }
@@ -539,31 +579,21 @@ button:disabled { cursor:not-allowed; opacity:0.45; }
   .optimizer-heading { align-items:flex-start; flex-direction:column; }
   .optimizer-heading-actions { justify-content:flex-start; }
   .optimizer-totals { grid-template-columns:1fr; }
-  .top-nav { padding:12px; gap:12px; }
-  .top-brand-row { align-items:flex-start; }
-  .title-label { font-size:16px; }
-  .top-brand-row > div:last-child { display:flex !important; width:100%; align-items:stretch !important; gap:8px !important; }
-  #shareBtn { flex:0 0 auto; white-space:nowrap; padding:8px 10px !important; }
-  .status-pill { min-width:0; flex:1; line-height:1.35; padding:7px 9px; overflow-wrap:anywhere; }
-  .controls-row {
-    display:grid; grid-template-columns:64px minmax(0,1fr); grid-template-areas:
-      "provider-label provider" "account username" "yahoo-upload yahoo-upload" ". sync" "league-label league" "roster-label roster" "week-label week";
-    gap:7px 9px; align-items:center;
-  }
-  .controls-row label { font-size:10px; }
-  .controls-row label[for="providerSelect"] { grid-area:provider-label; }
-  #providerInputLabel { grid-area:account; }
-  #leagueInputLabel { grid-area:league-label; }
-  #rosterInputLabel { grid-area:roster-label; }
-  #weekInputLabel { grid-area:week-label; }
-  #providerSelect { grid-area:provider; width:100%; }
-  #usernameInput { grid-area:username; width:100% !important; min-width:0; }
-  #yahooImportLabel { grid-area:yahoo-upload; }
-  #syncBtn { grid-area:sync; justify-self:start; }
-  #leagueSelect { grid-area:league; width:100%; min-width:0; }
-  #teamSelect { grid-area:roster; width:100%; min-width:0; }
-  #weekSelect { grid-area:week; width:100% !important; min-width:0; }
-  .controls-row label { margin-left:0 !important; }
+  .top-nav { padding:11px; gap:10px; }
+  .top-brand-row { align-items:flex-start; flex-direction:column; gap:7px; }
+  .title-label { font-size:15px; }
+  .header-status-group { width:100%; flex-wrap:wrap; }
+  .header-status-group #statusLabel { max-width:none; flex:1 1 100%; line-height:1.35; padding:7px 9px; white-space:normal; }
+  .share-button { margin-left:auto; }
+  .workspace-controls { grid-template-columns:minmax(0,1fr); gap:10px; }
+  .connection-fields { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:8px; }
+  .connection-fields .provider-field, .connection-fields .account-field { grid-column:1 / -1; }
+  .connection-fields .connect-button { grid-column:2; justify-self:end; }
+  .connection-fields .yahoo-import-label { grid-column:1 / -1; }
+  .league-fields { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr) 82px; gap:8px; }
+  .control-field { font-size:9px; }
+  .control-field select, .control-field input { padding:7px 8px; font-size:11px; }
+  .provider-help { font-size:9px; }
   .body-layout { gap:10px; }
   .sidebar { grid-template-columns:44px minmax(0,1fr); border-radius:14px; padding:8px 12px; gap:8px; }
   .mobile-nav-label { display:block; color:var(--text-muted); font-size:9px; font-weight:800; }
@@ -631,6 +661,11 @@ button:disabled { cursor:not-allowed; opacity:0.45; }
   .newsletter-games, .newsletter-actions { grid-template-columns:1fr; }
   .analytics-value-summary { grid-template-columns:repeat(2,minmax(0,1fr)); }
   .analytics-insight { flex-direction:column; gap:5px; }
+  .analytics-controls { display:grid; width:100%; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
+  .analytics-controls .analytics-field { align-items:stretch; flex-direction:column; gap:4px; min-width:0; }
+  .analytics-controls select { width:100% !important; min-width:0 !important; }
+  .analytics-chart-card { padding:10px; }
+  .analytics-chart { height:320px; }
   .alert-controls select { flex-basis:100%; }
   .alert-controls button { flex:1 1 150px; }
   .header-status-group { justify-content:space-between; }
@@ -645,6 +680,41 @@ button:disabled { cursor:not-allowed; opacity:0.45; }
   #tab-matchup select { flex:1 1 110px; min-width:0 !important; }
   #tab-matchup > div:nth-child(2) { grid-template-columns:minmax(0,1fr) !important; gap:8px !important; }
   .trade-grid, .bracket-grid, .bracket-grid.two-col { grid-template-columns:minmax(0,1fr); }
+}
+
+@media (max-width:960px) and (orientation:landscape) and (max-height:500px) {
+  body { padding:7px; gap:7px; }
+  .top-nav { padding:8px 10px; gap:8px; }
+  .title-label { font-size:14px; }
+  .top-brand-row { align-items:center; flex-direction:row; gap:6px; }
+  .header-status-group { width:auto; flex:1 1 auto; justify-content:flex-end; gap:6px; }
+  .header-status-group #statusLabel { max-width:42vw; flex:0 1 auto; }
+  .data-health { display:none; }
+  .status-pill { max-width:42vw; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .workspace-controls { grid-template-columns:1.1fr 1fr; gap:12px; }
+  .connection-fields, .league-fields { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:6px; }
+  .connection-fields .provider-field, .connection-fields .account-field { grid-column:auto; }
+  .connection-fields .connect-button { grid-column:2; justify-self:start; }
+  .league-fields { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .week-field { grid-column:2; max-width:none; }
+  .control-field { gap:3px; font-size:9px; }
+  .control-field select, .control-field input, .connection-fields button { min-height:30px; padding:4px 7px; font-size:10px; }
+  .share-button { min-height:30px; padding:4px 7px; font-size:10px; }
+  .provider-help { display:none; }
+  .body-layout { flex-direction:row; align-items:stretch; gap:7px; }
+  .sidebar { width:132px; display:grid; grid-template-columns:1fr; align-content:start; gap:4px; padding:7px; border-radius:10px; }
+  .mobile-nav-label { font-size:9px; }
+  .mobile-nav-select { min-height:36px; padding:5px 7px; font-size:11px; }
+  .content-stack { min-height:calc(100vh - 120px); padding:10px; }
+  .analytics-header { align-items:flex-start; flex-direction:column; gap:7px; }
+  .analytics-heading { font-size:13px; }
+  .analytics-controls { display:grid; width:100%; grid-template-columns:repeat(2,minmax(0,1fr)); gap:6px 8px; }
+  .analytics-controls .analytics-field { align-items:stretch; flex-direction:column; gap:3px; min-width:0; font-size:10px; }
+  .analytics-controls select { width:100% !important; min-width:0 !important; min-height:34px; padding:5px 7px; font-size:11px; }
+  .analytics-controls button { min-height:34px; padding:6px 9px; font-size:11px; }
+  .analytics-chart-card { padding:10px; }
+  .analytics-chart { height:290px; }
+  .analytics-value-summary { grid-template-columns:repeat(2,minmax(0,1fr)); }
 }
 
 @media (prefers-reduced-motion:reduce) {

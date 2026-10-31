@@ -1333,7 +1333,6 @@ async function initApp(skipUrlAccountSync = false, forceRefreshSources = false) 
     } catch (error) {
       markDataSource("players", error);
       setStatus("Player database unavailable. Use Retry sync to try again.");
-      document.getElementById("demoLeagueBtn").disabled = false;
       if (!Object.keys(state.players).length) return;
       rawPlayers = null;
     }
@@ -1373,7 +1372,6 @@ async function initApp(skipUrlAccountSync = false, forceRefreshSources = false) 
   renderSosTab();
   renderPlayoffBracketTab();
   setStatus(`Ready | ${state.season} NFL Season • ${Object.keys(state.players).length.toLocaleString()} profiles loaded`);
-  document.getElementById("demoLeagueBtn").disabled = false;
   renderGMInbox();
 
   const params = new URLSearchParams(location.search);
@@ -1625,7 +1623,10 @@ function updateProviderControls() {
   if (input) { input.placeholder = espn ? "ESPN league ID(s), comma-separated" : (sleeper ? "Sleeper username..." : (yahoo ? "Use roster import" : "Choose a provider first")); input.hidden = yahoo; }
   if (yahooImportLabel) yahooImportLabel.hidden = !yahoo;
   if (button) { button.textContent = espn ? "Import League(s)" : (sleeper ? "Sync Account" : "Connect"); button.disabled = !provider || yahoo; button.hidden = yahoo; }
-  if (help) help.textContent = espn ? "Public ESPN leagues need a league ID. Private leagues use an ESPN session already signed in to this browser." : (sleeper ? "Connect with your account username to load league settings and rosters." : (yahoo ? "CSV: manager, player, position, nfl_team; optional waiver_priority and actual_points. JSON teams may include waiverPriority; players may include actualPoints. Set FAAB remaining in the planner. Yahoo OAuth is not configured on this static site." : "Choose ESPN Fantasy or Sleeper to connect league data."));
+  if (help) {
+    help.hidden = !provider;
+    help.textContent = espn ? "Public ESPN leagues need a league ID. Private leagues use an ESPN session already signed in to this browser." : (sleeper ? "Connect with your account username to load league settings and rosters." : (yahoo ? "CSV: manager, player, position, nfl_team; optional waiver_priority and actual_points. JSON teams may include waiverPriority; players may include actualPoints. Set FAAB remaining in the planner. Yahoo OAuth is not configured on this static site." : ""));
+  }
 }
 
 function normalizeEspnRosterPositions(slotCounts = {}) {
@@ -1851,6 +1852,7 @@ async function loadEspnLeague(idx) {
 async function loadLeague(idx) {
   state.activeLeague = state.leagues[idx];
   if (!state.activeLeague) return;
+  document.querySelector(".league-section")?.setAttribute("open", "");
   if (state.activeLeague.provider === "yahoo") {
     renderAllViews(parseInt(document.getElementById("teamSelect")?.value || "0", 10));
     setStatus(state.activeLeague.isDemo ? "Demo projections are a fixed Week 6 snapshot, not week-specific forecasts." : "Imported projections are a fixed snapshot. Re-import to update player data.");
@@ -3579,7 +3581,8 @@ function drawSingleAnalyticsChart() {
   const padX = Math.max(0.4, (maxX - minX) * 0.12), padY = Math.max(0.4, (maxY - minY) * 0.12);
   minX -= padX; maxX += padX; minY -= padY; maxY += padY;
 
-  const plot = { l: 96, t: 28, w: W - 135, h: H - 96 };
+  const leftMargin = W < 480 ? 68 : 96;
+  const plot = { l: leftMargin, t: 28, w: Math.max(80, W - leftMargin - 30), h: H - 96 };
   ctx.strokeStyle = "#222836"; ctx.lineWidth = 1;
   ctx.font = "600 11px -apple-system, BlinkMacSystemFont, sans-serif";
   ctx.fillStyle = "#8E96AA";
@@ -3625,28 +3628,76 @@ function drawSingleAnalyticsChart() {
   ctx.fillText(cfg.yLbl.toUpperCase(), 0, 0);
   ctx.restore();
 
-  pool.forEach(p => {
+  const chartPoints = pool.map((p, rank) => {
     const xv = Number(p[cfg.xKey] || 0), yv = Number(p[cfg.yKey] || 0);
     const x = plot.l + ((xv - minX) / Math.max(0.001, maxX - minX)) * plot.w;
     const y = plot.t + plot.h - ((yv - minY) / Math.max(0.001, maxY - minY)) * plot.h;
+    return { player: p, x, y, rank };
+  });
+  const occupiedLabels = [];
+  const pointBounds = chartPoints.map(({ x, y, rank }) => {
+    const radius = rank < 10 ? 6 : 4;
+    return {
+      left: x - radius - 2, right: x + radius + 2, top: y - radius - 2, bottom: y + radius + 2
+    };
+  });
+  const labelOrder = chartPoints.filter(point => point.rank < 10).sort((a, b) => {
+    const distance = ({ x, y }) => Math.abs(x - medianPixelX) / Math.max(1, plot.w) + Math.abs(y - medianPixelY) / Math.max(1, plot.h);
+    return distance(b) - distance(a);
+  });
 
-    const img = getTeamLogoImage(p.team);
-    const size = 26;
-    if (img && img.complete && img.naturalWidth > 0) {
+  chartPoints.forEach(({ player, x, y, rank }) => {
+    if (rank >= 10) {
+      ctx.fillStyle = "#7C8983";
+      ctx.beginPath(); ctx.arc(x, y, 3, 0, Math.PI * 2); ctx.fill();
+      return;
+    }
+
+    const size = W < 480 ? 18 : 22;
+    ctx.fillStyle = "#151A18";
+    ctx.beginPath(); ctx.arc(x, y, size / 2 + 2, 0, Math.PI * 2); ctx.fill();
+    const img = getTeamLogoImage(player.team);
+    if (img?.complete && img.naturalWidth > 0) {
       ctx.drawImage(img, x - size / 2, y - size / 2, size, size);
     } else {
       ctx.fillStyle = "#232834";
-      ctx.beginPath(); ctx.arc(x, y, 11, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = "#F2F4F8"; ctx.font = "700 8px -apple-system, sans-serif";
-      ctx.textAlign = "center"; ctx.fillText(p.team.slice(0, 3), x, y + 3);
+      ctx.beginPath(); ctx.arc(x, y, size / 2, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = "#F1F4F2"; ctx.font = "700 8px -apple-system, sans-serif";
+      ctx.textAlign = "center"; ctx.fillText(player.team.slice(0, 3), x, y + 3);
     }
+    ctx.strokeStyle = "#64D2FF"; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.arc(x, y, size / 2 + 2, 0, Math.PI * 2); ctx.stroke();
+  });
 
+  labelOrder.forEach(({ player: p, x, y, rank }) => {
+    const pointIndex = rank;
     ctx.fillStyle = "#F2F4F8";
-    ctx.font = "700 10px -apple-system, BlinkMacSystemFont, sans-serif";
-    const label = p.position === "DEF" ? p.team : (p.name.split(" ").slice(1).join(" ") || p.name);
-    const tw = ctx.measureText(label).width;
-    if (x + 15 + tw > plot.l + plot.w + 20) { ctx.textAlign = "right"; ctx.fillText(label, x - 15, y + 4); }
-    else { ctx.textAlign = "left"; ctx.fillText(label, x + 15, y + 4); }
+    ctx.font = `700 ${W < 480 ? 9 : 10}px -apple-system, BlinkMacSystemFont, sans-serif`;
+    const surname = p.position === "DEF" ? p.team : (p.name.split(" ").at(-1) || p.name);
+    const label = `#${rank + 1} ${surname}`;
+    const width = Math.min(ctx.measureText(label).width, Math.max(50, plot.w * 0.34));
+    const height = 17;
+    const candidates = [
+      { left:x + 15, top:y - height / 2, align:"left" },
+      { left:x - 15 - width, top:y - height / 2, align:"right" },
+      { left:x - width / 2, top:y - height - 12, align:"center" },
+      { left:x - width / 2, top:y + 12, align:"center" }
+    ];
+    const placement = candidates.find(candidate => {
+      const box = { ...candidate, right:candidate.left + width, bottom:candidate.top + height };
+      if (box.left < plot.l || box.right > plot.l + plot.w || box.top < plot.t || box.bottom > plot.t + plot.h) return false;
+      const overlaps = other => box.left < other.right + 3 && box.right + 3 > other.left && box.top < other.bottom + 2 && box.bottom + 2 > other.top;
+      return !occupiedLabels.some(overlaps) && !pointBounds.some((point, index) => index !== pointIndex && overlaps(point));
+    });
+    if (!placement) return;
+    const bounds = { ...placement, right:placement.left + width, bottom:placement.top + height };
+    occupiedLabels.push(bounds);
+    ctx.fillStyle = "rgba(13,16,15,0.92)";
+    ctx.fillRect(bounds.left - 3, bounds.top - 1, width + 6, height + 2);
+    ctx.fillStyle = "#F1F4F2";
+    ctx.textAlign = placement.align;
+    const textX = placement.align === "left" ? bounds.left : placement.align === "right" ? bounds.right : bounds.left + width / 2;
+    ctx.fillText(label, textX, bounds.top + 12, width);
   });
   ctx.textAlign = "left";
 }
@@ -5001,10 +5052,17 @@ async function renderGMInbox(forceRefresh = false) {
   const meta = document.getElementById("gmInboxMeta");
   const briefing = document.getElementById("gmBriefing");
   const moreButton = document.getElementById("gmShowMoreBtn");
+  const inbox = document.getElementById("tab-inbox");
+  const refreshButton = document.getElementById("refreshGmInboxBtn");
   if (!summary || !list || !pressureList) return;
   if (!state.activeLeague || !state.managers.length) {
-    if (briefing) briefing.innerHTML = `<h3>Your weekly decision desk</h3><p>Connect a league or choose Explore demo to see lineup decisions, roster risks, and waiver options with projected impact.</p>`;
-    summary.innerHTML = `<div><span>Active league</span><strong>Not connected</strong></div><div><span>Selected roster</span><strong>--</strong></div><div><span>Open actions</span><strong>--</strong></div><div><span>Urgent</span><strong>--</strong></div>`;
+    inbox?.classList.add("is-empty");
+    if (refreshButton) refreshButton.hidden = true;
+    if (briefing) {
+      briefing.classList.add("is-empty");
+      briefing.innerHTML = `<h3>Your league, at a glance.</h3><p>Connect ESPN or Sleeper above to see lineup decisions, roster risks, and waiver moves here.</p>`;
+    }
+    summary.hidden = true;
     list.innerHTML = `<p class="draft-empty">Connect a league to build your GM Inbox.</p>`;
     if (completedList) completedList.innerHTML = "";
     pressureList.innerHTML = `<p class="draft-empty">Connect or import leagues to compare portfolio pressure.</p>`;
@@ -5013,11 +5071,14 @@ async function renderGMInbox(forceRefresh = false) {
     document.getElementById("gmOutcomeMeta").textContent = "Actual player points are reconciled after the NFL week closes.";
     document.getElementById("gmClosedCount").textContent = "";
     document.getElementById("gmPortfolioCount").textContent = "";
-    if (meta) meta.textContent = "Connect a league or explore the demo to get started.";
+    if (meta) meta.textContent = "Connect a league to get started.";
     if (moreButton) moreButton.hidden = true;
     return;
   }
   const context = `${getNewsletterLeagueKey()}:${state.week}:${document.getElementById("teamSelect")?.value}`;
+  inbox?.classList.remove("is-empty");
+  if (refreshButton) refreshButton.hidden = false;
+  briefing?.classList.remove("is-empty");
   if (gmInboxContext !== context) { gmInboxExpanded = false; gmInboxContext = context; }
   if (forceRefresh && !state.workspaceSnapshot) {
     portfolioState.rostersByLeague.clear();
@@ -5047,6 +5108,7 @@ async function renderGMInbox(forceRefresh = false) {
   const { matching, visible: visibleRecommendations } = selectGmInboxActions(activeRecommendations, inboxFilter, gmInboxExpanded);
   const urgentCount = activeRecommendations.filter(item => item.level === "urgent").length;
   const selectedManager = state.managers[parseInt(document.getElementById("teamSelect")?.value || "0", 10)];
+  summary.hidden = false;
   if (briefing) {
     const sourceNote = getProjectionSourceNote();
     briefing.innerHTML = `<div class="draft-eyebrow">WEEK ${state.week}${state.activeLeague.isDemo ? " · DEMO" : ""} · DECISION BRIEF</div><h3>${urgentCount ? `${urgentCount} urgent decision${urgentCount === 1 ? "" : "s"} to review` : activeRecommendations.length ? "Your next moves, in priority order" : "You're caught up"}</h3><p class="gm-briefing-source">${draftEscapeHtml(sourceNote)} Review lineup decisions before kickoff.</p>`;
@@ -6652,7 +6714,7 @@ function renderLeagueRecords() {
   container.setAttribute("aria-busy", String(loading));
   const loadingNote = loading ? "Loading current completed regular-season results... " : "";
   if (!league || !record) {
-    status.textContent = loadingNote || (!league ? "Connect a league or Explore demo to view records."
+    status.textContent = loadingNote || (!league ? "Connect a league to view records."
       : state.workspaceSnapshot ? "No completed results in this saved snapshot. Reconnect to load current records."
       : ["sleeper", "espn"].includes(league.provider) ? `Completed results load automatically when this section opens.${league.provider === "espn" ? " ESPN access requires a permitted league session; multiweek matchups and tiebreaker overrides are not supported." : ""}`
       : "Yahoo JSON imports can supply completedMatchups; season standings alone cannot establish head-to-head records.");
@@ -6790,7 +6852,7 @@ function getPlannerAvailability(player, week, holdInjuries) {
 
 function buildRosterPlan(manager, { weeks = 4, addId = "", dropId = "", holdInjuries = true } = {}) {
   const league = state.activeLeague;
-  if (!league || !manager) return { reason: "Connect a league and select a roster, or Explore demo." };
+  if (!league || !manager) return { reason: "Connect a league and select a roster." };
   const slots = (league.rosterPositions || []).filter(slot => !["BN", "IR", "TAXI"].includes(slot));
   if (!slots.length) return { reason: "Starter-slot settings are missing. Import league settings before planning." };
   if (!parseNflWeek(state.week) || ![2, 4, 6].includes(weeks)) return { reason: "Choose a valid header week and a 2, 4, or 6 week window." };
@@ -6880,7 +6942,7 @@ function renderRosterPlanner(refreshChoices = true) {
 }
 
 function buildTeamGradeReport(managerIndex) {
-  if (!state.activeLeague || state.managers.length < 2) return { reason: "Connect or import a league with at least two rosters, or choose Explore demo." };
+  if (!state.activeLeague || state.managers.length < 2) return { reason: "Connect or import a league with at least two rosters." };
   const manager = state.managers[managerIndex];
   if (!manager) return { reason: "Select a roster in the header to view its grade." };
   const slots = (state.activeLeague.rosterPositions || []).filter(slot => !["BN", "IR", "TAXI"].includes(slot));
@@ -7224,18 +7286,6 @@ function bindControlEvents() {
   });
 
   document.getElementById("syncBtn")?.addEventListener("click", syncUserAccount);
-  document.getElementById("demoLeagueBtn")?.addEventListener("click", async event => {
-    const button = event.currentTarget;
-    button.disabled = true;
-    try {
-      const payload = FFODemo.createDemoLeague();
-      await importYahooRosterFile({ name: "demo-league.json", text: async () => JSON.stringify(payload) }, { demo: true });
-      activateTab("tab-inbox");
-      await renderGMInbox();
-    } finally {
-      button.disabled = false;
-    }
-  });
   document.getElementById("retryDataBtn")?.addEventListener("click", retryDataSync);
   document.getElementById("mobileTabSelect")?.addEventListener("change", e => {
     document.querySelector(`.nav-btn[data-tab="${e.target.value}"]`)?.click();
@@ -7570,7 +7620,7 @@ function leaveWorkspaceSnapshot() {
 }
 
 function buildWorkspaceBackup() {
-  if (!state.activeLeague || !state.managers.length) throw new Error("Connect a league or Explore demo before saving a workspace.");
+  if (!state.activeLeague || !state.managers.length) throw new Error("Connect a league before saving a workspace.");
   const snapshot = Object.fromEntries([
     "season", "week", "provider", "managers", "players", "rawProj", "rawStats",
     "currentMatchups", "livePlayerPoints", "portfolioRosterSelections", "dataFreshness", "dataErrors"
@@ -7676,7 +7726,6 @@ function applyWorkspaceSnapshot(backup) {
   const banner = document.getElementById("workspaceSnapshotBanner");
   banner.textContent = `Saved workspace / ${new Date(backup.savedAt).toLocaleString()}. This is a snapshot, not live data. Reconnect or re-import to update. Manage saved snapshots in Home > Workspace & Backups.`;
   banner.hidden = false;
-  document.getElementById("demoLeagueBtn").disabled = false;
   updateDynamicSeasonLabels();
   renderDataFreshness();
   setStatus(`Ready | Saved workspace / ${state.activeLeague.name} / Week ${state.week}`);
@@ -7797,7 +7846,6 @@ async function bootWorkspace() {
       const banner = document.getElementById("workspaceSnapshotBanner");
       banner.textContent = message; banner.hidden = false;
       activateTab("tab-workspace");
-      document.getElementById("demoLeagueBtn").disabled = false;
       setStatus("Saved workspace needs attention.");
     }
     return;

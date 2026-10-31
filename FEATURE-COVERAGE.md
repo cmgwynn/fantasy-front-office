@@ -18,7 +18,7 @@ Fresh visits start on GM Inbox unless a previous league or manually saved worksp
 Player Compare and Team Grades are separate navigation items, and draft
 features are inside Draft Room. Loading a provider
 league is separate from loading the UI; a provider authorization failure does
-not mean the release is missing. Explore demo previews roster-based features.
+not mean the release is missing. Connect or import a league to use roster-based features.
 
 ## Current release
 
@@ -33,6 +33,10 @@ Enter/Space, with visible focus indicators and reduced-motion support.
 The sidebar uses system fonts, rounded inset selection, restrained blue accents,
 original line icons, and 48px group targets. At widths up to 960px, a native
 44px picker with the same five option groups replaces the sidebar list.
+Short phone landscape layouts keep that picker beside the content and compact
+the provider controls to preserve the limited vertical space. Player Analytics
+uses a responsive scatter plot with labels for the top 10 players in the current
+sort; the sortable table below retains the full plotted-player values.
 All existing tools remain accessible; no analytics were removed.
 
 ### Workspace snapshots and backups
@@ -113,14 +117,6 @@ Failed or invalid status is reported in season-source freshness; the app does
 not mark an unverified default as a successful season sync.
 Demo/import snapshots can explicitly select their own week without changing
 the real current NFL week.
-
-Use **Explore demo** to load four fictional teams and sample players. Demo data
-uses the local import pipeline, not authenticated Yahoo access. All projections
-and records in the demo are illustrative. Connect another provider to leave it.
-Demo waiver candidates are fictional too, and sample players do not inherit real
-NFL byes or kickoff locks. The demo is a fixed Week 6 snapshot; changing the week
-does not provide new projections. Other analytics may still display the loaded
-real-player database alongside sample players.
 
 GM Inbox now includes a weekly briefing, projection provenance, roster risks,
 and waiver comparisons against an optimized lineup with a bench drop candidate.
@@ -322,9 +318,6 @@ Latest team names label each career. Scores/margins tied for a record display
 the first game by season, week, and roster ID; most-wins/most-meetings answers
 include ties. This is a bounded linked-history record book, not a claim that
 disconnected or older leagues are complete.
-Explore demo includes two explicitly fictional seasons illustrating the same
-career table, rivalry heat map and grounded historical answers.
-
 Loaded career history is included in workspace backup and reload snapshots;
 older version-1 backups without this optional field remain supported.
 Snapshot history is labeled non-live. ESPN/imported cross-season identity
