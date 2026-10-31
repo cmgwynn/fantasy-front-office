@@ -3,13 +3,14 @@
 // ============================================================================
 
 // 1. Top-Level Tab & Sub-Tab Switcher
-function activateTab(tabId) {
+function activateTab(tabId, { navigate = false, focus = false } = {}) {
   if (tabId === "tab-newsletter") {
     tabId = "tab-inbox";
     document.getElementById("inboxRecap").open = true;
   }
   const targetPage = document.getElementById(tabId);
   if (!targetPage?.classList.contains("tab-page")) return null;
+  const changed = !targetPage.classList.contains("active");
   document.querySelectorAll(".nav-btn").forEach(button => {
     const active = button.dataset.tab === tabId;
     button.classList.toggle("active", active);
@@ -25,6 +26,26 @@ function activateTab(tabId) {
     group.querySelector(".nav-current").textContent = activeButton?.textContent || "";
     group.open = Boolean(activeButton);
   });
+  const activeButton = document.querySelector(".nav-btn.active");
+  targetPage.setAttribute("tabindex", "-1");
+  targetPage.setAttribute("aria-label", activeButton?.textContent.trim() || "Current tool");
+  if (navigate && changed) {
+    const content = document.getElementById("mainContent");
+    content.scrollTop = 0;
+    targetPage.scrollTop = 0;
+    const sidebar = document.querySelector(".sidebar");
+    const mobile = getComputedStyle(document.getElementById("mobileTabSelect")).display !== "none";
+    const landscape = matchMedia("(orientation:landscape) and (max-height:500px)").matches;
+    const offset = mobile && !landscape ? sidebar.getBoundingClientRect().height + 20 : 16;
+    const top = content.getBoundingClientRect().top;
+    if (top < offset) window.scrollBy({ top: top - offset, behavior: "instant" });
+    if (focus) targetPage.focus({ preventScroll: true });
+    if (!mobile && activeButton) {
+      const bounds = sidebar.getBoundingClientRect(), buttonBounds = activeButton.getBoundingClientRect();
+      if (buttonBounds.bottom > bounds.bottom) sidebar.scrollTop += buttonBounds.bottom - bounds.bottom + 12;
+      else if (buttonBounds.top < bounds.top) sidebar.scrollTop -= bounds.top - buttonBounds.top + 12;
+    }
+  }
   if (tabId === "tab-records") {
     loadLeagueRecords();
     if (document.getElementById("careerHistoryPanel")?.open) loadCareerHistory();
@@ -41,7 +62,7 @@ document.addEventListener("click", e => {
   }
   const navBtn = e.target.closest(".nav-btn");
   if (navBtn && navBtn.dataset.tab) {
-    const targetPage = activateTab(navBtn.dataset.tab);
+    const targetPage = activateTab(navBtn.dataset.tab, { navigate: true, focus: e.detail === 0 && document.activeElement !== document.getElementById("mobileTabSelect") });
     if (navBtn.dataset.tab === "tab-draft") {
       document.querySelector(".content-stack")?.scrollTo({ top: 0, behavior: "instant" });
       targetPage?.scrollTo({ top: 0, behavior: "instant" });
@@ -69,7 +90,11 @@ document.addEventListener("click", e => {
       case "tab-opt": {
         const managerIndex = parseInt(document.getElementById("teamSelect")?.value || "0", 10);
         renderOptimizerTab(managerIndex);
-        refreshGameDaySchedule().then(() => renderOptimizerTab(managerIndex));
+        refreshGameDaySchedule().then(() => {
+          if (document.getElementById("tab-opt")?.classList.contains("active")) {
+            renderOptimizerTab(parseInt(document.getElementById("teamSelect")?.value || "0", 10));
+          }
+        });
         break;
       }
       case "tab-intel": renderLeagueIntelTab(); break;
@@ -1031,7 +1056,7 @@ function openTradeInBuilder(aIds, bIds, teamAIdx = null, teamBIdx = null) {
 }
 
 function targetPlayerFromSos(playerId, pos) {
-  activateTab("tab-trade");
+  activateTab("tab-trade", { navigate: true, focus: true });
   if (["QB","RB","WR","TE"].includes(pos)) document.getElementById("finderPos").value = pos;
   const ownerIdx = state.managers.findIndex(m => m.players.includes(playerId));
   const myIdx = parseInt(document.getElementById("tradeTeamA")?.value || "0", 10);
@@ -1046,7 +1071,7 @@ function openMatchupInSimulator(rosterIdA, rosterIdB) {
   document.getElementById("simTeamA").value = idxA;
   document.getElementById("simTeamB").value = idxB;
   renderMatchupSim();
-  activateTab("tab-matchup");
+  activateTab("tab-matchup", { navigate: true, focus: true });
 }
 
 function calcTradeValue(m, lg) {
@@ -7246,7 +7271,7 @@ function openPlayerComparison(playerAId, playerBId) {
       select.value = id;
     } else select.value = "";
   });
-  activateTab("tab-compare");
+  activateTab("tab-compare", { navigate: true, focus: true });
   renderPlayerComparison(false);
 }
 

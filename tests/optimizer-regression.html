@@ -20,7 +20,7 @@
   <h1>Optimizer Regression Checks</h1>
   <p id="summary" role="status">Loading the app runtime...</p>
   <ol id="results"></ol>
-  <iframe id="appFrame" src="../index.html?v=20261031-league-schedule-1&amp;resume=0" title="Optimizer test runtime"></iframe>
+  <iframe id="appFrame" src="../index.html?v=20261031-navigation-polish-1&amp;resume=0" title="Optimizer test runtime"></iframe>
   <script>
     async function runOptimizerFixtures() {
       const results = [];
@@ -90,6 +90,22 @@
         const groupBeforeInvalidTab = document.querySelector(".nav-group[open]");
         check("Unknown tab activation preserves the current section", activateTab("tab-missing") === null &&
           document.querySelector(".tab-page.active").id === "tab-power" && groupBeforeInvalidTab.open);
+        activateTab(savedTabId);
+        const navMain = document.getElementById("mainContent");
+        check("All tool panels are inside the main content landmark",
+          navMain.tagName === "MAIN" && [...document.querySelectorAll(".tab-page")].every(panel => navMain.contains(panel)));
+        activateTab("tab-power", { navigate: true, focus: true });
+        check("Keyboard navigation focuses a named tool panel without focusing a hidden menu button",
+          document.activeElement === document.getElementById("tab-power") &&
+          document.activeElement.getAttribute("aria-label") === "Power Rankings" &&
+          document.activeElement.getAttribute("tabindex") === "-1");
+        activateTab("tab-inbox");
+        const navMobile = document.getElementById("mobileTabSelect");
+        navMobile.value = "tab-power";
+        navMobile.dispatchEvent(new Event("change"));
+        check("Mobile selection uses the same activation path as desktop shortcuts",
+          document.getElementById("tab-power").classList.contains("active") &&
+          document.querySelector('.nav-btn[data-tab="tab-power"]').getAttribute("aria-current") === "page");
         activateTab(savedTabId);
         check("Inbox is a direct destination and closes unrelated navigation groups",
           !document.querySelector('.nav-btn[data-tab="tab-inbox"]').closest("details") &&

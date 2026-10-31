@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Fantasy Front Office</title>
-  <link rel="stylesheet" href="styles.css?v=20261031-league-schedule-1" />
+  <link rel="stylesheet" href="styles.css?v=20261031-navigation-polish-1" />
 </head>
 <body>
 
@@ -60,6 +60,7 @@
 </div>
 
 <div class="body-layout">
+  <a class="skip-to-tool" href="#mainContent">Skip to current tool</a>
   <nav class="sidebar" aria-label="Main navigation">
     <div class="sidebar-heading"><span>Front Office</span><small>Your league, organized.</small></div>
     <label class="mobile-nav-label" for="mobileTabSelect">VIEW</label>
@@ -90,7 +91,7 @@
       </optgroup>
     </select>
     <div class="sidebar-groups">
-      <button class="nav-btn active nav-direct" data-tab="tab-inbox" aria-current="page">GM Inbox</button>
+      <button class="nav-btn active nav-direct" data-tab="tab-inbox" aria-current="page"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h16v16H4Z M4 13h5l2 3h2l2-3h5"/></svg><span>GM Inbox</span></button>
       <details class="nav-group" name="sidebar-section">
         <summary><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5h14v16H5Z M9 3h6v4H9Z M9 11h6 M9 15h6"/></svg><span>My Team<small class="nav-current"></small></span><span class="nav-chevron" aria-hidden="true"></span></summary>
         <div class="nav-group-items">
@@ -117,7 +118,7 @@
           <button class="nav-btn" data-tab="tab-sos">Strength of Schedule</button>
         </div>
       </details>
-      <button class="nav-btn nav-direct" data-tab="tab-draft">Draft Room</button>
+      <button class="nav-btn nav-direct" data-tab="tab-draft"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L21 7l-4-4L4 16Z M14 6l4 4"/></svg><span>Draft Room</span></button>
       <details class="nav-group" name="sidebar-section">
         <summary><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5h14v14H5Z M9 9h6 M9 13h6"/></svg><span>Extras<small class="nav-current"></small></span><span class="nav-chevron" aria-hidden="true"></span></summary>
         <div class="nav-group-items">
@@ -127,10 +128,9 @@
         </div>
       </details>
     </div>
-    <p class="sidebar-caption">One place for every decision.</p>
   </nav>
 
-  <div class="content-stack">
+  <main id="mainContent" class="content-stack" tabindex="-1" aria-label="Current tool">
     <div id="workspaceSnapshotBanner" class="workspace-banner" role="status" hidden></div>
     <!-- TAB 1: ROSTER -->
     <div id="tab-roster" class="tab-page">
@@ -962,7 +962,7 @@
         </aside>
       </div>
     </div>
-  </div>
+  </main>
 </div>
 
 <footer id="monetizationArea" class="monetization-area" hidden aria-label="Sponsored links">
@@ -972,12 +972,12 @@
   <div id="monetizationDisclosure" class="monetization-disclosure" hidden></div>
 </footer>
 
-<script src="monetization-config.js?v=20261031-league-schedule-1"></script>
-<script src="data-fetch.js?v=20261031-league-schedule-1"></script>
-<script src="demo-league.js?v=20261031-league-schedule-1"></script>
-<script src="league-records.js?v=20261031-league-schedule-1"></script>
-<script src="workspace-backup.js?v=20261031-league-schedule-1"></script>
-<script src="playoff-simulator.js?v=20261031-league-schedule-1"></script>
-<script src="app.js?v=20261031-league-schedule-1"></script>
+<script src="monetization-config.js?v=20261031-navigation-polish-1"></script>
+<script src="data-fetch.js?v=20261031-navigation-polish-1"></script>
+<script src="demo-league.js?v=20261031-navigation-polish-1"></script>
+<script src="league-records.js?v=20261031-navigation-polish-1"></script>
+<script src="workspace-backup.js?v=20261031-navigation-polish-1"></script>
+<script src="playoff-simulator.js?v=20261031-navigation-polish-1"></script>
+<script src="app.js?v=20261031-navigation-polish-1"></script>
 </body>
 </html>

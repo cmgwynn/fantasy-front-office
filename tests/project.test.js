@@ -41,7 +41,7 @@ test("HTML references existing local assets in the expected script order", () =>
   ].map(match => match[1]).filter(asset => !/^(?:[a-z]+:)?\/\//i.test(asset));
 
   assert.ok(assets.length > 0, "Expected local CSS or JavaScript assets.");
-  assert.ok(assets.every(asset => asset.endsWith("?v=20261031-league-schedule-1")), "All local assets must use the current release version.");
+  assert.ok(assets.every(asset => asset.endsWith("?v=20261031-navigation-polish-1")), "All local assets must use the current release version.");
   for (const asset of assets) {
     assert.ok(fs.existsSync(path.join(root, asset.split("?")[0])), `Missing local asset: ${asset}`);
   }
@@ -90,7 +90,7 @@ test("static interface IDs, labels, and tab navigation targets are consistent", 
   assert.deepEqual([...html.matchAll(/<optgroup label="([^"]+)"/g)].map(match => match[1]), ["My Team", "League", "Players", "Extras"], "Single tools should not have wrapper groups.");
   const groups = [...html.matchAll(/<details class="nav-group[^"]*"[^>]*>[\s\S]*?<\/details>/g)];
   assert.ok(groups.every(([group]) => (group.match(/class="nav-btn"/g) || []).length > 1), "Every collapsible navigation group must contain multiple destinations.");
-  assert.match(html, /<button class="nav-btn nav-direct" data-tab="tab-draft">Draft Room<\/button>/, "Draft Room should be a direct destination.");
+  assert.match(html, /<button class="nav-btn nav-direct" data-tab="tab-draft">[\s\S]*?<span>Draft Room<\/span><\/button>/, "Draft Room should be a direct destination.");
   for (const label of ["My Roster", "Schedule &amp; Coverage", "Waiver Planner", "Trade Analyzer", "Team Grade", "Playoff Scenarios", "Compare Players", "Strength of Schedule"]) {
     assert.ok(html.includes(`>${label}</option>`) || html.includes(`>${label}</button>`), `Navigation should use a clear label for ${label}.`);
   }
@@ -128,7 +128,7 @@ test("browser regression harness is wired to the app and includes saved-state co
   const html = read("tests/optimizer-regression.html");
   const appHtml = read("index.html");
 
-  assert.match(html, /src="\.\.\/index\.html\?v=20261031-league-schedule-1&amp;resume=0"/, "Regression harness must load the current app release without resuming personal snapshots.");
+  assert.match(html, /src="\.\.\/index\.html\?v=20261031-navigation-polish-1&amp;resume=0"/, "Regression harness must load the current app release without resuming personal snapshots.");
   assert.doesNotMatch(appHtml, /id="loadRecordsBtn"/, "Records must load automatically without a manual refresh button.");
   assert.match(html, /runOptimizerFixtures/, "Regression harness must execute its fixtures.");
   assert.match(html, /Cross-league queue saves to target budget/, "Saved FAAB state should remain covered.");
@@ -155,6 +155,15 @@ test("Inbox integrates a compact recap and keeps recreational tools secondary", 
   assert.match(app, /summary: summary\.slice\(0, 3\)/, "Recaps should have at most three highlights.");
   assert.match(app, /leagueRecordsCache\.get\(getLeagueRecordsKey\(league\)\)/, "Recaps must use completed results, not current live scores.");
   assert.match(app, /gmSchedule"\)\?\.addEventListener\("click", handleGMInboxClick\)/, "Schedule shortcuts must actually navigate.");
+});
+
+test("navigation provides an accessible content landmark and consistent destination order", () => {
+  const html = read("index.html");
+  assert.match(html, /<a class="skip-to-tool" href="#mainContent">/, "Keyboard users need a shortcut past navigation.");
+  assert.match(html, /<main id="mainContent" class="content-stack" tabindex="-1" aria-label="Current tool">/, "The current tool needs a focusable main landmark.");
+  const desktop = [...html.matchAll(/data-tab="(tab-[^"]+)"/g)].map(match => match[1]);
+  const mobile = [...html.matchAll(/<option value="(tab-[^"]+)"/g)].map(match => match[1]);
+  assert.deepEqual(desktop, mobile, "Desktop and mobile destinations should appear in exactly the same order.");
 });
 
 test("shared fetch helper reports network, HTTP, JSON, and successful responses", async () => {

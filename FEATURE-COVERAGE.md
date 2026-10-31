@@ -33,13 +33,23 @@ Selecting a tool through a shortcut also opens its group and synchronizes the
 mobile picker and `aria-current`. Collapsing the current group leaves the
 selected tool's name visible in its summary. Native summaries support keyboard
 Enter/Space, with visible focus indicators and reduced-motion support.
-The sidebar uses system fonts, rounded inset selection, restrained blue accents,
-original line icons, and 48px group targets. At widths up to 960px, a native
+The sidebar uses system fonts, rounded inset selection, restrained shared accents,
+original line icons, aligned direct-destination icons, and 48px group targets.
+The selected destination uses the app's accent with an inset marker, not a
+second competing accent color. At widths up to 960px, a sticky native
 44px picker with the same four option groups and direct Inbox/Draft options replaces the sidebar list.
 Short phone landscape layouts keep that picker beside the content and compact
 the provider controls to preserve the limited vertical space. Player Analytics
 uses a responsive scatter plot with labels for the top 10 players in the current
 sort; the sortable table below retains the full plotted-player values.
+Desktop/mobile destination order is identical. User-initiated tool changes
+reset the content's scroll position when switching sections, bring an offscreen
+tool's start back into view without animated scrolling, and preserve the
+provider/roster context and each tool's controls. Clicking an already active
+tool does not reset its reading position. Keyboard activation focuses a named
+tool panel; a skip link reaches the main landmark. The mobile picker stays
+available while scrolling and retains focus for consecutive selections.
+Automatic saved-state restoration does not use this user-navigation scroll path.
 Core tools focus on lineup, pickup, trade, matchup, and upcoming coverage decisions.
 Team grades, power rankings, and records/rivalries are in the bottom Extras group.
 Weekly picks, historical standings, and secondary tables are collapsed.
