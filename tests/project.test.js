@@ -41,7 +41,7 @@ test("HTML references existing local assets in the expected script order", () =>
   ].map(match => match[1]).filter(asset => !/^(?:[a-z]+:)?\/\//i.test(asset));
 
   assert.ok(assets.length > 0, "Expected local CSS or JavaScript assets.");
-  assert.ok(assets.every(asset => asset.endsWith("?v=20261031-weekly-matchups-3")), "All local assets must use the current release version.");
+  assert.ok(assets.every(asset => asset.endsWith("?v=20261031-analytics-logos-1")), "All local assets must use the current release version.");
   for (const asset of assets) {
     assert.ok(fs.existsSync(path.join(root, asset.split("?")[0])), `Missing local asset: ${asset}`);
   }
@@ -123,13 +123,16 @@ test("phone landscape layout and player chart provide responsive reading afforda
   assert.match(html, /id="analyticsChartHelp"/, "Chart should explain how to read its plotted points.");
   assert.match(html, /class="analytics-chart" role="img"/, "Chart should have an accessible description.");
   assert.match(app, /chartPoints\.filter\(point => point\.rank < 10\)/, "Only the top ten ranked players should receive chart labels to limit overlap.");
+  assert.doesNotMatch(app, /if \(rank >= 10\)/, "Lower-ranked players must retain team logos, not anonymous dots.");
+  assert.match(app, /layoutAnalyticsMarkers\(pool\.map/, "Chart logos must be laid out with collision avoidance.");
+  assert.match(html, /Connectors link separated logos to exact data points/, "Displaced markers must explain their exact plotted values.");
 });
 
 test("browser regression harness is wired to the app and includes saved-state coverage", () => {
   const html = read("tests/optimizer-regression.html");
   const appHtml = read("index.html");
 
-  assert.match(html, /src="\.\.\/index\.html\?v=20261031-weekly-matchups-3&amp;resume=0"/, "Regression harness must load the current app release without resuming personal snapshots.");
+  assert.match(html, /src="\.\.\/index\.html\?v=20261031-analytics-logos-1&amp;resume=0"/, "Regression harness must load the current app release without resuming personal snapshots.");
   assert.doesNotMatch(appHtml, /id="loadRecordsBtn"/, "Records must load automatically without a manual refresh button.");
   assert.match(html, /runOptimizerFixtures/, "Regression harness must execute its fixtures.");
   assert.match(html, /Cross-league queue saves to target budget/, "Saved FAAB state should remain covered.");

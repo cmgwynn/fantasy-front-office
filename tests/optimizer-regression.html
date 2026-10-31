@@ -20,7 +20,7 @@
   <h1>Optimizer Regression Checks</h1>
   <p id="summary" role="status">Loading the app runtime...</p>
   <ol id="results"></ol>
-  <iframe id="appFrame" src="../index.html?v=20261031-weekly-matchups-3&amp;resume=0" title="Optimizer test runtime"></iframe>
+  <iframe id="appFrame" src="../index.html?v=20261031-analytics-logos-1&amp;resume=0" title="Optimizer test runtime"></iframe>
   <script>
     async function runOptimizerFixtures() {
       const results = [];
@@ -81,6 +81,18 @@
       };
       const check = (name, passed, detail) => results.push({ name, passed: Boolean(passed), detail: detail || "" });
       try {
+        for (const compact of [false, true]) {
+          const plot = { l: 68, t: 28, w: compact ? 200 : 900, h: 284 };
+          const points = Array.from({ length: 32 }, (_, rank) => ({ x: plot.l + plot.w / 2, y: 170, rank }));
+          const markers = layoutAnalyticsMarkers(points, plot, compact);
+          check(`Analytics logos do not overlap at coincident data points (${compact ? "phone" : "desktop"})`,
+            markers.every((marker, index) => markers.slice(index + 1).every(other =>
+              Math.hypot(marker.markerX - other.markerX, marker.markerY - other.markerY) >= marker.radius + other.radius + 3)));
+          check(`Analytics logos stay within plot bounds and retain exact data coordinates (${compact ? "phone" : "desktop"})`,
+            markers.every(marker => marker.markerX - marker.radius >= plot.l && marker.markerX + marker.radius <= plot.l + plot.w &&
+              marker.markerY - marker.radius >= plot.t && marker.markerY + marker.radius <= plot.t + plot.h &&
+              marker.x === plot.l + plot.w / 2 && marker.y === 170));
+        }
         check("Initial navigation and content open on GM Inbox",
           document.querySelector(".nav-btn.active")?.dataset.tab === "tab-inbox" &&
           document.querySelector(".tab-page.active")?.id === "tab-inbox" &&

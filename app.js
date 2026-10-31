@@ -3846,6 +3846,28 @@ function renderAnalyticsReadout(pool, config) {
   }
 }
 
+function layoutAnalyticsMarkers(points, plot, compact) {
+  const placed = [];
+  return points.map(point => {
+    const radius = compact ? 11 : 14;
+    const fits = (x, y) => x - radius >= plot.l && x + radius <= plot.l + plot.w &&
+      y - radius >= plot.t && y + radius <= plot.t + plot.h &&
+      placed.every(other => Math.hypot(x - other.markerX, y - other.markerY) >= radius + other.radius + 3);
+    let markerX = point.x, markerY = point.y;
+    let found = fits(markerX, markerY);
+    for (let distance = 8; !found && distance <= Math.hypot(plot.w, plot.h); distance += 8) {
+      for (let step = 0; step < 24; step++) {
+        const angle = step * Math.PI / 12;
+        const x = point.x + Math.cos(angle) * distance, y = point.y + Math.sin(angle) * distance;
+        if (fits(x, y)) { markerX = x; markerY = y; found = true; break; }
+      }
+    }
+    const marker = { ...point, markerX, markerY, radius };
+    placed.push(marker);
+    return marker;
+  });
+}
+
 function drawSingleAnalyticsChart() {
   const pos = document.getElementById("analyticsPos")?.value || "QB";
   const viewMode = parseInt(document.getElementById("analyticsGraphSelect")?.value || "0", 10);
@@ -3969,15 +3991,14 @@ function drawSingleAnalyticsChart() {
   ctx.fillText(cfg.yLbl.toUpperCase(), 0, 0);
   ctx.restore();
 
-  const chartPoints = pool.map((p, rank) => {
+  const chartPoints = layoutAnalyticsMarkers(pool.map((p, rank) => {
     const xv = Number(p[cfg.xKey] || 0), yv = Number(p[cfg.yKey] || 0);
     const x = plot.l + ((xv - minX) / Math.max(0.001, maxX - minX)) * plot.w;
     const y = plot.t + plot.h - ((yv - minY) / Math.max(0.001, maxY - minY)) * plot.h;
     return { player: p, x, y, rank };
-  });
+  }), plot, W < 480);
   const occupiedLabels = [];
-  const pointBounds = chartPoints.map(({ x, y, rank }) => {
-    const radius = rank < 10 ? 6 : 4;
+  const pointBounds = chartPoints.map(({ markerX: x, markerY: y, radius }) => {
     return {
       left: x - radius - 2, right: x + radius + 2, top: y - radius - 2, bottom: y + radius + 2
     };
@@ -3987,30 +4008,27 @@ function drawSingleAnalyticsChart() {
     return distance(b) - distance(a);
   });
 
-  chartPoints.forEach(({ player, x, y, rank }) => {
-    if (rank >= 10) {
-      ctx.fillStyle = "#7C8983";
-      ctx.beginPath(); ctx.arc(x, y, 3, 0, Math.PI * 2); ctx.fill();
-      return;
-    }
-
-    const size = W < 480 ? 18 : 22;
-    ctx.fillStyle = "#151A18";
-    ctx.beginPath(); ctx.arc(x, y, size / 2 + 2, 0, Math.PI * 2); ctx.fill();
+  chartPoints.forEach(({ x, y, markerX, markerY }) => {
+    if (Math.hypot(markerX - x, markerY - y) < 1) return;
+    ctx.strokeStyle = "#A0AAA5"; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(markerX, markerY); ctx.stroke();
+    ctx.fillStyle = "#F1F4F2";
+    ctx.beginPath(); ctx.arc(x, y, 2, 0, Math.PI * 2); ctx.fill();
+  });
+  chartPoints.forEach(({ player, markerX: x, markerY: y, radius }) => {
+    const size = radius * 2;
+    ctx.fillStyle = "#1D2320";
+    ctx.fillRect(x - radius, y - radius, size, size);
     const img = getTeamLogoImage(player.team);
     if (img?.complete && img.naturalWidth > 0) {
       ctx.drawImage(img, x - size / 2, y - size / 2, size, size);
     } else {
-      ctx.fillStyle = "#232834";
-      ctx.beginPath(); ctx.arc(x, y, size / 2, 0, Math.PI * 2); ctx.fill();
       ctx.fillStyle = "#F1F4F2"; ctx.font = "700 8px -apple-system, sans-serif";
       ctx.textAlign = "center"; ctx.fillText(player.team.slice(0, 3), x, y + 3);
     }
-    ctx.strokeStyle = "#64D2FF"; ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.arc(x, y, size / 2 + 2, 0, Math.PI * 2); ctx.stroke();
   });
 
-  labelOrder.forEach(({ player: p, x, y, rank }) => {
+  labelOrder.forEach(({ player: p, markerX: x, markerY: y, radius, rank }) => {
     const pointIndex = rank;
     ctx.fillStyle = "#F2F4F8";
     ctx.font = `700 ${W < 480 ? 9 : 10}px -apple-system, BlinkMacSystemFont, sans-serif`;
@@ -4019,10 +4037,10 @@ function drawSingleAnalyticsChart() {
     const width = Math.min(ctx.measureText(label).width, Math.max(50, plot.w * 0.34));
     const height = 17;
     const candidates = [
-      { left:x + 15, top:y - height / 2, align:"left" },
-      { left:x - 15 - width, top:y - height / 2, align:"right" },
-      { left:x - width / 2, top:y - height - 12, align:"center" },
-      { left:x - width / 2, top:y + 12, align:"center" }
+      { left:x + radius + 4, top:y - height / 2, align:"left" },
+      { left:x - radius - 4 - width, top:y - height / 2, align:"right" },
+      { left:x - width / 2, top:y - height - radius - 4, align:"center" },
+      { left:x - width / 2, top:y + radius + 4, align:"center" }
     ];
     const placement = candidates.find(candidate => {
       const box = { ...candidate, right:candidate.left + width, bottom:candidate.top + height };

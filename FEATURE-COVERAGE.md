@@ -40,8 +40,11 @@ second competing accent color. At widths up to 960px, a sticky native
 44px picker with the same four option groups and direct Inbox/Draft options replaces the sidebar list.
 Short phone landscape layouts keep that picker beside the content and compact
 the provider controls to preserve the limited vertical space. Player Analytics
-uses a responsive scatter plot with labels for the top 10 players in the current
-sort; the sortable table below retains the full plotted-player values.
+uses a responsive scatter plot with team logos for every plotted player, with
+labels for the top 10 in the current sort when space permits. Collision-aware
+logo placement uses connectors to retain exact data coordinates, without blue
+marker rings or anonymous lower-ranked dots. Failed images retain team-code
+fallbacks. The sortable table below retains the full plotted-player values.
 Desktop/mobile destination order is identical. User-initiated tool changes
 reset the content's scroll position when switching sections, bring an offscreen
 tool's start back into view without animated scrolling, and preserve the
