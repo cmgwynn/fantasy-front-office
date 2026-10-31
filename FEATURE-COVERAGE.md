@@ -24,6 +24,11 @@ a league to use roster-based features.
 
 ## Current release
 
+Player Analytics draws transparent team logos directly on the chart without
+square background plates. Table team logos (including defense avatars) have no
+background fill, padding or circular clipping. Chart positions, connectors,
+name labels and missing-image team abbreviations are unchanged.
+
 ### Independent player comparison search
 
 Reload also resyncs the saved Sleeper username or ESPN league IDs, restoring the

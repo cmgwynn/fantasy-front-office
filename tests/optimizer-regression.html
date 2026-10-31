@@ -20,7 +20,7 @@
   <h1>Optimizer Regression Checks</h1>
   <p id="summary" role="status">Loading the app runtime...</p>
   <ol id="results"></ol>
-  <iframe id="appFrame" src="../index.html?v=20261031-compare-cleanup-1&amp;resume=0" title="Optimizer test runtime"></iframe>
+  <iframe id="appFrame" src="../index.html?v=20261031-analytics-logos-1&amp;resume=0" title="Optimizer test runtime"></iframe>
   <script>
     async function runOptimizerFixtures() {
       const results = [];
@@ -122,6 +122,21 @@
               marker.markerY - marker.radius >= plot.t && marker.markerY + marker.radius <= plot.t + plot.h &&
               marker.x === plot.l + plot.w / 2 && marker.y === 170));
         }
+        const analyticsContext = document.getElementById("analyticsCanvasSingle").getContext("2d");
+        const originalFillRect = analyticsContext.fillRect;
+        const logoBackdrops = [];
+        try {
+          analyticsContext.fillRect = function(x, y, width, height) {
+            if (width === height && [22, 28].includes(width)) logoBackdrops.push({ x, y, width });
+            return originalFillRect.call(this, x, y, width, height);
+          };
+          drawSingleAnalyticsChart();
+          check("Analytics chart draws logos without square background plates", logoBackdrops.length === 0);
+          const tableLogo = document.querySelector("#analyticsTable .team-logo-sm");
+          check("Analytics table team logos have transparent, unclipped backgrounds",
+            tableLogo && getComputedStyle(tableLogo).backgroundColor === "rgba(0, 0, 0, 0)" &&
+            getComputedStyle(tableLogo).borderRadius === "0px");
+        } finally { analyticsContext.fillRect = originalFillRect; }
         check("Initial navigation and content open on GM Inbox",
           document.querySelector(".nav-btn.active")?.dataset.tab === "tab-inbox" &&
           document.querySelector(".tab-page.active")?.id === "tab-inbox" &&

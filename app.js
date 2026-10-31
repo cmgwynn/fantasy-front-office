@@ -4118,8 +4118,6 @@ function drawSingleAnalyticsChart() {
   });
   chartPoints.forEach(({ player, markerX: x, markerY: y, radius }) => {
     const size = radius * 2;
-    ctx.fillStyle = "#1D2320";
-    ctx.fillRect(x - radius, y - radius, size, size);
     const img = getTeamLogoImage(player.team);
     if (img?.complete && img.naturalWidth > 0) {
       ctx.drawImage(img, x - size / 2, y - size / 2, size, size);
