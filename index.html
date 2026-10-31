@@ -10,7 +10,7 @@
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
   <link rel="icon" href="icons/app-icon.svg" type="image/svg+xml" />
   <title>Fantasy Front Office</title>
-  <link rel="stylesheet" href="styles.css?v=20261031-sim-sos-proj-1" />
+  <link rel="stylesheet" href="styles.css?v=20261031-playoff-bracket-1" />
 </head>
 <body>
 
@@ -669,52 +669,32 @@
         <h2 id="playoffForecastTitle">Playoff Scenarios</h2>
         <p class="comparison-note">Your playoff odds from 5,000 simulated finishes of the remaining schedule.</p>
       </div>
-      <section class="card-banner" aria-labelledby="playoffForecastTitle">
-        <div class="playoff-forecast-bar">
-          <p id="playoffForecastStatus" role="status" aria-live="polite"></p>
-          <button id="runPlayoffForecast" type="button" hidden>Refresh scenarios</button>
+      <div class="playoff-forecast-bar">
+        <p id="playoffForecastStatus" role="status" aria-live="polite"></p>
+        <button id="runPlayoffForecast" type="button" hidden>Refresh scenarios</button>
+      </div>
+      <section class="playoff-picture" aria-labelledby="bracketMainTitle">
+        <div class="playoff-picture-head">
+          <div>
+            <h3 id="bracketMainTitle">Playoff bracket</h3>
+            <span id="bracketFormatBadge" class="comparison-note"></span>
+          </div>
+          <div class="playoff-picture-controls">
+            <div class="seg-bar-container" role="group" aria-label="Seed the bracket by">
+              <button type="button" class="bracket-seed-btn active" data-bracket-seed="CURRENT" aria-pressed="true">Current standings</button>
+              <button type="button" class="bracket-seed-btn" data-bracket-seed="PROJ" aria-pressed="false">Projected standings</button>
+            </div>
+            <button id="resetBracketBtn" type="button" hidden>Reset picks</button>
+          </div>
         </div>
+        <div id="bracketGridContainer" class="bracket-grid"></div>
+        <p class="comparison-note bracket-hint">Matchup scores use each lineup's playoff-week projections. Tap a team to advance it.</p>
+        <h3 class="playoff-standings-title">Standings</h3>
+        <div class="table-wrap" role="region" aria-label="Current and projected standings" tabindex="0"><table id="playoffStandingsTable" class="playoff-standings"></table></div>
+      </section>
+      <section class="card-banner" aria-label="Playoff odds">
         <div id="playoffForecastResults"></div>
       </section>
-      <details class="gm-secondary"><summary>Try an illustrative bracket</summary>
-      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
-        <div>
-          <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
-            <div id="bracketMainTitle" style="font-size:15px; font-weight:800;">FANTASY PLAYOFF BRACKET SIMULATOR</div>
-            <span id="bracketFormatBadge" class="badge badge-green">LEAGUE FORMAT: 6-TEAM PLAYOFF • STARTS WK 15</span>
-          </div>
-          <div style="font-size:12px; color:var(--text-muted); margin-top:2px;">
-            Illustrative bracket using lineup projections, not the schedule simulation above. Format defaults may be inferred. Click any team card to force an upset; this does not change scenario trials.
-          </div>
-        </div>
-        <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
-          <label style="font-size:12px; color:var(--text-muted);">Format:</label>
-          <select id="bracketTeamsOverride" style="width:auto; min-width:195px;">
-            <option value="AUTO">Auto (Use League Settings)</option>
-            <option value="4">4-Team Playoff (2 Rounds)</option>
-            <option value="6">6-Team Playoff (Top 2 Byes)</option>
-            <option value="7">7-Team Playoff (Top 1 Bye)</option>
-            <option value="8">8-Team Playoff (No Byes)</option>
-          </select>
-          <label style="font-size:12px; color:var(--text-muted);">Seeding:</label>
-          <select id="bracketSeedMode" style="width:auto; min-width:225px;">
-            <option value="CURRENT">Current Standings (Record → PF → PA)</option>
-            <option value="PROJ">Projected Final Standings</option>
-            <option value="POWER">Power Rankings Contenders</option>
-          </select>
-          <label style="font-size:12px; color:var(--text-muted);">Rule:</label>
-          <select id="bracketReseedMode" style="width:auto; min-width:205px;">
-            <option value="AUTO">Auto (Use League Settings)</option>
-            <option value="FIXED">Fixed Bracket Draw</option>
-            <option value="RESEED">NFL Re-Seeded (#1 vs Lowest)</option>
-          </select>
-          <button id="resetBracketBtn" style="background:#232834; font-size:12px; padding:7px 14px;">Reset Picks</button>
-        </div>
-      </div>
-      <div id="bracketGridContainer" class="bracket-grid"></div>
-      <div class="sec-hdr" style="color:var(--good);">ILLUSTRATIVE FIELD & PATH APPROXIMATIONS — NOT SIMULATED ODDS</div>
-      <div class="table-wrap"><table id="bracketOddsTable"></table></div>
-      </details>
     </div>
 
     <!-- TAB 9: MATCHUP SIMULATOR -->
@@ -1075,14 +1055,14 @@
 </footer>
 
 <p id="appInstallStatus" class="app-install-status" role="status"></p>
-<script src="pwa.js?v=20261031-sim-sos-proj-1"></script>
-<script src="monetization-config.js?v=20261031-sim-sos-proj-1"></script>
-<script src="data-fetch.js?v=20261031-sim-sos-proj-1"></script>
-<script src="demo-league.js?v=20261031-sim-sos-proj-1"></script>
-<script src="league-records.js?v=20261031-sim-sos-proj-1"></script>
-<script src="workspace-backup.js?v=20261031-sim-sos-proj-1"></script>
-<script src="playoff-simulator.js?v=20261031-sim-sos-proj-1"></script>
-<script src="weekly-matchups.js?v=20261031-sim-sos-proj-1"></script>
-<script src="app.js?v=20261031-sim-sos-proj-1"></script>
+<script src="pwa.js?v=20261031-playoff-bracket-1"></script>
+<script src="monetization-config.js?v=20261031-playoff-bracket-1"></script>
+<script src="data-fetch.js?v=20261031-playoff-bracket-1"></script>
+<script src="demo-league.js?v=20261031-playoff-bracket-1"></script>
+<script src="league-records.js?v=20261031-playoff-bracket-1"></script>
+<script src="workspace-backup.js?v=20261031-playoff-bracket-1"></script>
+<script src="playoff-simulator.js?v=20261031-playoff-bracket-1"></script>
+<script src="weekly-matchups.js?v=20261031-playoff-bracket-1"></script>
+<script src="app.js?v=20261031-playoff-bracket-1"></script>
 </body>
 </html>

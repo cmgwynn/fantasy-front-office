@@ -20,7 +20,7 @@
   <h1>Optimizer Regression Checks</h1>
   <p id="summary" role="status">Loading the app runtime...</p>
   <ol id="results"></ol>
-  <iframe id="appFrame" src="../index.html?v=20261031-sim-sos-proj-1&amp;resume=0" title="Optimizer test runtime"></iframe>
+  <iframe id="appFrame" src="../index.html?v=20261031-playoff-bracket-1&amp;resume=0" title="Optimizer test runtime"></iframe>
   <script>
     async function runOptimizerFixtures() {
       const results = [];
@@ -2287,6 +2287,56 @@
         state.activeLeague = claimLeague;
 
         {
+          const saved = { league: state.activeLeague, managers: state.managers, snapshot: state.workspaceSnapshot, seedMode: state.bracketSeedMode, overrides: state.bracketOverrides };
+          state.workspaceSnapshot = "";
+          state.activeLeague = { provider: "sleeper", leagueId: "bracket-fixture", season: "2026", name: "Bracket", playoffTeams: 4, playoffWeekStart: 15, isDemo: false };
+          const records = [[6, 1, 850], [5, 2, 900], [5, 2, 800], [3, 4, 700], [2, 5, 650]];
+          state.managers = records.map(([wins, losses, pf], index) => ({ rosterId: index + 1, ownerId: `owner${index + 1}`, teamName: `Bracket ${index + 1} (mgr${index + 1})`,
+            players: [], starters: [], wins, losses, pf, pa: 700, projW: 9 - index, projL: 5 + index, power: 50 - index }));
+          const avgOrder = [2, 1, 3, 5, 4];
+          const report = { iterations: 100, seed: 7, completedWeeks: 7, regularWeeks: 14, playoffTeams: 4,
+            teams: avgOrder.map((rosterId, place) => ({ id: String(rosterId), name: `Bracket ${rosterId}`, seeds: [0, 1, 2, 3, 4].map(index => index === place ? 100 : 0),
+              qualified: place < 4 ? 100 - place * 10 : 5, champion: [40, 30, 20, 7, 3][place], expectedWinEquivalents: 10 - place, bye: 0, finalists: 0, trajectory: [],
+              mean: 110 - place, deviation: 15, winNext: 0, qualifyWithWin: 0, nextOpponentId: String(avgOrder[(place + 1) % 5]) })) };
+          const key = getLeagueRecordsKey();
+          playoffForecasts.set(key, { error: "Scenarios unavailable for this league: Playoff scenarios need a live Sleeper league." });
+          const savedRun = runPlayoffForecast;
+          let retried = false;
+          runPlayoffForecast = () => { retried = true; };
+          ensurePlayoffForecast();
+          runPlayoffForecast = savedRun;
+          check("Playoff scenarios retry after a snapshot error once the live league is loaded", retried);
+          playoffForecasts.set(key, { report, updatedAt: Date.now() });
+          state.bracketOverrides = {};
+          state.bracketSeedMode = "CURRENT";
+          renderPlayoffBracketTab();
+          const rows = () => [...document.querySelectorAll("#playoffStandingsTable tbody tr")];
+          const firstSemi = document.querySelector("#bracketGridContainer .bracket-match-card");
+          check("Playoff bracket is visible and seeded by current standings with a playoff cut line",
+            !document.querySelector("#tab-bracket details .bracket-grid") && !document.getElementById("bracketTeamsOverride") &&
+            rows()[0].textContent.includes("Bracket 1") && rows()[1].textContent.includes("Bracket 2") &&
+            rows()[3].classList.contains("playoff-cut") && rows()[4].classList.contains("out-field") &&
+            firstSemi.textContent.includes("#1 vs #4") && firstSemi.textContent.includes("Bracket 1") && firstSemi.textContent.includes("Bracket 4"));
+          check("Standings show current seed, simulated projected seed, movement, projected wins and odds",
+            rows()[0].textContent.includes("▼1") && rows()[1].textContent.includes("▲1") && rows()[1].textContent.includes("10.0") &&
+            rows()[1].textContent.includes("100%") && rows()[0].textContent.includes("30.0%"));
+          document.querySelector('[data-bracket-seed="PROJ"]').click();
+          const projFirst = document.querySelector("#bracketGridContainer .bracket-match-card");
+          check("Projected standings toggle reseeds the bracket and standings from simulated finishes",
+            state.bracketSeedMode === "PROJ" && rows()[0].textContent.includes("Bracket 2") && rows()[3].textContent.includes("Bracket 5") &&
+            projFirst.textContent.includes("Bracket 2") && projFirst.textContent.includes("Bracket 5") &&
+            document.getElementById("bracketFormatBadge").textContent.includes("projected finish") &&
+            document.querySelector('[data-bracket-seed="PROJ"]').getAttribute("aria-pressed") === "true");
+          projFirst.querySelectorAll("button.bracket-slot")[1].click();
+          check("Advancing a team in the bracket shows Reset picks", !document.getElementById("resetBracketBtn").hidden &&
+            document.querySelector("#bracketGridContainer .bracket-match-card button.bracket-slot.winner")?.textContent.includes("Bracket 5"));
+          document.getElementById("resetBracketBtn").click();
+          playoffForecasts.delete(key);
+          Object.assign(state, { activeLeague: saved.league, managers: saved.managers, workspaceSnapshot: saved.snapshot, bracketSeedMode: saved.seedMode, bracketOverrides: saved.overrides });
+          renderPlayoffBracketTab();
+        }
+
+        {
           const saved = { league: state.activeLeague, managers: state.managers, week: state.week, matchups: state.currentMatchups,
             sosWindow: state.sosWindowMode, snapshot: state.workspaceSnapshot,
             team: document.getElementById("teamSelect").innerHTML, teamValue: document.getElementById("teamSelect").value,
@@ -2595,6 +2645,7 @@
         summary.textContent = failures.length ? `${failures.length} of ${results.length} checks failed.` : `${results.length} checks passed.`;
         summary.className = failures.length ? "fail" : "pass";
       } catch (error) {
+        console.error("Regression harness failed:", error);
         summary.textContent = `Harness failed: ${error.message}`;
         summary.className = "fail";
       }

@@ -235,7 +235,7 @@ const state = {
   currentMatchups: [], currentMatchupsKey: "", currentMatchupsCheckedAt: 0, livePlayerPoints: {}, currentNflWeek: 0, gameDayByTeam: {}, gameDayScheduleKey: "", gameDayScheduleCheckedAt: 0, gameDayScheduleAvailable: false, historicalRows: [], historicalSeasons: [], weeklyReportText: "",
   players: {}, rawProj: {}, rawStats: {}, managers: [],
   tradeSideA: [], tradeSideB: [], dbTrades: [], waiverTargets: [],
-  weakestPosByTeam: {}, sosWindowMode: "NEXT4", bracketOverrides: {},
+  weakestPosByTeam: {}, sosWindowMode: "NEXT4", bracketOverrides: {}, bracketSeedMode: "CURRENT",
   dataFreshness: { season: 0, schedule: 0, players: 0, stats: 0, projections: 0, account: 0, matchups: 0, league: 0 }, dataErrors: {}
 };
 const portfolioState = { rostersByLeague: new Map(), loading: false };
@@ -6497,60 +6497,107 @@ async function runPlayoffForecast({ fresh = false } = {}) {
     playoffForecasts.set(key, { error: `Scenarios unavailable for this league: ${error.message}` });
   } finally {
     playoffForecastLoads.delete(key);
-    if (getLeagueRecordsKey() === key) renderPlayoffForecast();
+    if (getLeagueRecordsKey() === key) renderPlayoffBracketTab();
   }
 }
 
 function ensurePlayoffForecast() {
   const key = getLeagueRecordsKey();
-  if (!key || playoffForecasts.has(key) || playoffForecastLoads.has(key)) return;
+  if (!key || playoffForecastLoads.has(key)) return;
+  const entry = playoffForecasts.get(key);
+  const live = state.activeLeague?.provider === "sleeper" && !state.activeLeague.isDemo && !state.workspaceSnapshot;
+  // A snapshot shown before the live league loads caches an error; retry once the league is live.
+  if (entry && !(entry.error && live)) return;
   runPlayoffForecast();
+}
+
+function getPlayoffForecastReport() {
+  const entry = playoffForecasts.get(getLeagueRecordsKey());
+  return entry && !entry.error ? entry.report : null;
+}
+
+function rankManagersByCurrentStanding(managers) {
+  const pct = m => { const games = (m.wins || 0) + (m.losses || 0) + (m.ties || 0); return games ? ((m.wins || 0) + (m.ties || 0) / 2) / games : 0; };
+  return [...managers].sort((a, b) => (pct(b) - pct(a)) || ((b.pf || 0) - (a.pf || 0)) || ((a.pa || 0) - (b.pa || 0)));
+}
+
+function getPlayoffStandings() {
+  const report = getPlayoffForecastReport();
+  const simById = new Map((report?.teams || []).map(team => [String(team.id), team]));
+  const current = rankManagersByCurrentStanding(state.managers);
+  const currentSeed = new Map(current.map((m, index) => [m.rosterId, index + 1]));
+  const avgSeed = m => {
+    const team = simById.get(String(m.rosterId));
+    return team ? team.seeds.reduce((sum, count, index) => sum + count * (index + 1), 0) / report.iterations : null;
+  };
+  const useSim = report && state.managers.every(m => simById.has(String(m.rosterId)));
+  const projected = [...state.managers].sort(useSim
+    ? (a, b) => (avgSeed(a) - avgSeed(b)) || (currentSeed.get(a.rosterId) - currentSeed.get(b.rosterId))
+    : (a, b) => ((b.projW || 0) - (a.projW || 0)) || (currentSeed.get(a.rosterId) - currentSeed.get(b.rosterId)));
+  const projectedSeed = new Map(projected.map((m, index) => [m.rosterId, index + 1]));
+  const info = new Map(state.managers.map(m => {
+    const team = useSim ? simById.get(String(m.rosterId)) : null;
+    return [m.rosterId, {
+      currentSeed: currentSeed.get(m.rosterId),
+      projectedSeed: projectedSeed.get(m.rosterId),
+      avgSeed: team ? avgSeed(m) : null,
+      projWins: team ? team.expectedWinEquivalents : (Number.isFinite(m.projW) ? m.projW : null),
+      playoffPct: team ? team.qualified / report.iterations * 100 : null,
+      titlePct: team ? team.champion / report.iterations * 100 : null
+    }];
+  }));
+  return { current, projected, info, fromSimulation: Boolean(useSim) };
+}
+
+function splitTeamLabel(manager) {
+  const match = String(manager.teamName || "").match(/^(.*) \(([^)]+)\)$/);
+  return match ? [match[1], match[2]] : [manager.teamName || `Team ${manager.rosterId}`, ""];
+}
+
+function renderTeamAvatarHTML(manager) {
+  const [teamName] = splitTeamLabel(manager);
+  const initials = draftEscapeHtml(teamName.split(/\s+/).filter(Boolean).slice(0, 2).map(part => part[0]).join("").toUpperCase());
+  const avatar = manager.ownerAvatar ? `<img src="${draftEscapeHtml(manager.ownerAvatar)}" alt="" onerror="this.remove()">` : "";
+  return `<span class="team-initials" aria-hidden="true">${avatar || initials}</span>`;
 }
 
 function renderPlayoffBracketTab() {
   renderPlayoffForecast();
   const grid = document.getElementById("bracketGridContainer");
-  const oddsTbl = document.getElementById("bracketOddsTable");
-  if (!grid || !oddsTbl) return;
+  const standingsTable = document.getElementById("playoffStandingsTable");
+  if (!grid || !standingsTable) return;
+  const escape = draftEscapeHtml;
+  const seedMode = state.bracketSeedMode === "PROJ" ? "PROJ" : "CURRENT";
+  document.querySelectorAll(".bracket-seed-btn").forEach(button => {
+    const active = button.dataset.bracketSeed === seedMode;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-pressed", String(active));
+  });
+  const resetButton = document.getElementById("resetBracketBtn");
+  if (resetButton) resetButton.hidden = !Object.keys(state.bracketOverrides || {}).length;
 
   const pTeams = getResolvedPlayoffTeamCount();
   const reseedMode = getResolvedBracketReseedMode();
   const roundWeeks = getPlayoffRoundWeeksStructure();
   const allPoWeeks = getPlayoffWeeksForActiveLeague();
   const isFourTeam = pTeams === 4;
-
   const startWk = allPoWeeks[0], endWk = allPoWeeks[allPoWeeks.length - 1];
-  const reseedText = reseedMode === "RESEED" ? "NFL Re-Seeded" : "Fixed Draw";
-
-  document.getElementById("bracketMainTitle").textContent = `${pTeams}-TEAM FANTASY PLAYOFF BRACKET SIMULATOR (WEEKS ${startWk}–${endWk})`;
-  document.getElementById("bracketFormatBadge").textContent = `LEAGUE FORMAT: ${pTeams}-TEAM PLAYOFF • WKS ${startWk}–${endWk} • ${reseedText.toUpperCase()}`;
+  const badge = document.getElementById("bracketFormatBadge");
 
   if (!state.managers || state.managers.length < 4) {
+    if (badge) badge.textContent = "";
     grid.className = "bracket-grid";
-    grid.innerHTML = `<div class="card-banner" style="grid-column:1 / -1; text-align:center; padding:28px;"><div style="font-size:14px; font-weight:800;">Connect a league to simulate its playoff bracket</div><div style="font-size:12px; color:var(--text-muted); margin-top:4px;">League settings determine playoff team count, start week, and seeding rules.</div></div>`;
-    oddsTbl.innerHTML = "";
+    grid.innerHTML = `<div class="card-banner bracket-empty">Connect a league to see its playoff bracket.</div>`;
+    standingsTable.innerHTML = "";
     return;
   }
 
-  const seedMode = document.getElementById("bracketSeedMode")?.value || "CURRENT";
-  const ranked = [...state.managers];
-  if (seedMode === "CURRENT") {
-    ranked.sort((a, b) => {
-      const tgA = a.wins + a.losses, tgB = b.wins + b.losses;
-      const wpA = tgA > 0 ? a.wins / tgA : 0, wpB = tgB > 0 ? b.wins / tgB : 0;
-      if (Math.abs(wpB - wpA) > 0.0001) return wpB - wpA;
-      if (Math.abs(b.pf - a.pf) > 0.01) return b.pf - a.pf;
-      return b.pa - a.pa;
-    });
-  } else if (seedMode === "PROJ") {
-    ranked.sort((a, b) => (b.projW - a.projW) || (b.power - a.power) || (b.pf - a.pf));
-  } else {
-    ranked.sort((a, b) => (b.power - a.power) || (b.pf - a.pf));
-  }
-
-  const showCount = Math.min(ranked.length, pTeams + 2);
-  const seeded = ranked.slice(0, showCount).map((mgr, idx) => {
-    const roundScores = roundWeeks.map(wks => wks.reduce((s, w) => s + calcPlayoffWeekProjection(mgr.players, w).total, 0));
+  const standings = getPlayoffStandings();
+  if (badge) badge.textContent = `${pTeams} teams · Weeks ${startWk}–${endWk}${reseedMode === "RESEED" ? " · Re-seeded" : ""} · Seeded by ${seedMode === "PROJ" ? (standings.fromSimulation ? "projected finish" : "projected record") : "current standings"}`;
+  const ranked = seedMode === "PROJ" ? standings.projected : standings.current;
+  const myRosterId = state.managers.find(m => state.userId && m.ownerId === state.userId)?.rosterId;
+  const seeded = ranked.slice(0, Math.min(ranked.length, pTeams)).map((mgr, idx) => {
+    const roundScores = roundWeeks.map(wks => wks.reduce((sum, week) => sum + calcPlayoffWeekProjection(mgr.players, week).total, 0));
     const coreNames = calcPlayoffWeekProjection(mgr.players, startWk).topNames.join(", ");
     return { ...mgr, seed: idx + 1, roundScores, coreNames };
   });
@@ -6567,37 +6614,35 @@ function renderPlayoffBracketTab() {
     return { matchKey, roundIdx, wks, teamA, teamB, scoreA, scoreB, probA, winner, loser };
   }
 
+  const teamSubline = team => {
+    const meta = standings.info.get(team.rosterId);
+    const record = `${team.wins || 0}-${team.losses || 0}${team.ties ? `-${team.ties}` : ""}`;
+    if (seedMode === "PROJ" && Number.isFinite(meta?.projWins)) return `${record} now · ${meta.projWins.toFixed(1)} proj W`;
+    return `${record} · ${(team.pf || 0).toFixed(1)} PF`;
+  };
+
+  const renderSlotHTML = (series, team, prob, won) => `
+    <button type="button" class="bracket-slot ${won ? "winner" : ""} ${team.rosterId === myRosterId ? "mine" : ""}" data-mkey="${series.matchKey}" data-rid="${team.rosterId}" aria-pressed="${won}">
+      <span class="seed-pill ${team.seed <= 2 ? "top-seed" : ""}">${team.seed}</span>
+      ${renderTeamAvatarHTML(team)}
+      <span class="bracket-team"><strong>${escape(splitTeamLabel(team)[0])}</strong><small>${escape(teamSubline(team))}</small></span>
+      <span class="bracket-score"><strong>${(team === series.teamA ? series.scoreA : series.scoreB).toFixed(1)}</strong><small class="${prob >= 50 ? "good" : ""}">${prob.toFixed(0)}%</small></span>
+    </button>`;
+
   function renderMatchupCardHTML(title, series) {
-    const { matchKey, teamA, teamB, scoreA, scoreB, probA, winner } = series;
-    const probB = 100 - probA;
-    const aWon = winner.rosterId === teamA.rosterId;
-    const bWon = winner.rosterId === teamB.rosterId;
+    const { teamA, teamB, probA, winner } = series;
     return `
       <div class="bracket-match-card">
-        <div class="bracket-match-hdr">
-          <span>${title}</span>
-          <button class="btn-builder-action" style="padding:2px 8px;font-size:10px;" onclick="openMatchupInSimulator(${teamA.rosterId}, ${teamB.rosterId})">Inspect H2H →</button>
-        </div>
-        <div class="bracket-slot ${aWon ? 'winner' : ''}" data-mkey="${matchKey}" data-rid="${teamA.rosterId}">
-          <div style="display:flex;align-items:center;gap:8px;min-width:0;flex:1;">
-            <span class="seed-pill ${teamA.seed <= 2 ? 'top-seed' : ''}">#${teamA.seed}</span>
-            <div style="min-width:0;flex:1;"><div style="font-weight:800;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${teamA.teamName.split(" (")[0]}</div><div style="font-size:10px;color:var(--text-muted);">${teamA.wins}-${teamA.losses} • Core: ${teamA.coreNames}</div></div>
-          </div>
-          <div style="text-align:right;"><div style="font-weight:800;font-size:13px;color:${aWon ? 'var(--good)' : 'var(--text-main)'};">${scoreA.toFixed(1)} pts</div><div style="font-size:10px;font-weight:700;color:${probA >= 50 ? 'var(--good)' : 'var(--text-muted)'};">${probA.toFixed(0)}% Win</div></div>
-        </div>
-        <div class="bracket-slot ${bWon ? 'winner' : ''}" data-mkey="${matchKey}" data-rid="${teamB.rosterId}">
-          <div style="display:flex;align-items:center;gap:8px;min-width:0;flex:1;">
-            <span class="seed-pill ${teamB.seed <= 2 ? 'top-seed' : ''}">#${teamB.seed}</span>
-            <div style="min-width:0;flex:1;"><div style="font-weight:800;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${teamB.teamName.split(" (")[0]}</div><div style="font-size:10px;color:var(--text-muted);">${teamB.wins}-${teamB.losses} • Core: ${teamB.coreNames}</div></div>
-          </div>
-          <div style="text-align:right;"><div style="font-weight:800;font-size:13px;color:${bWon ? 'var(--good)' : 'var(--text-main)'};">${scoreB.toFixed(1)} pts</div><div style="font-size:10px;font-weight:700;color:${probB > 50 ? 'var(--good)' : 'var(--text-muted)'};">${probB.toFixed(0)}% Win</div></div>
-        </div>
+        <div class="bracket-match-hdr"><span>${escape(title)}</span><button type="button" class="bracket-h2h" onclick="openMatchupInSimulator(${teamA.rosterId}, ${teamB.rosterId})">Head-to-head</button></div>
+        ${renderSlotHTML(series, teamA, probA, winner.rosterId === teamA.rosterId)}
+        ${renderSlotHTML(series, teamB, 100 - probA, winner.rosterId === teamB.rosterId)}
       </div>`;
   }
 
-  const fmtWkTag = wks => wks.length > 1 ? `WEEKS ${wks[0]}–${wks[wks.length - 1]}` : `WEEK ${wks[0]}`;
+  const fmtWeeks = wks => wks.length > 1 ? `Weeks ${wks[0]}–${wks[wks.length - 1]}` : `Week ${wks[0]}`;
+  const columnHeader = (title, wks) => `<div class="bracket-col-hdr"><strong>${title}</strong><span>${fmtWeeks(wks)}</span></div>`;
+  const championHTML = (champ, roundIdx) => `<div class="champ-callout">${renderTeamAvatarHTML(champ.winner)}<div><small>Projected champion</small><strong>${escape(splitTeamLabel(champ.winner)[0])}</strong><span>#${champ.winner.seed} seed · ${(champ.winner.roundScores[roundIdx] || 0).toFixed(1)} pts in the final${champ.winner.coreNames ? ` · ${escape(champ.winner.coreNames)}` : ""}</span></div></div>`;
   let sf1, sf2, champ, third;
-  const qfSeriesList = [], byeTeams = [];
 
   if (isFourTeam) {
     grid.className = "bracket-grid two-col";
@@ -6605,89 +6650,63 @@ function renderPlayoffBracketTab() {
     sf2 = resolveSeries("sf2", seeded[1], seeded[2], 0);
     champ = resolveSeries("champ", sf1.winner, sf2.winner, 1);
     third = resolveSeries("third", sf1.loser, sf2.loser, 1);
-
     grid.innerHTML = `
-      <div class="bracket-col">
-        <div class="bracket-col-hdr"><div><div style="font-size:13px;font-weight:800;">ROUND 1: SEMIFINALS (4-TEAM)</div><div style="font-size:11px;color:var(--text-muted);">${fmtWkTag(roundWeeks[0])} • Top 4 Seeds Qualify</div></div><span class="badge badge-purple">${fmtWkTag(roundWeeks[0])}</span></div>
-        ${renderMatchupCardHTML("SEMIFINAL 1 (#1 VS #4)", sf1)}
-        ${renderMatchupCardHTML("SEMIFINAL 2 (#2 VS #3)", sf2)}
+      <div class="bracket-col">${columnHeader("Semifinals", roundWeeks[0])}
+        ${renderMatchupCardHTML("#1 vs #4", sf1)}
+        ${renderMatchupCardHTML("#2 vs #3", sf2)}
       </div>
-      <div class="bracket-col">
-        <div class="bracket-col-hdr"><div><div style="font-size:13px;font-weight:800;color:var(--good);">ROUND 2: CHAMPIONSHIP FINALS</div><div style="font-size:11px;color:var(--text-muted);">${fmtWkTag(roundWeeks[1])} • League Title & 3rd Place</div></div><span class="badge badge-green">${fmtWkTag(roundWeeks[1])}</span></div>
-        ${renderMatchupCardHTML(`LEAGUE CHAMPIONSHIP (#${sf1.winner.seed} VS #${sf2.winner.seed})`, champ)}
-        <div class="champ-callout"><div style="font-size:10px;font-weight:800;color:var(--good);letter-spacing:0.8px;">PROJECTED ${state.season} LEAGUE CHAMPION</div><div style="font-size:17px;font-weight:900;margin-top:4px;">#${champ.winner.seed} ${champ.winner.teamName.split(" (")[0]}</div><div style="font-size:11px;color:var(--text-muted);margin-top:2px;">Finals Projection: <b style="color:var(--good);">${(champ.winner.roundScores[1] || 0).toFixed(2)} pts</b> • Core: ${champ.winner.coreNames}</div></div>
-        ${renderMatchupCardHTML(`3RD PLACE GAME (#${sf1.loser.seed} VS #${sf2.loser.seed})`, third)}
+      <div class="bracket-col">${columnHeader("Championship", roundWeeks[1])}
+        ${renderMatchupCardHTML(`Final · #${sf1.winner.seed} vs #${sf2.winner.seed}`, champ)}
+        ${championHTML(champ, 1)}
+        ${renderMatchupCardHTML(`3rd place · #${sf1.loser.seed} vs #${sf2.loser.seed}`, third)}
       </div>`;
   } else {
     grid.className = "bracket-grid";
+    const byeTeams = [], qfSeriesList = [];
+    const qf = (key, a, b) => ({ label: `#${a.seed} vs #${b.seed}`, series: resolveSeries(key, a, b, 0) });
     if (pTeams === 6) {
       byeTeams.push(seeded[0], seeded[1]);
-      qfSeriesList.push(
-        { label: "QUARTERFINAL 1 (#4 VS #5)", series: resolveSeries("qf1", seeded[3], seeded[4], 0) },
-        { label: "QUARTERFINAL 2 (#3 VS #6)", series: resolveSeries("qf2", seeded[2], seeded[5], 0) }
-      );
+      qfSeriesList.push(qf("qf1", seeded[3], seeded[4]), qf("qf2", seeded[2], seeded[5]));
     } else if (pTeams === 7) {
       byeTeams.push(seeded[0]);
-      qfSeriesList.push(
-        { label: "QUARTERFINAL 1 (#4 VS #5)", series: resolveSeries("qf1", seeded[3], seeded[4], 0) },
-        { label: "QUARTERFINAL 2 (#3 VS #6)", series: resolveSeries("qf2", seeded[2], seeded[5], 0) },
-        { label: "QUARTERFINAL 3 (#2 VS #7)", series: resolveSeries("qf3", seeded[1], seeded[6], 0) }
-      );
+      qfSeriesList.push(qf("qf1", seeded[3], seeded[4]), qf("qf2", seeded[2], seeded[5]), qf("qf3", seeded[1], seeded[6]));
     } else {
-      qfSeriesList.push(
-        { label: "QUARTERFINAL 1 (#1 VS #8)", series: resolveSeries("qf1", seeded[0], seeded[7], 0) },
-        { label: "QUARTERFINAL 2 (#4 VS #5)", series: resolveSeries("qf2", seeded[3], seeded[4], 0) },
-        { label: "QUARTERFINAL 3 (#3 VS #6)", series: resolveSeries("qf3", seeded[2], seeded[5], 0) },
-        { label: "QUARTERFINAL 4 (#2 VS #7)", series: resolveSeries("qf4", seeded[1], seeded[6], 0) }
-      );
+      qfSeriesList.push(qf("qf1", seeded[0], seeded[7]), qf("qf2", seeded[3], seeded[4]), qf("qf3", seeded[2], seeded[5]), qf("qf4", seeded[1], seeded[6]));
     }
-
     const qfWinners = qfSeriesList.map(q => q.series.winner);
-    const semiPool = [...byeTeams, ...qfWinners];
     let sf1Pair, sf2Pair;
     if (reseedMode === "RESEED") {
-      const sp = [...semiPool].sort((a, b) => a.seed - b.seed);
+      const sp = [...byeTeams, ...qfWinners].sort((a, b) => a.seed - b.seed);
       sf1Pair = [sp[0], sp[3]]; sf2Pair = [sp[1], sp[2]];
-    } else {
-      if (pTeams === 6) { sf1Pair = [seeded[0], qfWinners[0]]; sf2Pair = [seeded[1], qfWinners[1]]; }
-      else if (pTeams === 7) { sf1Pair = [seeded[0], qfWinners[0]]; sf2Pair = [qfWinners[2], qfWinners[1]]; }
-      else { sf1Pair = [qfWinners[0], qfWinners[1]]; sf2Pair = [qfWinners[3], qfWinners[2]]; }
-    }
-
+    } else if (pTeams === 6) { sf1Pair = [seeded[0], qfWinners[0]]; sf2Pair = [seeded[1], qfWinners[1]]; }
+    else if (pTeams === 7) { sf1Pair = [seeded[0], qfWinners[0]]; sf2Pair = [qfWinners[2], qfWinners[1]]; }
+    else { sf1Pair = [qfWinners[0], qfWinners[1]]; sf2Pair = [qfWinners[3], qfWinners[2]]; }
     sf1 = resolveSeries("sf1", sf1Pair[0], sf1Pair[1], 1);
     sf2 = resolveSeries("sf2", sf2Pair[0], sf2Pair[1], 1);
     champ = resolveSeries("champ", sf1.winner, sf2.winner, 2);
     third = resolveSeries("third", sf1.loser, sf2.loser, 2);
-
     const byeCardHTML = byeTeams.length ? `
       <div class="bracket-match-card">
-        <div class="bracket-match-hdr"><span>FIRST-ROUND BYE${byeTeams.length > 1 ? 'S' : ''}</span><span style="color:var(--accent);">AUTO-ADVANCE</span></div>
-        ${byeTeams.map(bt => `<div class="bracket-slot bye-slot"><div style="display:flex;align-items:center;gap:8px;min-width:0;flex:1;"><span class="seed-pill top-seed">#${bt.seed}</span><div style="min-width:0;flex:1;"><div style="font-weight:800;font-size:13px;">${bt.teamName.split(" (")[0]}</div><div style="font-size:10px;color:var(--text-muted);">Record: ${bt.wins}-${bt.losses} • PF: ${bt.pf.toFixed(1)}</div></div></div><span class="badge badge-blue">ROUND 1 BYE</span></div>`).join("")}
+        <div class="bracket-match-hdr"><span>First-round bye${byeTeams.length > 1 ? "s" : ""}</span></div>
+        ${byeTeams.map(team => `<div class="bracket-slot bye-slot ${team.rosterId === myRosterId ? "mine" : ""}"><span class="seed-pill top-seed">${team.seed}</span>${renderTeamAvatarHTML(team)}<span class="bracket-team"><strong>${escape(splitTeamLabel(team)[0])}</strong><small>${escape(teamSubline(team))}</small></span><span class="bracket-bye-tag">Bye</span></div>`).join("")}
       </div>` : "";
-
-    const qfLosersHTML = qfSeriesList.map(q => `#${q.series.loser.seed} ${q.series.loser.teamName.split(" (")[0]} (${(q.series.loser.roundScores[0] || 0).toFixed(1)})`).join(" • ");
-
     grid.innerHTML = `
-      <div class="bracket-col">
-        <div class="bracket-col-hdr"><div><div style="font-size:13px;font-weight:800;">ROUND 1: QUARTERFINALS (${pTeams}-TEAM)</div><div style="font-size:11px;color:var(--text-muted);">${fmtWkTag(roundWeeks[0])} • ${byeTeams.length ? `Top ${byeTeams.length} Seed(s) on Bye` : 'All 8 Seeds Active'}</div></div><span class="badge badge-blue">${fmtWkTag(roundWeeks[0])}</span></div>
+      <div class="bracket-col">${columnHeader("Quarterfinals", roundWeeks[0])}
         ${byeCardHTML}
         ${qfSeriesList.map(q => renderMatchupCardHTML(q.label, q.series)).join("")}
       </div>
-      <div class="bracket-col">
-        <div class="bracket-col-hdr"><div><div style="font-size:13px;font-weight:800;">ROUND 2: SEMIFINALS</div><div style="font-size:11px;color:var(--text-muted);">${fmtWkTag(roundWeeks[1])} • ${reseedText}</div></div><span class="badge badge-purple">${fmtWkTag(roundWeeks[1])}</span></div>
-        ${renderMatchupCardHTML(`SEMIFINAL 1 (#${sf1.teamA.seed} VS #${sf1.teamB.seed})`, sf1)}
-        ${renderMatchupCardHTML(`SEMIFINAL 2 (#${sf2.teamA.seed} VS #${sf2.teamB.seed})`, sf2)}
-        <div class="bracket-match-card" style="margin-top:auto;"><div class="bracket-match-hdr"><span>QUARTERFINAL EXITS</span><span>CONSOLATION</span></div><div style="font-size:11px;color:var(--text-muted);line-height:1.5;padding:2px;">${qfLosersHTML}</div></div>
+      <div class="bracket-col">${columnHeader("Semifinals", roundWeeks[1])}
+        ${renderMatchupCardHTML(`#${sf1.teamA.seed} vs #${sf1.teamB.seed}`, sf1)}
+        ${renderMatchupCardHTML(`#${sf2.teamA.seed} vs #${sf2.teamB.seed}`, sf2)}
       </div>
-      <div class="bracket-col">
-        <div class="bracket-col-hdr"><div><div style="font-size:13px;font-weight:800;color:var(--good);">ROUND 3: FINALS</div><div style="font-size:11px;color:var(--text-muted);">${fmtWkTag(roundWeeks[2])} • Championship & 3rd Place</div></div><span class="badge badge-green">${fmtWkTag(roundWeeks[2])}</span></div>
-        ${renderMatchupCardHTML(`LEAGUE CHAMPIONSHIP (#${sf1.winner.seed} VS #${sf2.winner.seed})`, champ)}
-        <div class="champ-callout"><div style="font-size:10px;font-weight:800;color:var(--good);letter-spacing:0.8px;">PROJECTED ${state.season} LEAGUE CHAMPION</div><div style="font-size:17px;font-weight:900;margin-top:4px;">#${champ.winner.seed} ${champ.winner.teamName.split(" (")[0]}</div><div style="font-size:11px;color:var(--text-muted);margin-top:2px;">Finals Projection: <b style="color:var(--good);">${(champ.winner.roundScores[2] || 0).toFixed(2)} pts</b> • Core: ${champ.winner.coreNames}</div></div>
-        ${renderMatchupCardHTML(`3RD PLACE GAME (#${sf1.loser.seed} VS #${sf2.loser.seed})`, third)}
+      <div class="bracket-col">${columnHeader("Championship", roundWeeks[2])}
+        ${renderMatchupCardHTML(`Final · #${sf1.winner.seed} vs #${sf2.winner.seed}`, champ)}
+        ${championHTML(champ, 2)}
+        ${renderMatchupCardHTML(`3rd place · #${sf1.loser.seed} vs #${sf2.loser.seed}`, third)}
       </div>`;
   }
 
-  grid.querySelectorAll(".bracket-slot[data-mkey]").forEach(slotEl => {
+  grid.querySelectorAll("button.bracket-slot[data-mkey]").forEach(slotEl => {
     slotEl.onclick = () => {
       const mkey = slotEl.dataset.mkey;
       state.bracketOverrides[mkey] = parseInt(slotEl.dataset.rid, 10);
@@ -6697,62 +6716,25 @@ function renderPlayoffBracketTab() {
     };
   });
 
-  const roundHeadersHTML = roundWeeks.map((wks, idx) => {
-    const lbl = isFourTeam ? (idx === 0 ? "Semifinals" : "Finals") : (idx === 0 ? "Quarters" : (idx === 1 ? "Semis" : "Finals"));
-    return `<th>${lbl} (${wks.length > 1 ? 'W' + wks[0] + '–' + wks[wks.length - 1] : 'W' + wks[0]})</th>`;
-  }).join("");
-
-  oddsTbl.innerHTML = `<thead><tr><th style="width:80px;">Seed</th><th style="text-align:left;">Team / Manager</th><th>Current Record</th><th>Proj Final</th>${roundHeadersHTML}<th>Finals Berth %</th><th>Title Odds %</th><th>Action</th></tr></thead><tbody></tbody>`;
-  const tbody = oddsTbl.querySelector("tbody");
-
-  const byeSeedsSet = new Set(byeTeams.map(b => b.seed));
-  const qfProbBySeed = {};
-  qfSeriesList.forEach(q => {
-    qfProbBySeed[q.series.teamA.seed] = q.series.probA;
-    qfProbBySeed[q.series.teamB.seed] = 100 - q.series.probA;
-  });
-
-  seeded.forEach(tm => {
-    const isBubble = tm.seed > pTeams;
-    const hasBye = byeSeedsSet.has(tm.seed);
-    let r1Advance = 0, finalsBerthPct = 0, titlePct = 0;
-
-    if (!isBubble) {
-      if (isFourTeam) {
-        r1Advance = 100;
-        const semiSeries = (tm.seed === 1 || tm.seed === 4) ? sf1 : sf2;
-        const otherSemiWinner = (tm.seed === 1 || tm.seed === 4) ? sf2.winner : sf1.winner;
-        finalsBerthPct = semiSeries.teamA.rosterId === tm.rosterId ? semiSeries.probA : (100 - semiSeries.probA);
-        titlePct = (finalsBerthPct / 100) * computeHeadToHeadWinProb(tm.roundScores[1], otherSemiWinner.roundScores[1], roundWeeks[1].length);
-      } else {
-        r1Advance = hasBye ? 100 : (qfProbBySeed[tm.seed] || 50);
-        const refSemiOpp = tm.seed === 1 ? sf1.teamB : (tm.seed === 2 ? sf2.teamB : seeded[0]);
-        const semiWinCond = computeHeadToHeadWinProb(tm.roundScores[1], refSemiOpp.roundScores[1], roundWeeks[1].length);
-        finalsBerthPct = (r1Advance / 100) * semiWinCond;
-        const refFinalsOpp = tm.seed === 1 ? seeded[1] : seeded[0];
-        titlePct = (finalsBerthPct / 100) * computeHeadToHeadWinProb(tm.roundScores[2], refFinalsOpp.roundScores[2], roundWeeks[2].length);
-      }
-    }
-
-    const seedBadge = isBubble ? `<span class="badge badge-yellow">#${tm.seed} BUBBLE</span>` : (hasBye ? `<span class="badge badge-blue">#${tm.seed} BYE</span>` : `<span class="badge badge-green">#${tm.seed} SEED</span>`);
-    const roundScoreCells = tm.roundScores.map((sc, idx) => {
-      if (idx === 0 && hasBye && !isFourTeam) return `<td style="font-weight:700;color:var(--accent);">BYE (${sc.toFixed(1)})</td>`;
-      return `<td style="font-weight:700;color:${idx === tm.roundScores.length - 1 ? 'var(--good)' : 'var(--text-main)'};">${sc.toFixed(1)} pts</td>`;
-    }).join("");
-
-    const tr = document.createElement("tr");
-    tr.className = "table-row-hover";
-    tr.innerHTML = `
-      <td>${seedBadge}</td>
-      <td style="text-align:left;"><div style="font-weight:800;">${tm.teamName}</div><div style="font-size:11px;color:var(--text-muted);">Core: ${tm.coreNames} • Power: ${tm.power.toFixed(1)}</div></td>
-      <td style="font-weight:700;">${tm.wins} - ${tm.losses} (${tm.pf.toFixed(1)} PF)</td>
-      <td style="color:var(--accent);font-weight:700;">${tm.projW} - ${tm.projL}</td>
-      ${roundScoreCells}
-      <td style="font-weight:700;color:${isBubble ? 'var(--text-muted)' : 'var(--text-main)'};">${isBubble ? '--' : finalsBerthPct.toFixed(1) + '%'}</td>
-      <td><span class="badge ${titlePct >= 22 ? 'badge-green' : (titlePct >= 10 ? 'badge-blue' : 'badge-yellow')}">${isBubble ? `Outside Top ${pTeams}` : titlePct.toFixed(1) + '%'}</span></td>
-      <td><button class="btn-builder-action" onclick="openMatchupInSimulator(${tm.rosterId}, ${seeded[0].rosterId === tm.rosterId ? seeded[1].rosterId : seeded[0].rosterId})">Sim vs #1</button></td>`;
-    tbody.appendChild(tr);
-  });
+  const pct = value => Number.isFinite(value) ? `${value < 0.05 && value > 0 ? "<0.1" : value.toFixed(value >= 99.95 || value === 0 ? 0 : 1)}%` : "--";
+  const pctBar = value => Number.isFinite(value) ? `<span class="odds-cell"><span class="odds-bar"><span style="width:${Math.min(100, value).toFixed(1)}%"></span></span>${pct(value)}</span>` : "--";
+  standingsTable.innerHTML = `<thead><tr><th scope="col">Team</th><th scope="col">Record</th><th scope="col" class="col-pf">PF</th><th scope="col">Current</th><th scope="col">Projected</th><th scope="col">Proj. wins</th><th scope="col">Playoffs</th><th scope="col">Title</th></tr></thead><tbody>${ranked.map((manager, index) => {
+    const meta = standings.info.get(manager.rosterId);
+    const move = meta.currentSeed - meta.projectedSeed;
+    const moveHTML = move > 0 ? `<span class="seed-move up" title="Projected to climb ${move}">▲${move}</span>` : move < 0 ? `<span class="seed-move down" title="Projected to drop ${-move}">▼${-move}</span>` : "";
+    const [teamName, managerName] = splitTeamLabel(manager);
+    const cut = index === pTeams - 1 && index < ranked.length - 1 ? " playoff-cut" : "";
+    return `<tr class="${index < pTeams ? "in-field" : "out-field"}${cut}${manager.rosterId === myRosterId ? " mine" : ""}">
+      <th scope="row"><span class="standings-team">${renderTeamAvatarHTML(manager)}<span><strong>${escape(teamName)}</strong>${managerName ? `<small>${escape(managerName)}</small>` : ""}</span></span></th>
+      <td>${manager.wins || 0}-${manager.losses || 0}${manager.ties ? `-${manager.ties}` : ""}</td>
+      <td class="col-pf">${(manager.pf || 0).toFixed(1)}</td>
+      <td><span class="seed-pill ${meta.currentSeed <= pTeams ? "in" : ""}">${meta.currentSeed}</span></td>
+      <td><span class="seed-pill ${meta.projectedSeed <= pTeams ? "in" : ""}"${meta.avgSeed ? ` title="Average simulated finish ${meta.avgSeed.toFixed(1)}"` : ""}>${meta.projectedSeed}</span>${moveHTML}</td>
+      <td>${Number.isFinite(meta.projWins) ? meta.projWins.toFixed(1) : "--"}</td>
+      <td>${pctBar(meta.playoffPct)}</td>
+      <td>${pct(meta.titlePct)}</td>
+    </tr>`;
+  }).join("")}</tbody>`;
 }
 
 function draftEscapeHtml(value) {
@@ -9389,9 +9371,11 @@ function bindControlEvents() {
   document.getElementById("sosPos")?.addEventListener("change", renderSosTab);
   document.getElementById("sosScope")?.addEventListener("change", renderSosTab);
   document.getElementById("sosSort")?.addEventListener("change", renderSosTab);
-  document.getElementById("bracketTeamsOverride")?.addEventListener("change", () => { state.bracketOverrides = {}; renderPlayoffBracketTab(); renderSosTab(); renderTradeFinder(); });
-  document.getElementById("bracketSeedMode")?.addEventListener("change", () => { state.bracketOverrides = {}; renderPlayoffBracketTab(); });
-  document.getElementById("bracketReseedMode")?.addEventListener("change", () => { delete state.bracketOverrides.sf1; delete state.bracketOverrides.sf2; delete state.bracketOverrides.champ; delete state.bracketOverrides.third; renderPlayoffBracketTab(); });
+  document.querySelectorAll(".bracket-seed-btn").forEach(button => button.addEventListener("click", () => {
+    state.bracketSeedMode = button.dataset.bracketSeed;
+    state.bracketOverrides = {};
+    renderPlayoffBracketTab();
+  }));
   document.getElementById("resetBracketBtn")?.addEventListener("click", () => { state.bracketOverrides = {}; renderPlayoffBracketTab(); });
   document.getElementById("runPlayoffForecast")?.addEventListener("click", () => runPlayoffForecast({ fresh: true }));
   document.getElementById("simTeamA")?.addEventListener("change", () => { rememberSimTeamA(); pairSimWithScheduledOpponent(); renderMatchupSim(); });

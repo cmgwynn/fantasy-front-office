@@ -328,7 +328,7 @@ Automatic saved-state restoration does not use this user-navigation scroll path.
 Core tools focus on lineup, pickup, trade, matchup, and upcoming coverage decisions.
 Team grades, power rankings, and records/rivalries are in the bottom Extras group.
 Weekly picks, historical standings, and secondary tables are collapsed.
-The illustrative playoff bracket is optional beneath the schedule simulation.
+Playoff Scenarios leads with the playoff bracket and current/projected standings.
 
 ### Decision-first Inbox and integrated recap
 
@@ -648,10 +648,9 @@ Standings and projections are never substituted for game scores.
 
 ### Schedule-based playoff scenarios
 
-Open **League > Playoff Bracket** and select **Run 5,000-trial scenario**.
-The new scenario is separate from the existing interactive, projection-based
-bracket and its illustrative path approximations. Changing that bracket's picks
-or controls does not change scenario trials.
+Open **Playoff Scenarios**; trials run automatically. The bracket matchups use
+lineup projections for the playoff weeks; tapping a team to advance it does not
+change scenario trials.
 
 Live inputs currently support Sleeper only: the current NFL regular season,
 even 4-32-team leagues, 4/6/8 playoff teams, single-week rounds ending by Week 18,
@@ -689,6 +688,19 @@ approximations. Results are in-memory only, not workspace backup content.
 Playoff Scenarios run automatically (5,000 trials, current league settings)
 when the tab opens; "Refresh scenarios" reruns with a new random seed. There is
 no demo forecast; non-Sleeper or unsupported leagues show "Scenarios unavailable".
+If the tab opens while a saved snapshot is still shown, scenarios rerun once the
+live league loads instead of keeping the snapshot error.
+
+The playoff bracket is shown first, using league settings for team count, weeks
+and fixed/re-seeded semifinals (no format overrides). "Current standings" seeds
+by win percentage, then PF, then fewest PA. "Projected standings" seeds by
+average simulated finish from the scenario trials (projected record before they
+finish). Team cards show avatar, record and PF or projected wins, playoff-week
+projected points and win chance; the user's team is highlighted, and a Reset
+picks button appears after advancing teams. The Standings table lists every team
+with record, PF, current seed, projected seed with movement arrows, projected
+wins, playoff and title odds, with a dashed playoff cut line. The old
+illustrative odds table was removed in favor of the simulated odds.
 
 ## Winning-tool readiness
 
@@ -750,7 +762,7 @@ and Premium workflows have not been independently exercised.
 | Power rankings, standings, scoring, expected wins | Rankings/projections plus verified loaded-score all-play, weekly expected wins and scheduling luck in Records | Replace older ranking approximations and add verified historical weekly trends |
 | Weekly reports, awards, storylines | Compact final-result recap integrated into Inbox; completed-score weekly awards in Extras | Broader provider result coverage; no invented news or projected upset claims |
 | League-specific roster and player values | Partial: scoring and roster models | Audit scoring completeness and positional assumptions |
-| Playoff/championship odds and likely seeds | Schedule-validated Sleeper scenarios with seed distributions, full title paths and conditional next-win qualification; separate illustrative bracket | Calibrate scoring distributions; support more providers, tiebreakers, divisions, median games, byes, multiweek rounds and in-progress scoring |
+| Playoff/championship odds and likely seeds | Schedule-validated Sleeper scenarios with seed distributions, full title paths and conditional next-win qualification; bracket seeded by current or simulated projected standings | Calibrate scoring distributions; support more providers, tiebreakers, divisions, median games, byes, multiweek rounds and in-progress scoring |
 | Trade comparison and mutually beneficial packages | Validated builder packages and both-team weekly starting-lineup changes; heuristic finder | Provider legality/processing rules, calibration and finder-model completeness |
 | All-time records, finishes, head-to-head, rivalries | Season record book plus bounded Sleeper linked-season career records, owner-ID identity mapping and cross-season heat map | ESPN/imported career mapping, championships/finishes, streaks, disconnected seasons and broader provider rules |
 | League Historian questions | Fixed season and career fact lookup over loaded scores with source/season context | Broader grounded questions, richer narratives and additional providers |
