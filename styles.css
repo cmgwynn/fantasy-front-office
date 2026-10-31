@@ -451,6 +451,16 @@ canvas.chart-canvas { width:100%; height:300px; background:var(--bg-card); borde
 .comparison-cards { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; }
 .comparison-card { min-width:0; padding:16px; border:1px solid var(--border); border-radius:8px; background:var(--bg-card); }
 .comparison-card h3 { margin:6px 0; overflow-wrap:anywhere; }
+.decision-data-status { margin:0 0 14px; padding:10px 12px; border:1px solid var(--border); border-radius:8px; color:var(--text-muted); font-size:11px; line-height:1.6; overflow-wrap:anywhere; }
+.decision-data-status.has-errors, #faabPlanStatus.has-errors { color:var(--warn); }
+#gmChecklist, #optimizerChecklist { margin-bottom:16px; }
+.decision-checklist { list-style:none; margin:10px 0; padding:0; display:grid; gap:10px; }
+.decision-checklist li, .trade-impact-grid > div { min-width:0; display:grid; gap:4px; font-size:12px; overflow-wrap:anywhere; }
+.decision-checklist span { color:var(--text-muted); font-size:11px; }
+.decision-checklist a { color:var(--accent); }
+.trade-impact-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr)); gap:16px; }
+.trade-impact-grid span { color:var(--text-muted); }
+.faab-claim-actions { flex-wrap:wrap; }
 .comparison-table { min-width:480px; }
 .comparison-table th:first-child, .comparison-table td:first-child { text-align:left; }
 .comparison-edge { color:var(--accent); font-weight:700; }

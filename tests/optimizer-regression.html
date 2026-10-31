@@ -20,7 +20,7 @@
   <h1>Optimizer Regression Checks</h1>
   <p id="summary" role="status">Loading the app runtime...</p>
   <ol id="results"></ol>
-  <iframe id="appFrame" src="../index.html?v=20261031-navigation-polish-1&amp;resume=0" title="Optimizer test runtime"></iframe>
+  <iframe id="appFrame" src="../index.html?v=20261031-decision-tools-1&amp;resume=0" title="Optimizer test runtime"></iframe>
   <script>
     async function runOptimizerFixtures() {
       const results = [];
@@ -50,6 +50,9 @@
       const savedLivePlayerPoints = { ...state.livePlayerPoints };
       const savedProjectionFreshness = state.dataFreshness.projections;
       const savedProjectionError = state.dataErrors.projections;
+      const savedAllFreshness = { ...state.dataFreshness };
+      const savedAllErrors = { ...state.dataErrors };
+      const savedLeagueCheckedKey = state.leagueCheckedKey;
       const savedScheduleFreshness = state.dataFreshness.schedule;
       const savedScheduleError = state.dataErrors.schedule;
       const savedNewsletterArchive = localStorage.getItem("fantasy-front-office:newsletter:v1");
@@ -480,11 +483,11 @@
         const espnPoints = extractEspnCurrentPoints(espnData, 6);
         check("ESPN applied score extraction", espnPoints[`espn_${espnId}`] === 17.25, `${espnPoints[`espn_${espnId}`]} points.`);
 
-        const fixedNow = Date.parse("2026-10-18T12:00:00Z");
+        const fixedNow = Date.now();
         const gameDay = normalizeGameDaySchedule({ events: [
-          { id: "scheduled", date: "2026-10-18T18:00:00Z", status: { type: { state: "pre", completed: false } }, competitions: [{ competitors: [{ team: { abbreviation: "NE" } }, { team: { abbreviation: "NYJ" } }] }] },
-          { id: "live", date: "2026-10-18T11:00:00Z", status: { type: { state: "in", completed: false } }, competitions: [{ competitors: [{ team: { abbreviation: "KC" } }, { team: { abbreviation: "BUF" } }] }] },
-          { id: "final", date: "2026-10-18T08:00:00Z", status: { type: { state: "post", completed: true } }, competitions: [{ competitors: [{ team: { abbreviation: "SF" } }, { team: { abbreviation: "LAR" } }] }] }
+          { id: "scheduled", date: new Date(fixedNow + 6 * 3600000).toISOString(), status: { type: { state: "pre", completed: false } }, competitions: [{ competitors: [{ team: { abbreviation: "NE" } }, { team: { abbreviation: "NYJ" } }] }] },
+          { id: "live", date: new Date(fixedNow - 3600000).toISOString(), status: { type: { state: "in", completed: false } }, competitions: [{ competitors: [{ team: { abbreviation: "KC" } }, { team: { abbreviation: "BUF" } }] }] },
+          { id: "final", date: new Date(fixedNow - 4 * 3600000).toISOString(), status: { type: { state: "post", completed: true } }, competitions: [{ competitors: [{ team: { abbreviation: "SF" } }, { team: { abbreviation: "LAR" } }] }] }
         ] }, fixedNow);
         check("Kickoff normalization", gameDay.NE.status === "upcoming" && gameDay.KC.status === "live" && gameDay.SF.status === "final");
 
@@ -499,6 +502,12 @@
         const lockAware = calcOptimalLineup(lockedManager.players, false, lockConstraints);
         check("Locked starter stays in lineup", lockConstraints.requiredPlayerIds.includes("fixture_locked_starter") && lockAware.filled[0]?.id === "fixture_locked_starter");
         check("Locked bench player cannot be promoted", lockConstraints.excludedPlayerIds.includes("fixture_locked_bench") && !lockAware.filled.some(player => player?.id === "fixture_locked_bench"));
+        state.activeLeague.rosterPositions = ["FLEX", "RB"];
+        const fixedFlex = calcOptimalLineup(["fixture_locked_starter", "fixture_wr1"], false, getLineupLockConstraints({
+          players: ["fixture_locked_starter", "fixture_wr1"], starters: ["fixture_locked_starter", "0"]
+        }));
+        check("A locked FLEX starter cannot slide into RB to manufacture a bench upgrade",
+          fixedFlex.filled[0]?.id === "fixture_locked_starter" && fixedFlex.filled[1] === null);
 
         const yahooPlayer = createYahooPlayer({ playerId: "score_fixture", name: "Yahoo Scorer", position: "RB", nflTeam: "KC", projection: 15, actualPoints: 8.25 }, { scoringSettings: { rec: 1 } });
         check("Yahoo actual score import", state.livePlayerPoints[yahooPlayer.id] === 8.25, `${state.livePlayerPoints[yahooPlayer.id]} imported points.`);
@@ -541,6 +550,196 @@
           { ...otherRoster, rosterId: 2, teamName: "Other roster" }
         ];
         document.getElementById("teamSelect").value = "0";
+        const checklist = buildGameDayChecklist(state.managers[0]);
+        check("Game-day checklist detects both empty starter slots without bench-noise alerts",
+          checklist.items.length === 2 && checklist.items.every(item => item.title.includes("empty slot")));
+        check("Game-day checklist exposes unverified player kickoff coverage",
+          checklist.unknown === 2);
+        renderGameDayChecklist(state.managers[0]);
+        check("Inbox checklist keeps source detail collapsed and links to the existing optimizer",
+          document.querySelector('#gmChecklist [data-gm-open="lineup"]') &&
+          !document.querySelector("#gmChecklist details").open);
+        const metadataId = getInternalPlayerIdFromEspn({ id: espnId, injuryStatus: "OUT", injured: true });
+        check("Repeated ESPN player mapping refreshes exact injury status without duplicating players",
+          metadataId === `espn_${espnId}` && state.players[metadataId].injuryStatus === "Out" &&
+          state.players[metadataId].projectedPoints === 0 && state.players[metadataId].statusSource === "ESPN roster");
+        getInternalPlayerIdFromEspn({ id: espnId, injuryStatus: "ACTIVE", injured: false });
+        check("ESPN player status can recover after a later sync",
+          state.players[metadataId].injuryStatus === "Healthy");
+        const recoveryPlayer = { ...state.players.fixture_claim_rb, team: "NE", injuryStatus: "Out", projectedPoints: 0 };
+        const recoveryProjection = state.rawProj[recoveryPlayer.id];
+        state.rawProj[recoveryPlayer.id] = { pts_ppr: 16 };
+        updateEspnPlayerStatus(recoveryPlayer, { injuryStatus: "ACTIVE", injured: false });
+        check("An ESPN injury recovery recomputes points instead of retaining the old zero",
+          recoveryPlayer.projectedPoints === 16);
+        if (recoveryProjection === undefined) delete state.rawProj[recoveryPlayer.id];
+        else state.rawProj[recoveryPlayer.id] = recoveryProjection;
+        const deadlineMap = state.gameDayByTeam;
+        const deadlineAvailable = state.gameDayScheduleAvailable;
+        state.gameDayByTeam = { NE: { status: "upcoming", kickoff: Date.now() - 1 } };
+        state.gameDayScheduleAvailable = true;
+        check("Cached upcoming game locks as the clock crosses kickoff without a refetch",
+          getPlayerGameDayStatus({ team: "NE" }).locked);
+        state.gameDayByTeam = deadlineMap;
+        state.gameDayScheduleAvailable = deadlineAvailable;
+        const injuryManager = { ...state.managers[0], players: ["fixture_owned_qb", "fixture_drop_wr", "fixture_claim_rb"], starters: ["fixture_owned_qb", "fixture_claim_rb", "0"] };
+        state.players.fixture_claim_rb.injuryStatus = "Out";
+        const injuryChecklist = buildGameDayChecklist(injuryManager);
+        check("Game-day checklist names an out starter without suggesting that player as coverage",
+          injuryChecklist.items.some(item => item.playerId === "fixture_claim_rb" && item.title.endsWith("Out")) &&
+          injuryChecklist.items.every(item => item.replacementId !== "fixture_claim_rb"));
+        state.players.fixture_claim_rb.injuryStatus = "Healthy";
+        const tradeImpact = buildTradeLineupImpact(state.managers[0], state.managers[1], ["fixture_drop_wr"], ["fixture_owned_rb"]);
+        check("Trade model measures both eligible starting lineups, not just asset values",
+          tradeImpact.teamA.before === 10 && tradeImpact.teamA.after === 24 && tradeImpact.teamA.delta === 14 &&
+          tradeImpact.teamB.before === 14 && tradeImpact.teamB.after === 0 && tradeImpact.teamB.delta === -14);
+        check("Trade model rejects same-team, missing-side, duplicate and unowned packages",
+          buildTradeLineupImpact(state.managers[0], state.managers[0], ["fixture_drop_wr"], ["fixture_owned_qb"]).reason &&
+          buildTradeLineupImpact(state.managers[0], state.managers[1], [], ["fixture_owned_rb"]).reason &&
+          buildTradeLineupImpact(state.managers[0], state.managers[1], ["fixture_drop_wr", "fixture_drop_wr"], ["fixture_owned_rb"]).reason &&
+          buildTradeLineupImpact(state.managers[0], state.managers[1], ["fixture_claim_rb"], ["fixture_owned_rb"]).reason);
+        state.players.fixture_owned_rb.projectedPoints = undefined;
+        check("Trade model refuses missing projections instead of rendering a zero-point success",
+          buildTradeLineupImpact(state.managers[0], state.managers[1], ["fixture_drop_wr"], ["fixture_owned_rb"]).reason?.includes("missing or invalid"));
+        state.players.fixture_owned_rb.projectedPoints = 14;
+        const lockedTradeTeam = { rosterId: 3, players: ["fixture_locked_starter"], starters: ["fixture_locked_starter"] };
+        state.gameDayScheduleAvailable = true;
+        check("Trade model blocks current-week impact for a kickoff-locked asset",
+          buildTradeLineupImpact(lockedTradeTeam, state.managers[1], ["fixture_locked_starter"], ["fixture_owned_rb"]).reason?.includes("kickoff-locked"));
+        state.gameDayScheduleAvailable = false;
+        const tradeControlsBefore = ["tradeTeamA", "tradeTeamB"].map(id => ({ id, html: document.getElementById(id).innerHTML, value: document.getElementById(id).value }));
+        const tradeSidesBefore = [state.tradeSideA, state.tradeSideB];
+        try {
+          for (const { id } of tradeControlsBefore) document.getElementById(id).innerHTML = '<option value="0">My roster</option><option value="1">Other roster</option>';
+          document.getElementById("tradeTeamA").value = "0";
+          document.getElementById("tradeTeamB").value = "1";
+          state.tradeSideA = ["fixture_drop_wr"];
+          state.tradeSideB = ["fixture_owned_rb"];
+          updateTradeEvaluation();
+          check("Trade screen displays both before/after starting-lineup totals and processing assumptions",
+            document.querySelectorAll(".trade-impact-grid > div").length === 2 &&
+            document.getElementById("tradeConsole").textContent.includes("does not verify roster limits"));
+          state.tradeSideA = [];
+          state.tradeSideB = [];
+          updateTradeEvaluation();
+          check("Clearing a trade removes the previous impact instead of leaving a stale result",
+            document.getElementById("tradeConsole").textContent === "No valid current-week trade impact to show.");
+        } finally {
+          [state.tradeSideA, state.tradeSideB] = tradeSidesBefore;
+          for (const control of tradeControlsBefore) {
+            document.getElementById(control.id).innerHTML = control.html;
+            document.getElementById(control.id).value = control.value;
+          }
+        }
+        state.gameDayByTeam = { FA: {} };
+        state.gameDayScheduleAvailable = false;
+        const waiverKey = getFaabStorageKey();
+        const waiverSave = localStorage.getItem(waiverKey);
+        const waiverStateBefore = { ...faabState, claims: [...faabState.claims] };
+        try {
+          Object.assign(faabState, { budget: 10, loadedKey: waiverKey, claims: [
+            { playerId: "fixture_claim_rb", bid: 8, dropPlayerId: "fixture_drop_wr", status: "queued" },
+            { playerId: "fixture_unlocked_rb", bid: 9, dropPlayerId: "fixture_drop_wr", status: "queued" },
+            { playerId: "fixture_owned_rb", bid: 50, status: "acquired" }
+          ] });
+          check("FAAB pending total excludes locally acquired claims", getQueuedFaabTotal() === 17);
+          const warnings = getFaabPlanWarnings(state.managers[0]);
+          check("FAAB warns on over-budget bids and same-drop fallback conflicts",
+            warnings.some(text => text.includes("exceed")) && warnings.some(text => text.includes("alternatives")));
+          check("Claim priority changes are persisted and keep bids attached to their players",
+            moveFaabClaim(1, -1) && faabState.claims[0].playerId === "fixture_unlocked_rb" &&
+            faabState.claims[0].bid === 9 && JSON.parse(localStorage.getItem(waiverKey)).claims[0].playerId === "fixture_unlocked_rb");
+          check("Claim priority cannot move past either end",
+            !moveFaabClaim(0, -1) && !moveFaabClaim(faabState.claims.length - 1, 1));
+          renderFaabPlanner();
+          check("Waiver screen shows over-budget amount and explicit unverified provider data",
+            document.getElementById("faabBudgetSummary").textContent.includes("$7 over budget") &&
+            document.getElementById("faabPlanStatus").textContent.includes("deadline are not verified"));
+          document.querySelector('[data-faab-move="0"][data-faab-direction="1"]').click();
+          check("Waiver priority buttons reorder the actual saved queue",
+            faabState.claims[0].playerId === "fixture_claim_rb");
+          state.activeLeague = { ...claimLeague, leagueId: `${claimLeague.leagueId}-empty` };
+          loadFaabState();
+          check("A new league does not inherit another league's waiver budget or claims",
+            faabState.budget === 100 && faabState.claims.length === 0);
+        } finally {
+          state.activeLeague = claimLeague;
+          Object.assign(faabState, waiverStateBefore);
+          if (waiverSave === null) localStorage.removeItem(waiverKey);
+          else localStorage.setItem(waiverKey, waiverSave);
+          state.gameDayByTeam = deadlineMap;
+          state.gameDayScheduleAvailable = deadlineAvailable;
+        }
+        state.leagueCheckedKey = getLeagueRecordsKey();
+        state.dataFreshness.league = fixedNow;
+        state.dataFreshness.players = fixedNow;
+        state.dataFreshness.projections = fixedNow;
+        delete state.dataErrors.league;
+        delete state.dataErrors.account;
+        delete state.dataErrors.players;
+        delete state.dataErrors.projections;
+        check("Roster freshness warns at the exact fifteen-minute threshold",
+          !getDecisionDataStatus(fixedNow + 15 * 60000 - 1).warning &&
+          getDecisionDataStatus(fixedNow + 15 * 60000).text.includes("over 15 minutes"));
+        state.leagueCheckedKey = "another-league";
+        check("Freshness from another league cannot verify the selected roster",
+          getDecisionDataStatus(fixedNow).text.includes("not verified"));
+        state.activeLeague = { ...claimLeague, provider: "yahoo" };
+        check("Imported data never reports itself as live", getDecisionDataStatus().text.includes("Not live"));
+        state.activeLeague = claimLeague;
+        const refreshContext = {
+          load: loadLeague, health: refreshPlayerStatuses, kickoffs: refreshGameDaySchedule, activate: activateTab,
+          leagues: state.leagues, managers: state.managers, teamHtml: document.getElementById("teamSelect").innerHTML,
+          teamValue: document.getElementById("teamSelect").value
+        };
+        const teamPicker = document.getElementById("teamSelect");
+        const originalDispatch = teamPicker.dispatchEvent;
+        let healthChecks = 0, refreshedTeam = "", restoredTab = "";
+        try {
+          state.leagues = [claimLeague];
+          teamPicker.innerHTML = '<option value="0">First</option><option value="1">Selected</option>';
+          teamPicker.value = "1";
+          refreshPlayerStatuses = async () => { healthChecks++; };
+          refreshGameDaySchedule = async () => true;
+          loadLeague = async () => {
+            state.managers = [...refreshContext.managers].reverse();
+            teamPicker.value = "0";
+          };
+          teamPicker.dispatchEvent = event => { if (event.type === "change") refreshedTeam = state.managers[Number(teamPicker.value)].rosterId; return true; };
+          activateTab = tab => { restoredTab = tab; };
+          const currentTab = document.querySelector(".tab-page.active").id;
+          await refreshActiveLeagueData();
+          check("League refresh checks player health and preserves the stable selected roster after reordering",
+            healthChecks === 1 && refreshedTeam === 2);
+          check("League refresh preserves the active tool", restoredTab === currentTab);
+        } finally {
+          loadLeague = refreshContext.load;
+          refreshPlayerStatuses = refreshContext.health;
+          refreshGameDaySchedule = refreshContext.kickoffs;
+          activateTab = refreshContext.activate;
+          state.leagues = refreshContext.leagues;
+          state.managers = refreshContext.managers;
+          teamPicker.innerHTML = refreshContext.teamHtml;
+          teamPicker.value = refreshContext.teamValue;
+          teamPicker.dispatchEvent = originalDispatch;
+        }
+        const statusUpdate = getPlayerStatusUpdate({ ...state.players.fixture_claim_rb, espnId, statusSource: "ESPN roster", statusCheckedAt: fixedNow });
+        check("Player observations have a real checked timestamp, source and player link",
+          statusUpdate.checkedAt === fixedNow && statusUpdate.label.includes("ESPN roster") &&
+          statusUpdate.url === `https://www.espn.com/nfl/player/_/id/${espnId}`);
+        check("Fictional players never receive a real NFL news/source link",
+          !getPlayerStatusUpdate({ ...state.players.fixture_claim_rb, isDemo: true }).url);
+        const savedKickoffFetch = window.fetch;
+        const savedKickoffFetchedAt = state.gameDayFetchedAt;
+        const savedKickoffKey = state.gameDayScheduleKey;
+        window.fetch = async () => ({ ok: false, status: 503 });
+        await refreshGameDaySchedule(true);
+        check("Kickoff fetch failure is explicit and disables unverified locks",
+          state.dataErrors.kickoffs?.includes("503") && !state.gameDayScheduleAvailable);
+        window.fetch = savedKickoffFetch;
+        state.gameDayFetchedAt = savedKickoffFetchedAt;
+        state.gameDayScheduleKey = savedKickoffKey;
+        state.gameDayByTeam = deadlineMap;
         state.gameDayScheduleAvailable = false;
         state.dbTrades = [];
         state.waiverTargets = [state.players.fixture_owned_rb, state.players.fixture_claim_rb];
@@ -689,6 +888,30 @@
           buildTeamGradeReport(0).reason?.includes("at least two rosters"));
         state.managers = priorGradeManagers;
         const planSettings = { type: "redraft", teams: 12, slot: 6, rounds: 3, scoring: "ppr", rosterFormat: "standard", dynastyYears: 3, keeperSlots: 0, keeperYears: 1 };
+        const receptionPlayer = { ...state.players.fixture_drop_wr, receptionsPerGame: 5 };
+        check("Draft reception presets change rankings by the exact modeled PPR points",
+          Math.abs(scoreDraftPlayer(receptionPlayer, planSettings, {}, 6) - scoreDraftPlayer(receptionPlayer, { ...planSettings, scoring: "standard" }, {}, 6) - 500) < 0.000001);
+        const tePlayer = { ...receptionPlayer, position: "TE" };
+        check("Draft TE premium adds the declared half-point per reception",
+          scoreDraftPlayer(tePlayer, { ...planSettings, scoring: "tep" }, {}, 6) - scoreDraftPlayer(tePlayer, planSettings, {}, 6) === 250);
+        check("Draft roster-need ranking stops applying the starter bonus after a target is filled",
+          scoreDraftPlayer(receptionPlayer, planSettings, {}, 6) - scoreDraftPlayer(receptionPlayer, planSettings, { WR: 2 }, 6) === 150);
+        const oldDraftSettings = draftState.settings, oldUserPicks = draftState.userPicks;
+        try {
+          draftState.settings = { ...planSettings, teams: 4, slot: 1, rounds: 2, opponentStrategy: "value" };
+          const simulationPool = ["fixture_owned_qb", "fixture_drop_wr", "fixture_claim_rb", "fixture_owned_rb", "fixture_rb1", "fixture_wr1", "fixture_unlocked_rb"].map(id => ({ player: state.players[id], score: 0 }));
+          draftState.userPicks = ["fixture_owned_qb"];
+          const practiced = simulateDraft(simulationPool);
+          check("Snake mock records a user pick once and pauses at the next user turn",
+            practiced.picks[0].player.id === "fixture_owned_qb" && practiced.nextPick === 8 &&
+            new Set(practiced.picks.map(pick => pick.player.id)).size === practiced.picks.length);
+          draftState.userPicks = [];
+          check("Undoing a mock pick removes it from the simulated draft",
+            simulateDraft(simulationPool).picks.length === 0);
+        } finally {
+          draftState.settings = oldDraftSettings;
+          draftState.userPicks = oldUserPicks;
+        }
         const planSimulation = { picks: [{ isUserPick: true, player: state.players.fixture_owned_qb }], draftedIds: new Set(["fixture_owned_qb", "fixture_owned_rb"]), nextPick: 6, complete: false };
         const planPool = ["fixture_owned_qb", "fixture_owned_rb", "fixture_claim_rb", "fixture_drop_wr"].map(id => ({ player: state.players[id], score: 0 }));
         const draftPlan = buildPersonalizedDraftPlan(planSettings, planSimulation, planPool);
@@ -888,6 +1111,7 @@
           return { ok: true, json: async () => ({
             id: claimLeague.leagueId, seasonId: 2026,
             status: { currentScoringPeriod: 8 },
+            teams: [{ id: 1 }, { id: 2 }],
             settings: { scheduleSettings: { matchupPeriods: { 1: [1], 8: [8] } } },
             schedule: [
               { id: 1, matchupPeriodId: 1, playoffTierType: "NONE", winner: "HOME", home: { teamId: 1, totalPoints: 101 }, away: { teamId: 2, totalPoints: 90 } },
@@ -1157,6 +1381,9 @@
         state.dataFreshness.schedule = savedScheduleFreshness;
         if (savedScheduleError === undefined) delete state.dataErrors.schedule;
         else state.dataErrors.schedule = savedScheduleError;
+        state.dataFreshness = savedAllFreshness;
+        state.dataErrors = savedAllErrors;
+        state.leagueCheckedKey = savedLeagueCheckedKey;
         renderDataFreshness();
         state.portfolioRosterSelections = savedPortfolioRosterSelections;
         Object.assign(faabState, savedFaabState);

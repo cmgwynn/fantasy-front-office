@@ -41,7 +41,7 @@ test("HTML references existing local assets in the expected script order", () =>
   ].map(match => match[1]).filter(asset => !/^(?:[a-z]+:)?\/\//i.test(asset));
 
   assert.ok(assets.length > 0, "Expected local CSS or JavaScript assets.");
-  assert.ok(assets.every(asset => asset.endsWith("?v=20261031-navigation-polish-1")), "All local assets must use the current release version.");
+  assert.ok(assets.every(asset => asset.endsWith("?v=20261031-decision-tools-1")), "All local assets must use the current release version.");
   for (const asset of assets) {
     assert.ok(fs.existsSync(path.join(root, asset.split("?")[0])), `Missing local asset: ${asset}`);
   }
@@ -128,7 +128,7 @@ test("browser regression harness is wired to the app and includes saved-state co
   const html = read("tests/optimizer-regression.html");
   const appHtml = read("index.html");
 
-  assert.match(html, /src="\.\.\/index\.html\?v=20261031-navigation-polish-1&amp;resume=0"/, "Regression harness must load the current app release without resuming personal snapshots.");
+  assert.match(html, /src="\.\.\/index\.html\?v=20261031-decision-tools-1&amp;resume=0"/, "Regression harness must load the current app release without resuming personal snapshots.");
   assert.doesNotMatch(appHtml, /id="loadRecordsBtn"/, "Records must load automatically without a manual refresh button.");
   assert.match(html, /runOptimizerFixtures/, "Regression harness must execute its fixtures.");
   assert.match(html, /Cross-league queue saves to target budget/, "Saved FAAB state should remain covered.");
@@ -166,11 +166,22 @@ test("navigation provides an accessible content landmark and consistent destinat
   assert.deepEqual(desktop, mobile, "Desktop and mobile destinations should appear in exactly the same order.");
 });
 
-test("shared fetch helper reports network, HTTP, JSON, and successful responses", async () => {
+test("decision tools use existing destinations and disclose unverified provider data", () => {
+  const html = read("index.html");
+  assert.equal([...html.matchAll(/class="tab-page(?: active)?"/g)].length, 16);
+  assert.match(html, /id="decisionDataStatus"[^>]*role="status"/);
+  assert.match(html, /id="gmChecklist"[^>]*aria-label="Game-day checklist"/);
+  assert.match(html, /id="optimizerChecklist"[^>]*aria-label="Game-day checklist"/);
+  assert.match(html, /provider balance and waiver deadline are not verified/);
+  assert.doesNotMatch(html, /<option value="custom">Custom<\/option>|ADP consensus/);
+});
+
+test("shared fetch helper reports network, HTTP, JSON, timeout and successful responses", async () => {
   const sandbox = {
     window: {},
     location: { href: "https://fantasy.example/" },
     URL,
+    AbortController, AbortSignal, setTimeout, clearTimeout,
     fetch: async () => ({ ok: true, json: async () => ({ ready: true }) })
   };
   const context = vm.createContext(sandbox);
@@ -187,4 +198,15 @@ test("shared fetch helper reports network, HTTP, JSON, and successful responses"
 
   sandbox.fetch = async () => ({ ok: true, json: async () => { throw new SyntaxError("Invalid JSON"); } });
   await assert.rejects(fetchJson("https://api.example/v1/malformed"), /api\.example returned invalid JSON for \/v1\/malformed/);
+  let triggerTimeout;
+  let timeoutCleared = false;
+  sandbox.setTimeout = (callback, delay) => { triggerTimeout = callback; assert.equal(delay, 20000); return 42; };
+  sandbox.clearTimeout = id => { timeoutCleared = id === 42; };
+  sandbox.fetch = (_url, { signal }) => new Promise((_resolve, reject) => {
+    signal.addEventListener("abort", () => reject(new Error("aborted")), { once: true });
+  });
+  const pendingRequest = fetchJson("https://api.example/v1/hung");
+  triggerTimeout();
+  await assert.rejects(pendingRequest, /timed out after 20 seconds/);
+  assert.equal(timeoutCleared, true);
 });
