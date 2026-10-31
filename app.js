@@ -193,7 +193,7 @@ const state = {
   players: {}, rawProj: {}, rawStats: {}, managers: [],
   tradeSideA: [], tradeSideB: [], dbTrades: [], waiverTargets: [],
   weakestPosByTeam: {}, sosWindowMode: "NEXT4", bracketOverrides: {},
-  dataFreshness: { season: 0, schedule: 0, players: 0, stats: 0, projections: 0, account: 0, matchups: 0 }, dataErrors: {}
+  dataFreshness: { season: 0, schedule: 0, players: 0, stats: 0, projections: 0, account: 0, matchups: 0, league: 0 }, dataErrors: {}
 };
 const portfolioState = { rostersByLeague: new Map(), loading: false };
 const gmOutcomeCache = new Map();
@@ -630,7 +630,7 @@ function renderDataFreshness() {
   const label = document.getElementById("dataFreshnessLabel");
   const retryButton = document.getElementById("retryDataBtn");
   if (!label) return;
-  const names = { season: "Season", schedule: "Schedule", players: "Players", stats: "Stats", projections: "Projections", account: "Account", matchups: "Matchups" };
+  const names = { season: "Season", schedule: "Schedule", players: "Players", stats: "Stats", projections: "Projections", account: "Account", matchups: "Matchups", league: "League" };
   const sources = Object.entries(state.dataFreshness)
     .filter(([, timestamp]) => timestamp)
     .map(([source, timestamp]) => `${names[source]} ${new Date(timestamp).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`);
@@ -639,7 +639,10 @@ function renderDataFreshness() {
     ? `Unavailable: ${failed.join(", ")}${sources.length ? ` · Updated ${sources.join(" · ")}` : ""}`
     : (sources.length ? `Updated ${sources.join(" · ")}` : "Data sources waiting");
   label.classList.toggle("has-errors", failed.length > 0);
-  if (retryButton) retryButton.hidden = failed.length === 0;
+  if (retryButton) {
+    retryButton.hidden = failed.length === 0 && !state.activeLeague;
+    retryButton.textContent = failed.length ? "Retry sync" : "Refresh league";
+  }
 }
 
 async function retryDataSync() {
@@ -659,6 +662,43 @@ async function retryDataSync() {
         ? `Synced ${state.activeLeague.name} (${state.activeLeague.playoffTeams}-Team Playoff) • Week ${state.week}`
         : `Ready | ${state.season} NFL Season • ${Object.keys(state.players).length.toLocaleString()} profiles loaded`);
     }
+  } finally {
+    if (button) button.disabled = false;
+    renderDataFreshness();
+  }
+}
+
+async function refreshActiveLeagueData() {
+  const button = document.getElementById("retryDataBtn");
+  const league = state.activeLeague;
+  if (!league) return retryDataSync();
+  if (league.provider === "yahoo") {
+    setStatus("Yahoo roster data is a file snapshot. Re-import the file to refresh it.");
+    return;
+  }
+
+  const leagueIndex = state.leagues.indexOf(league);
+  if (leagueIndex < 0) {
+    const error = new Error("The active league is no longer in the connected league list. Reconnect the provider and try again.");
+    markDataSource("league", error);
+    setStatus(error.message);
+    return;
+  }
+
+  if (button) button.disabled = true;
+  setStatus(`Refreshing ${league.name}...`);
+  try {
+    if (league.provider === "espn") {
+      const data = await fetchEspnLeague(league.leagueId, league.season);
+      state.leagues[leagueIndex] = { ...league, espnData: data, season: String(data.seasonId || league.season) };
+    }
+    await loadLeague(leagueIndex);
+    markDataSource("league");
+    setStatus(`Refreshed ${state.activeLeague.name} • Week ${state.week}`);
+  } catch (error) {
+    markDataSource("league", error);
+    const message = error instanceof Error ? error.message : String(error);
+    setStatus(`Could not refresh ${league.name}. ${message}`);
   } finally {
     if (button) button.disabled = false;
     renderDataFreshness();
@@ -1846,6 +1886,7 @@ async function loadEspnLeague(idx) {
   await buildTradeDatabase();
   scanPlayerAlertChanges();
   await reloadWorkspaceWrite;
+  markDataSource("league");
   setStatus(`Imported ${league.name} from ESPN • ${state.managers.length} teams • Week ${state.week}`);
 }
 
@@ -2024,6 +2065,7 @@ async function loadLeague(idx) {
   await buildTradeDatabase();
   scanPlayerAlertChanges();
   await reloadWorkspaceWrite;
+  markDataSource("league");
   setStatus(`Synced ${state.activeLeague.name} (${state.activeLeague.playoffTeams}-Team Playoff) • Week ${state.week}`);
 }
 
@@ -7286,7 +7328,10 @@ function bindControlEvents() {
   });
 
   document.getElementById("syncBtn")?.addEventListener("click", syncUserAccount);
-  document.getElementById("retryDataBtn")?.addEventListener("click", retryDataSync);
+  document.getElementById("retryDataBtn")?.addEventListener("click", () => {
+    if (Object.keys(state.dataErrors).length) return retryDataSync();
+    return refreshActiveLeagueData();
+  });
   document.getElementById("mobileTabSelect")?.addEventListener("change", e => {
     document.querySelector(`.nav-btn[data-tab="${e.target.value}"]`)?.click();
   });

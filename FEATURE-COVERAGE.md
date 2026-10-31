@@ -2,11 +2,10 @@
 
 ## Published site
 
-The public app is <https://cmgwynn.github.io/fantasy-front-office/>.
-GitHub Pages publishes the root of the `main` branch in
-`cmgwynn/fantasy-front-office`. Editing a separate local folder does not
-update that site: changes must be committed and pushed to the publishing
-repository, then its Pages build must complete.
+The public app is <https://fantasy-front-office.pages.dev/>.
+Cloudflare Pages publishes the root of the `main` branch in
+`cmgwynn/fantasy-front-office`. Changes must be committed and pushed to that
+repository, then the Pages deployment must complete.
 
 Deploy the HTML, CSS, all JavaScript entry points, documentation, and tests
 together so script dependencies are not omitted. Run `npm test` and the browser
@@ -117,6 +116,16 @@ Failed or invalid status is reported in season-source freshness; the app does
 not mark an unverified default as a successful season sync.
 Demo/import snapshots can explicitly select their own week without changing
 the real current NFL week.
+
+### Provider league refresh
+
+When a connected league is active, **Refresh league** reloads current
+provider data without requiring the account to be reconnected. Sleeper refreshes
+league settings, rosters, matchups, and projections. ESPN refetches the league
+endpoint before rebuilding the roster and matchup views rather than reusing the
+initial connection response. Refresh failures remain visible in the status and
+data-freshness indicators; **Retry sync** remains available when a data source
+has failed. Yahoo file imports are snapshots and must be re-imported to refresh.
 
 GM Inbox now includes a weekly briefing, projection provenance, roster risks,
 and waiver comparisons against an optimized lineup with a bench drop candidate.
