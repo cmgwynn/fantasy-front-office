@@ -20,7 +20,7 @@
   <h1>Optimizer Regression Checks</h1>
   <p id="summary" role="status">Loading the app runtime...</p>
   <ol id="results"></ol>
-  <iframe id="appFrame" src="../index.html?v=20261031-analytics-logos-1&amp;resume=0" title="Optimizer test runtime"></iframe>
+  <iframe id="appFrame" src="../index.html?v=20261031-visual-hierarchy-1&amp;resume=0" title="Optimizer test runtime"></iframe>
   <script>
     async function runOptimizerFixtures() {
       const results = [];
@@ -81,6 +81,35 @@
       };
       const check = (name, passed, detail) => results.push({ name, passed: Boolean(passed), detail: detail || "" });
       try {
+        const connection = document.getElementById("connectionSettings");
+        const initialConnectionOpen = connection.open;
+        const initialConnectionState = connection.dataset.connectionState;
+        const initialLeagueOpen = document.querySelector(".league-section").open;
+        try {
+          state.activeLeague = null; state.managers = [];
+          renderConnectionLayout();
+          check("Disconnected visits show expanded connection setup", connection.open &&
+            document.getElementById("connectionSettingsLabel").textContent === "Connect a league");
+          state.activeLeague = { provider: "sleeper", leagueId: "connection-layout" };
+          state.managers = [{ rosterId: 1 }];
+          renderConnectionLayout();
+          check("Connected visits collapse setup and expose league selectors", !connection.open &&
+            document.querySelector(".league-section").open &&
+            document.querySelector(".workspace-controls").classList.contains("is-connected"));
+          connection.open = true;
+          renderConnectionLayout();
+          check("Rerenders preserve manually opened connection settings", connection.open);
+          state.activeLeague = null; state.managers = [];
+          renderConnectionLayout();
+          check("Disconnecting reopens connection setup", connection.open &&
+            !document.querySelector(".workspace-controls").classList.contains("is-connected"));
+        } finally {
+          state.activeLeague = savedLeague; state.managers = savedManagers;
+          renderConnectionLayout();
+          connection.open = initialConnectionOpen;
+          connection.dataset.connectionState = initialConnectionState || "disconnected";
+          document.querySelector(".league-section").open = initialLeagueOpen;
+        }
         for (const compact of [false, true]) {
           const plot = { l: 68, t: 28, w: compact ? 200 : 900, h: 284 };
           const points = Array.from({ length: 32 }, (_, rank) => ({ x: plot.l + plot.w / 2, y: 170, rank }));

@@ -41,7 +41,7 @@ test("HTML references existing local assets in the expected script order", () =>
   ].map(match => match[1]).filter(asset => !/^(?:[a-z]+:)?\/\//i.test(asset));
 
   assert.ok(assets.length > 0, "Expected local CSS or JavaScript assets.");
-  assert.ok(assets.every(asset => asset.endsWith("?v=20261031-analytics-logos-1")), "All local assets must use the current release version.");
+  assert.ok(assets.every(asset => asset.endsWith("?v=20261031-visual-hierarchy-1")), "All local assets must use the current release version.");
   for (const asset of assets) {
     assert.ok(fs.existsSync(path.join(root, asset.split("?")[0])), `Missing local asset: ${asset}`);
   }
@@ -128,11 +128,24 @@ test("phone landscape layout and player chart provide responsive reading afforda
   assert.match(html, /Connectors link separated logos to exact data points/, "Displaced markers must explain their exact plotted values.");
 });
 
+test("connected layout and page hierarchy avoid redundant introductory cards", () => {
+  const html = read("index.html");
+  const app = read("app.js");
+  const panels = [...html.matchAll(/<div id="(tab-[^"]+)" class="tab-page(?: active)?">([\s\S]*?)(?=<div id="tab-|<\/main>)/g)];
+  assert.equal(panels.length, 17);
+  for (const [, id, content] of panels) assert.match(content, /<h2\b/, `${id} must have a proper page heading.`);
+  assert.match(html, /<details id="connectionSettings"[^>]*open>/);
+  assert.match(app, /connection\.open = !connected/);
+  assert.doesNotMatch(app, /"Your next moves"/, "Inbox must not reintroduce a duplicate introductory banner.");
+  assert.match(html, /id="gmInboxDataDetails"/, "Source caveats must remain accessible without the removed banner.");
+  assert.match(read("styles.css"), /\.connection-fields \.account-field \{ grid-column:1; grid-row:2; \}/);
+});
+
 test("browser regression harness is wired to the app and includes saved-state coverage", () => {
   const html = read("tests/optimizer-regression.html");
   const appHtml = read("index.html");
 
-  assert.match(html, /src="\.\.\/index\.html\?v=20261031-analytics-logos-1&amp;resume=0"/, "Regression harness must load the current app release without resuming personal snapshots.");
+  assert.match(html, /src="\.\.\/index\.html\?v=20261031-visual-hierarchy-1&amp;resume=0"/, "Regression harness must load the current app release without resuming personal snapshots.");
   assert.doesNotMatch(appHtml, /id="loadRecordsBtn"/, "Records must load automatically without a manual refresh button.");
   assert.match(html, /runOptimizerFixtures/, "Regression harness must execute its fixtures.");
   assert.match(html, /Cross-league queue saves to target budget/, "Saved FAAB state should remain covered.");

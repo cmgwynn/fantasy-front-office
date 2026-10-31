@@ -693,12 +693,30 @@ function getDecisionDataStatus(now = Date.now()) {
 }
 
 function renderDecisionDataStatus() {
+  renderConnectionLayout();
   const status = document.getElementById("decisionDataStatus");
   if (!status) return;
   const result = getDecisionDataStatus();
   status.hidden = !result.text;
   status.textContent = result.text;
   status.classList.toggle("has-errors", result.warning);
+}
+
+function renderConnectionLayout() {
+  const connection = document.getElementById("connectionSettings");
+  if (!connection) return;
+  const connected = Boolean(state.activeLeague && state.managers.length);
+  const key = connected ? "connected" : "disconnected";
+  if (connection.dataset.connectionState !== key) {
+    const focusInside = connection.contains(document.activeElement);
+    connection.open = !connected;
+    if (connected && focusInside) document.getElementById("connectionSettingsLabel").focus({ preventScroll: true });
+    if (connected) document.querySelector(".league-section").open = true;
+    connection.dataset.connectionState = key;
+  }
+  document.querySelector(".workspace-controls").classList.toggle("is-connected", connected);
+  document.querySelector(".top-nav").classList.toggle("is-connected", connected);
+  document.getElementById("connectionSettingsLabel").textContent = connected ? "Manage connection" : "Connect a league";
 }
 
 function captureLeagueView() {
@@ -1831,6 +1849,7 @@ async function importYahooRosterFile(file, { demo = false } = {}) {
 }
 
 function updateProviderControls() {
+  renderConnectionLayout();
   const provider = document.getElementById("providerSelect")?.value || "";
   state.provider = provider;
   const espn = provider === "espn";
@@ -5429,9 +5448,12 @@ async function renderGMInbox(forceRefresh = false) {
   if (!state.activeLeague || !state.managers.length) {
     inbox?.classList.add("is-empty");
     if (briefing) {
+      briefing.hidden = false;
       briefing.classList.add("is-empty");
       briefing.innerHTML = `<h3>Your league, at a glance.</h3><p>Connect ESPN or Sleeper above to see lineup decisions, roster risks, and waiver moves here.</p>`;
     }
+    document.getElementById("gmInboxContext").textContent = "";
+    document.getElementById("gmInboxDataDetails").hidden = true;
     summary.hidden = true;
     list.innerHTML = "";
     renderInboxSchedule(null);
@@ -5449,6 +5471,7 @@ async function renderGMInbox(forceRefresh = false) {
   }
   const context = `${getNewsletterLeagueKey()}:${state.week}:${document.getElementById("teamSelect")?.value}`;
   inbox?.classList.remove("is-empty");
+  if (briefing) { briefing.hidden = true; briefing.replaceChildren(); }
   briefing?.classList.remove("is-empty");
   if (gmInboxContext !== context) { gmInboxExpanded = false; gmInboxContext = context; }
   if (forceRefresh && !state.workspaceSnapshot) {
@@ -5483,10 +5506,9 @@ async function renderGMInbox(forceRefresh = false) {
   renderInboxSchedule(selectedManager);
   renderGameDayChecklist(selectedManager);
   if (document.getElementById("inboxRecap")?.open) renderLeagueNewsletter();
-  if (briefing) {
-    const sourceNote = getProjectionSourceNote();
-    briefing.innerHTML = `<div class="draft-eyebrow">WEEK ${state.week}${state.activeLeague.isDemo ? " · DEMO" : ""} · ${draftEscapeHtml(selectedManager?.teamName || "Your roster")}</div><h3>${urgentCount ? `${urgentCount} urgent decision${urgentCount === 1 ? "" : "s"}` : activeRecommendations.length ? "Your next moves" : "No immediate flags"}</h3><details class="gm-action-details"><summary>Data &amp; estimates</summary><p>${draftEscapeHtml(sourceNote)} Suggestions are estimates. Review and submit changes in your league.</p></details>`;
-  }
+  document.getElementById("gmInboxContext").textContent = `Week ${state.week}${state.activeLeague.isDemo ? " · Demo" : ""} · ${selectedManager?.teamName || "Your roster"}${urgentCount ? ` · ${urgentCount} urgent decision${urgentCount === 1 ? "" : "s"}` : ""}`;
+  document.getElementById("gmInboxDataDetails").hidden = false;
+  document.getElementById("gmInboxDataNote").textContent = `${getProjectionSourceNote()} Suggestions are estimates. Review and submit changes in your league.`;
   const leagueRecords = Object.values(feedback).filter(record => record.leagueKey === leagueKey);
   const rated = leagueRecords.filter(record => typeof record.helpful === "boolean");
   const helpfulRate = rated.length ? `${Math.round(rated.filter(record => record.helpful).length / rated.length * 100)}% helpful · ${rated.length} ratings` : "No ratings yet";

@@ -23,6 +23,24 @@ a league to use roster-based features.
 
 ## Current release
 
+### Visual hierarchy and connected header
+
+Connected leagues keep league, roster and week selectors visible, with provider
+and account setup collapsed behind **Manage connection**. New/disconnected
+visits show **Connect a league** expanded. Opening connection settings remains
+respected during normal rerenders; changing providers reopens setup. Saved live
+and imported/snapshot leagues use the same compact layout.
+
+All 17 destinations have one 22px page heading, including the previously
+uppercase-only analytics, optimizer, waiver, trade, matchup and schedule views.
+Redundant category eyebrows are removed. Inbox puts week/roster context below
+its title, retains source caveats in a plain disclosure, and removes the separate
+“Your next moves” introductory card. The action cards remain, without an extra
+outer bordered container. Disconnected visits still explain how to get started.
+Healthy roster-check status is a plain line rather than another bordered banner;
+warning states retain their existing prominence. The connected phone header
+keeps status, data details and sharing on one line.
+
 ### Compact sidebar
 
 The desktop sidebar uses four native accordion groups: **My Team**, **League**,
@@ -39,7 +57,10 @@ The selected destination uses the app's accent with an inset marker, not a
 second competing accent color. At widths up to 960px, a sticky native
 44px picker with the same four option groups and direct Inbox/Draft options replaces the sidebar list.
 Short phone landscape layouts keep that picker beside the content and compact
-the provider controls to preserve the limited vertical space. Player Analytics
+the provider controls to preserve the limited vertical space. On phones, the
+account input and connection button share a bottom-aligned row rather than
+leaving the button on a separate row. Portrait uses 44px input/button targets;
+short landscape aligns provider, account and button on one compact row. Player Analytics
 uses a responsive scatter plot with team logos for every plotted player, with
 labels for the top 10 in the current sort when space permits. Collision-aware
 logo placement uses connectors to retain exact data coordinates, without blue
