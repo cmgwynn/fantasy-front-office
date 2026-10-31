@@ -37,8 +37,10 @@ each player. Each side has up to six clickable photo quick picks plus a native
 select for browsing up to 100 matches. Typing does not change either selection;
 choosing a quick pick clears only that side's query. Position filtering remains
 shared. Existing Compare links clear both queries and preload the exact players.
-Selection and result cards reuse provider player photos, with initials when
-images fail. Input normalization supports punctuation/accents consistently with
+Each selection card combines the provider photo, NFL team/position, health,
+league ownership, bye and kickoff status; analysis does not repeat player cards
+or health/kickoff summaries. Photos fall back to initials when images fail.
+Input normalization supports punctuation/accents consistently with
 existing draft searches. Selection controls precede advice, and all existing
 scoring, matchup, lineup eligibility, and source limitations are unchanged.
 

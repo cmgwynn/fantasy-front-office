@@ -20,7 +20,7 @@
   <h1>Optimizer Regression Checks</h1>
   <p id="summary" role="status">Loading the app runtime...</p>
   <ol id="results"></ol>
-  <iframe id="appFrame" src="../index.html?v=20261031-compare-search-1&amp;resume=0" title="Optimizer test runtime"></iframe>
+  <iframe id="appFrame" src="../index.html?v=20261031-compare-cleanup-1&amp;resume=0" title="Optimizer test runtime"></iframe>
   <script>
     async function runOptimizerFixtures() {
       const results = [];
@@ -1248,15 +1248,17 @@
           document.getElementById("comparePlayerB").value === "fixture_claim_rb" &&
           document.getElementById("compareSearchB").value === "" &&
           document.getElementById("compareSearch").value === state.players.fixture_drop_wr.name);
-        check("Selected players and comparison cards show provider portraits",
+        check("Selected player details are consolidated into picker portraits without repeated result cards",
           document.querySelector("#comparePreviewA img") && document.querySelector("#comparePreviewB img") &&
-          document.querySelectorAll("#compareResults .compare-portrait img").length === 2);
+          !document.querySelector("#compareResults .compare-portrait") &&
+          document.getElementById("comparePreviewA").textContent.includes("Bye:") &&
+          document.getElementById("comparePreviewB").textContent.includes("Unrostered in loaded league"));
         const priorClaimName = state.players.fixture_claim_rb.name;
         state.players.fixture_claim_rb.name = '<img src=x onerror="alert(1)">';
         renderPlayerComparison(false);
         check("Comparison escapes provider player names",
-          !document.querySelector("#compareResults img[src='x']") &&
-          document.getElementById("compareResults").textContent.includes("<img src=x"));
+          !document.querySelector("#tab-compare img[src='x']") &&
+          document.getElementById("comparePreviewB").textContent.includes("<img src=x"));
         state.players.fixture_claim_rb.name = priorClaimName;
         openPlayerComparison("fixture_drop_wr", "fixture_drop_wr");
         check("Comparison handles duplicate selections explicitly",
