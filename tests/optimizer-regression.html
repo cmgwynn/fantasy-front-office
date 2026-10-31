@@ -20,7 +20,7 @@
   <h1>Optimizer Regression Checks</h1>
   <p id="summary" role="status">Loading the app runtime...</p>
   <ol id="results"></ol>
-  <iframe id="appFrame" src="../index.html?v=20261031-matchup-luck-1&amp;resume=0" title="Optimizer test runtime"></iframe>
+  <iframe id="appFrame" src="../index.html?v=20261031-sim-sos-proj-1&amp;resume=0" title="Optimizer test runtime"></iframe>
   <script>
     async function runOptimizerFixtures() {
       const results = [];
@@ -2285,6 +2285,65 @@
           document.getElementById("playoffForecastStatus").textContent.includes("Scenarios unavailable") &&
           !document.getElementById("playoffForecastResults").children.length);
         state.activeLeague = claimLeague;
+
+        {
+          const saved = { league: state.activeLeague, managers: state.managers, week: state.week, matchups: state.currentMatchups,
+            sosWindow: state.sosWindowMode, snapshot: state.workspaceSnapshot,
+            team: document.getElementById("teamSelect").innerHTML, teamValue: document.getElementById("teamSelect").value,
+            simA: document.getElementById("simTeamA").innerHTML, simB: document.getElementById("simTeamB").innerHTML };
+          const fixtureIds = ["fx_sim_qb1", "fx_sim_qb2", "fx_sim_qb3", "fx_sim_qb4"];
+          const team = ["NO", "LV", "NYG", "TEN"];
+          fixtureIds.forEach((id, index) => { state.players[id] = { id, name: `Sim QB ${index + 1}`, position: "QB", team: team[index], projectedPoints: [10, 20, 15, 5][index],
+            seasonPpg: 12, baseValue: 100, posRank: index + 1, isCurrentNfl: true, injuryStatus: "Healthy" }; });
+          state.workspaceSnapshot = "";
+          state.week = 9;
+          state.sosWindowMode = "NEXT4";
+          state.activeLeague = { provider: "sleeper", leagueId: "sim-fixture", season: "2026", name: "Sim", rosterPositions: ["QB"], scoringSettings: { pass_td: 4 } };
+          state.managers = [
+            { rosterId: 1, teamName: "Alpha (alice)", players: ["fx_sim_qb1", "fx_sim_qb2"], starters: ["fx_sim_qb1"], reserve: [], taxi: [], wins: 5, losses: 2 },
+            { rosterId: 2, teamName: "Bravo (bob)", players: ["fx_sim_qb4"], starters: ["fx_sim_qb4"], reserve: [], taxi: [], wins: 1, losses: 6 },
+            { rosterId: 3, teamName: "Charlie (cy)", players: ["fx_sim_qb3"], starters: ["fx_sim_qb3"], reserve: [], taxi: [], wins: 3, losses: 4 }];
+          state.currentMatchups = [{ roster_id: 1, matchup_id: 7, points: 0 }, { roster_id: 3, matchup_id: 7, points: 0 }, { roster_id: 2, matchup_id: 8, points: 0 }];
+          const options = state.managers.map((manager, index) => `<option value="${index}">${manager.teamName}</option>`).join("");
+          ["teamSelect", "simTeamA", "simTeamB"].forEach(id => { document.getElementById(id).innerHTML = options; });
+          document.getElementById("simTeamA").value = "0";
+          document.getElementById("simTeamB").value = "1";
+          document.getElementById("simTeamA").dispatchEvent(new Event("change"));
+          const pairedB = document.getElementById("simTeamB").value;
+          const firstCard = document.querySelector("#simRows .sim-card");
+          check("Matchup Simulator pairs the scheduled opponent, starts the best roster player and shows manager + record",
+            pairedB === "2" && firstCard.textContent.includes("Sim QB 2") && firstCard.querySelector(".sim-tag")?.textContent === "Start" &&
+            document.getElementById("simTeamHeadA").textContent.includes("alice · 5-2") &&
+            document.getElementById("simScoreA").textContent.includes("+10.0 vs set lineup") &&
+            document.getElementById("simWeek").value === "9");
+          document.querySelector('[data-sim-lineup="set"]').click();
+          const setFirst = document.querySelector("#simRows .sim-card").textContent;
+          document.querySelector('[data-sim-lineup="optimal"]').click();
+          check("Matchup Simulator Set lineups toggle compares the saved starters", setFirst.includes("Sim QB 1"));
+
+          const savedSosCache = [9, 10, 11, 12].map(week => [`2026:${week}`, scheduleProjectionCache.get(`2026:${week}`)]);
+          [9, 10, 11, 12].forEach(week => scheduleProjectionCache.set(`2026:${week}`, { values: { fx_sim_qb2: { pass_td: week - 8 } }, checkedAt: Date.now() }));
+          document.getElementById("teamSelect").value = "0";
+          document.getElementById("sosScope").value = "ROSTER";
+          document.getElementById("sosPos").value = "QB";
+          renderSosTab();
+          const sosRow = [...document.querySelectorAll("#sosTable tbody tr")].find(row => row.textContent.includes("Sim QB 2"));
+          const byeWeek = CURRENT_BYE_WEEKS.LV;
+          const expected = [9, 10, 11, 12].filter(week => week !== byeWeek).map(week => (week - 8) * 4);
+          check("Strength of Schedule player cells show each week's league-scored projection and the window total",
+            sosRow && expected.every(value => sosRow.textContent.includes(`${value.toFixed(1)} proj pts`)) &&
+            sosRow.querySelector(".sos-proj-total")?.textContent === `${expected.reduce((sum, value) => sum + value, 0).toFixed(1)} proj pts`);
+          savedSosCache.forEach(([key, value]) => value ? scheduleProjectionCache.set(key, value) : scheduleProjectionCache.delete(key));
+          document.getElementById("sosScope").value = "ALL";
+          fixtureIds.forEach(id => delete state.players[id]);
+          Object.assign(state, { activeLeague: saved.league, managers: saved.managers, week: saved.week, currentMatchups: saved.matchups, sosWindowMode: saved.sosWindow, workspaceSnapshot: saved.snapshot });
+          document.getElementById("teamSelect").innerHTML = saved.team;
+          document.getElementById("teamSelect").value = saved.teamValue;
+          document.getElementById("simTeamA").innerHTML = saved.simA;
+          document.getElementById("simTeamB").innerHTML = saved.simB;
+          simTeamASelection = null;
+          renderSosTab();
+        }
 
         const connectionCopy = localStorage.getItem(CONNECTION_FIELDS_KEY);
         const accountSyncContext = {

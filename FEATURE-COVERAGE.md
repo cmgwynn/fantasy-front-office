@@ -41,6 +41,15 @@ Luck Index = actual wins − expected wins, where expected wins come from true
 weekly All-Play (each week, the share of other teams' scores you beat). It is
 shown in wins (e.g. "+0.7 W") and only when completed weekly scores cover every
 game played; otherwise "--". The old points-for-rank percentage is retired.
+Matchup Simulator has its own week picker (kept in sync with the header week),
+shows each team's manager and record, pairs Team B with Team A's scheduled
+opponent for the selected week, and compares each roster's best possible lineup
+by default (Out/IR/PUP/Suspended/Doubtful excluded, "Start" tags for players not
+in the saved lineup, gain vs the set lineup). "Set lineups" compares the saved
+starters instead.
+Strength of Schedule player views (roster, top players, free agents) show each
+week's Sleeper projection scored with the league's scoring settings plus a
+window total; bye weeks count as 0 and missing feeds show "Proj --".
 Matchup Simulator uses container queries so the lineup cards never overlap in
 half-screen or narrow browser windows.
 

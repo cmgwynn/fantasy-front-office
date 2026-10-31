@@ -1406,6 +1406,7 @@ function openMatchupInSimulator(rosterIdA, rosterIdB) {
   if (idxA < 0 || idxB < 0) return;
   document.getElementById("simTeamA").value = idxA;
   document.getElementById("simTeamB").value = idxB;
+  rememberSimTeamA();
   renderMatchupSim();
   activateTab("tab-matchup", { navigate: true, focus: true });
 }
@@ -2320,6 +2321,7 @@ async function loadEspnLeague(idx) {
   document.getElementById("tradeTeamB").value = String(partnerIndex);
   document.getElementById("simTeamA").value = "0";
   document.getElementById("simTeamB").value = String(partnerIndex);
+  restoreSimSelection(0);
   renderSuperlatives([]);
   renderAllViews(0);
   await buildTradeDatabase();
@@ -2381,8 +2383,11 @@ async function loadLeague(idx) {
   ]);
   setCurrentMatchupScores(matchups || [], matchupKey);
 
-  const uMap = {};
-  (users || []).forEach(u => { uMap[u.user_id] = u.metadata?.team_name ? `${u.metadata.team_name} (${u.display_name})` : u.display_name; });
+  const uMap = {}, avatarMap = {};
+  (users || []).forEach(u => {
+    uMap[u.user_id] = u.metadata?.team_name ? `${u.metadata.team_name} (${u.display_name})` : u.display_name;
+    if (/^[\w-]+$/.test(String(u.avatar || ""))) avatarMap[u.user_id] = `https://sleepercdn.com/avatars/thumbs/${u.avatar}`;
+  });
 
   let maxPF = 1;
   state.managers = (rosters || []).map(r => {
@@ -2394,7 +2399,7 @@ async function loadLeague(idx) {
     const starters = (r.starters || []).filter(id => id && id !== "0");
     const rosPpg = starters.reduce((s, id) => s + (state.players[id]?.projectedPoints || state.players[id]?.seasonPpg || 0), 0) || 112;
     return {
-      rosterId: r.roster_id, ownerId: r.owner_id,
+      rosterId: r.roster_id, ownerId: r.owner_id, ownerAvatar: avatarMap[r.owner_id] || "",
       waiverBudgetUsed: typeof st.waiver_budget_used === "number" ? st.waiver_budget_used : null,
       waiverBudgetCheckedAt: Date.now(),
       teamName: uMap[r.owner_id] || `Team #${r.roster_id}`,
@@ -2509,6 +2514,7 @@ async function loadLeague(idx) {
   document.getElementById("tradeTeamB").value = partnerIdx;
   document.getElementById("simTeamA").value = myIdx;
   document.getElementById("simTeamB").value = partnerIdx;
+  restoreSimSelection(myIdx);
 
   renderSuperlatives(matchups || []);
   renderAllViews(myIdx);
@@ -4504,10 +4510,48 @@ function drawSingleAnalyticsChart() {
 }
 
 // 9. Tab 7, Tab 8 & Tab 9: SOS Heat-Map, Playoff Bracket & Matchup Simulator
-function renderSosCellHTML(teamAbbr, weekNum, pos, showDomeBadge = false) {
+const sosProjectionLoads = new Set();
+const sosProjectionFailures = new Map();
+
+// Returns { byWeek: Map(week -> projections), loading } using the shared weekly projection cache.
+function getSosWeekProjections(weeks) {
+  const season = String(state.activeLeague?.season || state.season || "");
+  const byWeek = new Map();
+  let loading = false;
+  if (!/^\d{4}$/.test(season) || state.workspaceSnapshot || state.activeLeague?.provider === "yahoo") return { byWeek, loading };
+  weeks.forEach(week => {
+    const key = `${season}:${week}`;
+    const cached = scheduleProjectionCache.get(key);
+    if (cached) byWeek.set(week, cached.values);
+    if (cached && Date.now() - cached.checkedAt <= 10 * 60000) return;
+    if (!cached && Date.now() - (sosProjectionFailures.get(key) || 0) <= 60000) return;
+    if (!cached) loading = true;
+    if (sosProjectionLoads.has(key)) return;
+    sosProjectionLoads.add(key);
+    fetchSleeperWeekProjections(season, week)
+      .catch(() => { sosProjectionFailures.set(key, Date.now()); })
+      .finally(() => {
+        sosProjectionLoads.delete(key);
+        if (document.getElementById("tab-sos")?.classList.contains("active")) renderSosTab();
+      });
+  });
+  return { byWeek, loading };
+}
+
+function getSosPlayerWeekProjection(player, week, projectionInfo) {
+  if (!player) return null;
+  const values = projectionInfo.byWeek.get(week);
+  if (!values) return projectionInfo.loading ? undefined : null;
+  const row = values[player.id];
+  if (!row) return 0;
+  return scoreLeagueProjectionStats(row.stats || row);
+}
+
+function renderSosCellHTML(teamAbbr, weekNum, pos, showDomeBadge = false, projection = false) {
   let normTeam = (teamAbbr || "").toUpperCase().trim();
   if (normTeam === "JAC") normTeam = "JAX"; if (normTeam === "LA") normTeam = "LAR";
 
+  const projectionHTML = projection === false ? "" : `<div class="sos-proj">${projection === undefined ? "Proj …" : projection === null ? "Proj --" : `<strong>${projection.toFixed(1)}</strong> proj pts`}</div>`;
   if (CURRENT_BYE_WEEKS[normTeam] === weekNum) {
     return `<div class="sos-cell sos-bye"><div style="font-weight:800;font-size:12px;">BYE WEEK</div><div style="font-size:10px;">Week ${weekNum} Off</div></div>`;
   }
@@ -4532,7 +4576,7 @@ function renderSosCellHTML(teamAbbr, weekNum, pos, showDomeBadge = false) {
         <img class="team-logo-sm" style="margin-right:2px;" src="${teamLogoUrl(opp)}" onerror="this.style.display='none'"/>
         <span>${prefix} ${opp}</span>${envBadge}
       </div>
-      <div style="font-size:10px;font-weight:700;opacity:0.92;">DvP #${dvpRank} • ${tierTxt}</div>
+      <div style="font-size:10px;font-weight:700;opacity:0.92;">DvP #${dvpRank} • ${tierTxt}</div>${projectionHTML}
     </div>`;
 }
 
@@ -4595,6 +4639,7 @@ function renderSosTab() {
   }
 
   rows.sort((a, b) => sortOrder === "EASIEST" ? (b.sos.avgRank - a.sos.avgRank) : (a.sos.avgRank - b.sos.avgRank));
+  const projectionInfo = scope === "ALL" ? null : getSosWeekProjections(weeks);
 
   if (!rows.length) {
     tbody.innerHTML = `<tr><td colspan="${weeks.length + (showActionCol ? 5 : 4)}" style="padding:24px;color:var(--text-muted);">Connect a league or switch Scope to "All 32 NFL Teams" or "Top 36 Positional Players" to view schedules.</td></tr>`;
@@ -4609,11 +4654,14 @@ function renderSosTab() {
       ? `<div class="player-cell"><img class="avatar" src="${teamLogoUrl(r.team)}" onerror="this.style.display='none'" /><div><div style="font-weight:800;font-size:14px;">${r.name} (${r.team})</div><div style="font-size:11px;color:var(--text-muted);">${envMeta}</div></div></div>`
       : `<div class="player-cell"><img class="avatar" src="${avatarUrl(r.player)}" onerror="this.style.display='none'" /><div><div style="font-weight:700;font-size:14px;"><img class="team-logo-sm" src="${teamLogoUrl(r.team)}" onerror="this.style.display='none'"/>${r.player.name}</div><div style="font-size:11px;color:var(--text-muted);">${r.player.position} #${r.player.posRank} (${r.team}) • ${r.player.seasonPpg.toFixed(1)} PPG • VAL ${r.player.baseValue}</div></div></div>`;
 
-    const cellsHTML = weeks.map(w => `<td>${renderSosCellHTML(r.team, w, pos, isPlayoffs)}</td>`).join("");
+    const weekProjections = projectionInfo ? weeks.map(w => CURRENT_BYE_WEEKS[r.team] === w ? 0 : getSosPlayerWeekProjection(r.player, w, projectionInfo)) : [];
+    const cellsHTML = weeks.map((w, index) => `<td>${renderSosCellHTML(r.team, w, pos, isPlayoffs, projectionInfo ? weekProjections[index] : false)}</td>`).join("");
+    const projectionTotal = weekProjections.length && weekProjections.every(value => typeof value === "number") ? weekProjections.reduce((sum, value) => sum + value, 0) : null;
+    const totalHTML = projectionTotal !== null ? `<div class="sos-proj-total">${projectionTotal.toFixed(1)} proj pts</div>` : "";
     tr.innerHTML = `
       <td style="font-weight:800;color:var(--text-muted);">#${idx + 1}</td>
       <td>${subjectHTML}</td>${cellsHTML}
-      <td><div style="font-weight:800;font-size:13px;">DvP #${r.sos.avgRank.toFixed(1)}</div><div style="font-size:11px;color:var(--text-muted);">${r.sos.activeGames} Games${r.sos.hasBye ? ' (1 Bye)' : ''}${isPlayoffs ? ` • ${r.sos.domeCount} Dome` : ''}</div></td>
+      <td><div style="font-weight:800;font-size:13px;">DvP #${r.sos.avgRank.toFixed(1)}</div>${totalHTML}<div style="font-size:11px;color:var(--text-muted);">${r.sos.activeGames} Games${r.sos.hasBye ? ' (1 Bye)' : ''}${isPlayoffs ? ` • ${r.sos.domeCount} Dome` : ''}</div></td>
       <td><span class="badge ${r.sos.badgeCls}">${r.sos.grade}</span></td>
       ${showActionCol ? '<td><button class="btn-builder-action">Trade Target →</button></td>' : ''}`;
     if (showActionCol && r.player) tr.querySelector("button").onclick = () => targetPlayerFromSos(r.player.id, pos);
@@ -7652,7 +7700,72 @@ async function refreshLiveMatchups() {
   }
 }
 
+let simLineupMode = "optimal";
+let simTeamASelection = null;
+
+function rememberSimTeamA() {
+  const manager = state.managers[Number(document.getElementById("simTeamA")?.value)];
+  simTeamASelection = manager ? { leagueKey: getLeagueRecordsKey(), rosterId: String(manager.rosterId) } : null;
+}
+
+// League reloads (e.g. week changes) rebuild the selects; keep the chosen Team A and face its scheduled opponent.
+function restoreSimSelection(defaultIndex) {
+  const selectA = document.getElementById("simTeamA");
+  if (!selectA) return;
+  const saved = simTeamASelection?.leagueKey === getLeagueRecordsKey()
+    ? state.managers.findIndex(manager => String(manager.rosterId) === simTeamASelection.rosterId) : -1;
+  selectA.value = String(saved >= 0 ? saved : defaultIndex);
+  pairSimWithScheduledOpponent();
+}
+
+function getScheduledOpponentIndex(manager) {
+  if (!manager) return -1;
+  const game = getNormalizedCurrentMatchups().find(item => [item.homeId, item.awayId].includes(String(manager.rosterId)));
+  if (!game) return -1;
+  const opponentId = game.homeId === String(manager.rosterId) ? game.awayId : game.homeId;
+  return state.managers.findIndex(item => String(item.rosterId) === opponentId);
+}
+
+function pairSimWithScheduledOpponent() {
+  const selectA = document.getElementById("simTeamA"), selectB = document.getElementById("simTeamB");
+  const opponent = getScheduledOpponentIndex(state.managers[Number(selectA?.value)]);
+  if (selectB && opponent >= 0) selectB.value = String(opponent);
+}
+
+function syncSimWeekSelect() {
+  const sim = document.getElementById("simWeek"), main = document.getElementById("weekSelect");
+  if (!sim || !main) return;
+  if (sim.options.length !== main.options.length || [...main.options].some((option, index) => sim.options[index]?.textContent !== option.textContent)) {
+    sim.innerHTML = [...main.options].map(option => `<option value="${option.value}">${draftEscapeHtml(option.textContent)}</option>`).join("");
+  }
+  sim.value = String(state.week);
+}
+
+function getSimLineup(manager, slots) {
+  const setIds = new Set((manager.starters || []).map(String));
+  if (simLineupMode === "set") return slots.map((_, index) => ({ player: state.players[manager.starters?.[index]] || null, benched: false }));
+  const rosterIds = getPlannerRosterIds(manager);
+  const unavailable = rosterIds.filter(id => ["Out", "IR", "PUP", "Suspended", "Doubtful"].includes(state.players[id]?.injuryStatus));
+  const best = calcOptimalLineup(rosterIds, false, { excludedPlayerIds: unavailable });
+  return slots.map((_, index) => {
+    const player = best.filled[index] || null;
+    return { player, benched: Boolean(player && !setIds.has(String(player.id))) };
+  });
+}
+
+function renderSimTeamHead(manager) {
+  const [teamName, managerName] = (() => {
+    const match = String(manager.teamName || "").match(/^(.*) \(([^)]+)\)$/);
+    return match ? [match[1], match[2]] : [manager.teamName || `Team ${manager.rosterId}`, ""];
+  })();
+  const record = `${manager.wins || 0}-${manager.losses || 0}${manager.ties ? `-${manager.ties}` : ""}`;
+  const initials = draftEscapeHtml(teamName.split(/\s+/).filter(Boolean).slice(0, 2).map(part => part[0]).join("").toUpperCase());
+  const avatar = manager.ownerAvatar ? `<img src="${draftEscapeHtml(manager.ownerAvatar)}" alt="" onerror="this.remove()">` : "";
+  return `<span class="team-initials" aria-hidden="true">${avatar || initials}</span><div><strong title="${draftEscapeHtml(teamName)}">${draftEscapeHtml(teamName)}</strong><small>${managerName ? `${draftEscapeHtml(managerName)} · ` : ""}${record}</small></div>`;
+}
+
 function renderMatchupSim() {
+  syncSimWeekSelect();
   const selA = document.getElementById("simTeamA")?.value;
   const selB = document.getElementById("simTeamB")?.value;
   if (selA === undefined || selB === undefined || selA === "" || selB === "") return;
@@ -7663,34 +7776,45 @@ function renderMatchupSim() {
   let slots = (state.activeLeague?.rosterPositions || []).filter(s => !["BN","IR","TAXI"].includes(s));
   if (!slots.length) slots = ["QB","RB","RB","WR","WR","TE","FLEX","K","DEF"];
 
+  const lineupA = getSimLineup(tmA, slots), lineupB = getSimLineup(tmB, slots);
+  const setTotal = manager => slots.reduce((sum, _, index) => sum + (state.players[manager.starters?.[index]]?.projectedPoints || 0), 0);
   let totA = 0, totB = 0;
   const rowsEl = document.getElementById("simRows");
   rowsEl.innerHTML = "";
+  const simCard = (entry, wins, side, sl) => {
+    const p = entry.player || { name: "Empty Slot", position: sl, team: "FA", projectedPoints: 0 };
+    const opp = p.team && p.team !== "FA" ? CURRENT_NFL_SCHEDULE[p.team]?.[state.week] : null;
+    const gameText = CURRENT_BYE_WEEKS[p.team] === state.week ? "Bye" : opp ? `${opp.isHome ? "vs" : "@"} ${opp.opp}` : "";
+    const injury = p.injuryStatus && p.injuryStatus !== "Healthy" ? ` · ${draftEscapeHtml(p.injuryStatus)}` : "";
+    return `<div class="sim-card${wins ? " is-winner" : ""}${side === "B" ? " is-b" : ""}"><img class="avatar" src="${avatarUrl(p)}" alt="" onerror="this.style.display='none'" /><div class="sim-card-info"><span class="sim-card-name" title="${draftEscapeHtml(p.name)}"><img class="team-logo-sm" src="${teamLogoUrl(p.team)}" alt="" onerror="this.style.display='none'"/>${draftEscapeHtml(p.name)}</span><div class="sim-card-meta">${draftEscapeHtml(p.position)} - ${draftEscapeHtml(p.team)}${gameText ? ` · ${gameText}` : ""}${injury}${entry.benched ? '<span class="sim-tag" title="Not in the current set lineup">Start</span>' : ""}</div></div><span class="sim-card-pts">${(p.projectedPoints || 0).toFixed(2)} pts</span></div>`;
+  };
   slots.forEach((sl, i) => {
-    const pA = state.players[tmA.starters[i]] || { name:"Empty Slot", position:sl, team:"FA", projectedPoints:0 };
-    const pB = state.players[tmB.starters[i]] || { name:"Empty Slot", position:sl, team:"FA", projectedPoints:0 };
-    totA += (pA.projectedPoints || 0); totB += (pB.projectedPoints || 0);
-    const edge = Math.abs((pA.projectedPoints || 0) - (pB.projectedPoints || 0));
-    const aWins = (pA.projectedPoints || 0) > (pB.projectedPoints || 0);
-    const bWins = (pB.projectedPoints || 0) > (pA.projectedPoints || 0);
-    const simCard = (p, wins, side) => `<div class="sim-card${wins ? " is-winner" : ""}${side === "B" ? " is-b" : ""}"><img class="avatar" src="${avatarUrl(p)}" alt="" onerror="this.style.display='none'" /><div class="sim-card-info"><span class="sim-card-name" title="${draftEscapeHtml(p.name)}"><img class="team-logo-sm" src="${teamLogoUrl(p.team)}" alt="" onerror="this.style.display='none'"/>${draftEscapeHtml(p.name)}</span><div class="sim-card-meta">${p.position} - ${p.team}</div></div><span class="sim-card-pts">${(p.projectedPoints || 0).toFixed(2)} pts</span></div>`;
+    const ptsA = lineupA[i].player?.projectedPoints || 0, ptsB = lineupB[i].player?.projectedPoints || 0;
+    totA += ptsA; totB += ptsB;
     const row = document.createElement("div");
     row.className = "sim-row";
-    row.innerHTML = `${simCard(pA, aWins, "A")}<div class="sim-slot">${sl}<span>+${edge.toFixed(1)}</span></div>${simCard(pB, bWins, "B")}`;
+    row.innerHTML = `${simCard(lineupA[i], ptsA > ptsB, "A", sl)}<div class="sim-slot">${draftEscapeHtml(sl)}<span>+${Math.abs(ptsA - ptsB).toFixed(1)}</span></div>${simCard(lineupB[i], ptsB > ptsA, "B", sl)}`;
     rowsEl.appendChild(row);
   });
 
   const margin = totA - totB;
   const winA = computeHeadToHeadWinProb(totA, totB, 1);
   const winB = 100 - winA;
+  const gainText = (manager, total) => {
+    if (simLineupMode !== "optimal") return "";
+    const gain = total - setTotal(manager);
+    return gain > 0.05 ? ` · +${gain.toFixed(1)} vs set lineup` : " · set lineup is best";
+  };
 
-  document.getElementById("simBannerA").textContent = `${tmA.teamName.split(" (")[0]} Win Prob: ${winA.toFixed(1)}%`;
+  document.getElementById("simTeamHeadA").innerHTML = renderSimTeamHead(tmA);
+  document.getElementById("simTeamHeadB").innerHTML = renderSimTeamHead(tmB);
+  document.getElementById("simBannerA").textContent = `Win Prob: ${winA.toFixed(1)}%`;
   document.getElementById("simBannerA").style.color = winA >= winB ? "var(--good)" : "var(--bad)";
-  document.getElementById("simScoreA").textContent = `Proj Score: ${totA.toFixed(2)} pts (Spread: ${margin>=0?'+':''}${margin.toFixed(2)})`;
+  document.getElementById("simScoreA").textContent = `Proj ${totA.toFixed(2)} pts (${margin >= 0 ? "+" : ""}${margin.toFixed(2)})${gainText(tmA, totA)}`;
 
-  document.getElementById("simBannerB").textContent = `${tmB.teamName.split(" (")[0]} Win Prob: ${winB.toFixed(1)}%`;
+  document.getElementById("simBannerB").textContent = `Win Prob: ${winB.toFixed(1)}%`;
   document.getElementById("simBannerB").style.color = winB > winA ? "var(--good)" : "var(--bad)";
-  document.getElementById("simScoreB").textContent = `Proj Score: ${totB.toFixed(2)} pts`;
+  document.getElementById("simScoreB").textContent = `Proj ${totB.toFixed(2)} pts${gainText(tmB, totB)}`;
 }
 
 function getLeagueRecordsKey(league = state.activeLeague) {
@@ -8156,6 +8280,23 @@ function normalizeLeagueSchedule(league, data, week, managers = state.managers) 
   return { games, issues: [...new Set(issues)] };
 }
 
+function scoreLeagueProjectionStats(stats, rules = state.activeLeague?.scoringSettings || {}) {
+  if (!stats || typeof stats !== "object") return null;
+  const provider = state.activeLeague?.provider;
+  if (!state.activeLeague) return Number.isFinite(stats.pts_ppr) ? stats.pts_ppr : null;
+  let score;
+  const counters = Object.keys(stats).filter(key => !key.startsWith("pts_") && Object.hasOwn(rules, key));
+  if (provider !== "espn" && counters.length) {
+    if (counters.some(key => typeof stats[key] !== "number" || !Number.isFinite(stats[key]) || typeof rules[key] !== "number" || !Number.isFinite(rules[key]))) return null;
+    score = counters.reduce((sum, key) => sum + stats[key] * rules[key], 0);
+  } else {
+    if (provider !== "espn" && Object.entries(rules).some(([key, value]) => key !== "rec" && value !== 0)) return null;
+    const field = rules.rec === 0 ? "pts_std" : rules.rec === 0.5 ? "pts_half_ppr" : rules.rec === 1 ? "pts_ppr" : "";
+    score = stats[field];
+  }
+  return Number.isFinite(score) ? score : null;
+}
+
 function getScheduleTeamProjection(manager, week, projections, starterSlots = state.activeLeague?.rosterPositions || []) {
   const slots = starterSlots.filter(slot => !["BN", "IR", "TAXI"].includes(slot));
   if (!manager || !slots.length || slots.some(slot => !["QB", "RB", "WR", "TE", "K", "DEF"].some(pos => isPosEligible(pos, slot)))) return null;
@@ -8168,19 +8309,8 @@ function getScheduleTeamProjection(manager, week, projections, starterSlots = st
     const availability = getPlannerAvailability(player, week, true);
     if (availability.kind === "unknown") return null;
     if (availability.heldOut || availability.kind === "bye") continue;
-    const stats = projections[id]?.stats || projections[id];
-    if (!stats || typeof stats !== "object") return null;
-    let score;
-    const counters = Object.keys(stats).filter(key => !key.startsWith("pts_") && Object.hasOwn(rules, key));
-    if (state.activeLeague.provider !== "espn" && counters.length) {
-      if (counters.some(key => typeof stats[key] !== "number" || !Number.isFinite(stats[key]) || typeof rules[key] !== "number" || !Number.isFinite(rules[key]))) return null;
-      score = counters.reduce((sum, key) => sum + stats[key] * rules[key], 0);
-    } else {
-      if (state.activeLeague.provider !== "espn" && Object.entries(rules).some(([key, value]) => key !== "rec" && value !== 0)) return null;
-      const field = rules.rec === 0 ? "pts_std" : rules.rec === 0.5 ? "pts_half_ppr" : rules.rec === 1 ? "pts_ppr" : "";
-      score = stats[field];
-    }
-    if (!Number.isFinite(score)) return null;
+    const score = scoreLeagueProjectionStats(projections[id]?.stats || projections[id], rules);
+    if (score === null) return null;
     candidates.push({ m: player, score });
   }
   const lineup = assignLineupPlayersToSlots(slots, candidates);
@@ -9264,7 +9394,21 @@ function bindControlEvents() {
   document.getElementById("bracketReseedMode")?.addEventListener("change", () => { delete state.bracketOverrides.sf1; delete state.bracketOverrides.sf2; delete state.bracketOverrides.champ; delete state.bracketOverrides.third; renderPlayoffBracketTab(); });
   document.getElementById("resetBracketBtn")?.addEventListener("click", () => { state.bracketOverrides = {}; renderPlayoffBracketTab(); });
   document.getElementById("runPlayoffForecast")?.addEventListener("click", () => runPlayoffForecast({ fresh: true }));
-  document.getElementById("simTeamA")?.addEventListener("change", renderMatchupSim);
+  document.getElementById("simTeamA")?.addEventListener("change", () => { rememberSimTeamA(); pairSimWithScheduledOpponent(); renderMatchupSim(); });
+  document.getElementById("simWeek")?.addEventListener("change", event => {
+    const main = document.getElementById("weekSelect");
+    if (!main || main.value === event.target.value) return;
+    main.value = event.target.value;
+    main.dispatchEvent(new Event("change"));
+  });
+  document.querySelectorAll(".sim-lineup-btn").forEach(button => button.addEventListener("click", () => {
+    simLineupMode = button.dataset.simLineup;
+    document.querySelectorAll(".sim-lineup-btn").forEach(item => {
+      item.classList.toggle("active", item === button);
+      item.setAttribute("aria-pressed", String(item === button));
+    });
+    renderMatchupSim();
+  }));
   document.getElementById("simTeamB")?.addEventListener("change", renderMatchupSim);
   document.getElementById("shareBtn")?.addEventListener("click", async () => {
     const u = document.getElementById("usernameInput")?.value.trim() || "";

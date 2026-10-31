@@ -10,7 +10,7 @@
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
   <link rel="icon" href="icons/app-icon.svg" type="image/svg+xml" />
   <title>Fantasy Front Office</title>
-  <link rel="stylesheet" href="styles.css?v=20261031-matchup-luck-1" />
+  <link rel="stylesheet" href="styles.css?v=20261031-sim-sos-proj-1" />
 </head>
 <body>
 
@@ -618,7 +618,7 @@
 
     <!-- TAB 7: SOS HEAT-MAP -->
     <div id="tab-sos" class="tab-page">
-      <div class="tool-intro"><h2>Strength of Schedule</h2><p>Find easier upcoming matchups by position. Difficulty ranks are not point forecasts.</p></div>
+      <div class="tool-intro"><h2>Strength of Schedule</h2><p>Find easier upcoming matchups by position. Player views show each week's projected points in your league's scoring.</p></div>
       <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
         <div>
           <div id="sosTitleHdr" style="font-size:15px; font-weight:800;">POSITIONAL STRENGTH OF SCHEDULE (SOS) HEAT-MAP</div>
@@ -719,7 +719,14 @@
 
     <!-- TAB 9: MATCHUP SIMULATOR -->
     <div id="tab-matchup" class="tab-page">
-      <div class="tool-intro"><h2>Matchup Simulator</h2><p>Compare this week's teams. Projected points and win chances are estimates.</p></div>
+      <div class="tool-intro"><h2>Matchup Simulator</h2><p>Head-to-head projections for any week. Win chances are estimates.</p></div>
+      <div class="sim-toolbar">
+        <label class="sim-week-picker"><span>Week</span><select id="simWeek" aria-label="Matchup week"></select></label>
+        <div class="seg-bar-container" role="group" aria-label="Lineups to compare">
+          <button type="button" class="sim-lineup-btn active" data-sim-lineup="optimal" aria-pressed="true">Best lineups</button>
+          <button type="button" class="sim-lineup-btn" data-sim-lineup="set" aria-pressed="false">Set lineups</button>
+        </div>
+      </div>
       <div class="matchup-team-controls">
         <label class="sr-only" for="simTeamA">Team A</label>
         <select id="simTeamA"></select>
@@ -730,10 +737,12 @@
       <div id="matchupLiveStatus" class="draft-subtitle" aria-live="polite">Scores reflect the last league sync.</div>
       <div class="matchup-score-grid">
         <div class="card-banner">
+          <div id="simTeamHeadA" class="sim-team-head"></div>
           <div id="simBannerA" class="sim-banner-title" style="color:var(--good);">Team A Win Prob: 50.0%</div>
           <div id="simScoreA" class="sim-banner-score">Proj Score: 0.00 pts</div>
         </div>
         <div class="card-banner">
+          <div id="simTeamHeadB" class="sim-team-head"></div>
           <div id="simBannerB" class="sim-banner-title" style="color:var(--bad);">Team B Win Prob: 50.0%</div>
           <div id="simScoreB" class="sim-banner-score">Proj Score: 0.00 pts</div>
         </div>
@@ -1066,14 +1075,14 @@
 </footer>
 
 <p id="appInstallStatus" class="app-install-status" role="status"></p>
-<script src="pwa.js?v=20261031-matchup-luck-1"></script>
-<script src="monetization-config.js?v=20261031-matchup-luck-1"></script>
-<script src="data-fetch.js?v=20261031-matchup-luck-1"></script>
-<script src="demo-league.js?v=20261031-matchup-luck-1"></script>
-<script src="league-records.js?v=20261031-matchup-luck-1"></script>
-<script src="workspace-backup.js?v=20261031-matchup-luck-1"></script>
-<script src="playoff-simulator.js?v=20261031-matchup-luck-1"></script>
-<script src="weekly-matchups.js?v=20261031-matchup-luck-1"></script>
-<script src="app.js?v=20261031-matchup-luck-1"></script>
+<script src="pwa.js?v=20261031-sim-sos-proj-1"></script>
+<script src="monetization-config.js?v=20261031-sim-sos-proj-1"></script>
+<script src="data-fetch.js?v=20261031-sim-sos-proj-1"></script>
+<script src="demo-league.js?v=20261031-sim-sos-proj-1"></script>
+<script src="league-records.js?v=20261031-sim-sos-proj-1"></script>
+<script src="workspace-backup.js?v=20261031-sim-sos-proj-1"></script>
+<script src="playoff-simulator.js?v=20261031-sim-sos-proj-1"></script>
+<script src="weekly-matchups.js?v=20261031-sim-sos-proj-1"></script>
+<script src="app.js?v=20261031-sim-sos-proj-1"></script>
 </body>
 </html>
