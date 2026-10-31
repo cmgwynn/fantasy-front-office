@@ -701,7 +701,11 @@ sending mailbox: ordinary replies can disclose the destination email address.
 The privacy notice covers localStorage/IndexedDB saves and clearing site data,
 direct Sleeper/ESPN requests and images, hosting/logging, identifiers in shared
 URLs, imports processed locally, and emailed support information. AdSense remains
-disabled and no visitor-tracking script has been added. Monetization configuration
+disabled. Production checks found a Cloudflare-injected Web Analytics beacon;
+the privacy notice discloses this hosting-level visit/performance measurement.
+The source pages do not load the app or provider scripts. Public email anchors
+use Cloudflare's `email_off` markers so contact works without email-decoding
+JavaScript. Monetization configuration
 now points to the published privacy page; future ads/tracking require another
 policy and consent review. Terms describe estimated results, provider limitations,
 local-save risks, and the fact that plans do not submit provider transactions.

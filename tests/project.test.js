@@ -80,6 +80,7 @@ test("public information pages and footer expose working local links without loa
     assert.match(html, /name="viewport"/);
     assert.match(html, /<main class="info-content">/);
     assert.match(html, /href="mailto:support@fantasyfo\.com"/);
+    assert.match(html, /<!--email_off--><a\b[^>]*href="mailto:support@fantasyfo\.com"[^>]*>support@fantasyfo\.com<\/a><!--\/email_off-->/, "Public contact must not depend on Cloudflare email decoding.");
     assert.match(html, /Chavous Gwynn/);
     assert.match(html, /United States adults aged 18/);
     assert.doesNotMatch(html, /<script\b/, "Information pages must work without app initialization or provider requests.");
@@ -90,6 +91,7 @@ test("public information pages and footer expose working local links without loa
   assert.equal(sandbox.window.FFO_MONETIZATION.privacyUrl, "https://fantasyfo.com/privacy");
   assert.equal(sandbox.window.FFO_MONETIZATION.adsense.enabled, false);
   assert.equal(sandbox.window.FFO_MONETIZATION.adsense.consentManagementConfigured, false);
+  assert.match(read("privacy.html"), /Cloudflare automatically adds a Web Analytics beacon/);
 });
 
 test("static interface IDs, labels, and tab navigation targets are consistent", () => {
