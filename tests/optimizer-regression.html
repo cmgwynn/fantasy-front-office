@@ -20,7 +20,7 @@
   <h1>Optimizer Regression Checks</h1>
   <p id="summary" role="status">Loading the app runtime...</p>
   <ol id="results"></ol>
-  <iframe id="appFrame" src="../index.html?v=20261031-app-install-2&amp;resume=0" title="Optimizer test runtime"></iframe>
+  <iframe id="appFrame" src="../index.html?v=20261031-compare-search-1&amp;resume=0" title="Optimizer test runtime"></iframe>
   <script>
     async function runOptimizerFixtures() {
       const results = [];
@@ -38,7 +38,7 @@
       const savedPlannerInjuryToggle = document.getElementById("plannerHoldInjuries").checked;
       const savedTeamIndex = document.getElementById("teamSelect").value;
       const savedActiveTab = document.querySelector(".tab-page.active")?.id;
-      const savedCompareControls = Object.fromEntries(["compareSearch", "comparePosition", "comparePlayerA", "comparePlayerB"].map(id => [id, document.getElementById(id).value]));
+      const savedCompareControls = Object.fromEntries(["compareSearch", "compareSearchB", "comparePosition", "comparePlayerA", "comparePlayerB"].map(id => [id, document.getElementById(id).value]));
       const savedWeek = state.week;
       const savedWeekExplicit = state.weekSelectionExplicit;
       const savedSeason = state.season;
@@ -1231,16 +1231,34 @@
         check("Comparison search preserves both selected players when no other players match",
           document.getElementById("comparePlayerA").value === "fixture_drop_wr" &&
           document.getElementById("comparePlayerB").value === "fixture_claim_rb" &&
-          document.getElementById("comparePoolMeta").textContent.startsWith("0 matches"));
+          document.getElementById("compareSearchMetaA").textContent.includes("No matching players"));
+        const sideBOptions = document.getElementById("comparePlayerB").innerHTML;
+        document.getElementById("compareSearch").value = state.players.fixture_drop_wr.name;
+        renderPlayerComparison();
+        check("Player A searching never filters the Player B list",
+          document.getElementById("comparePlayerB").innerHTML === sideBOptions &&
+          document.querySelector("#compareMatchesA [data-compare-player='fixture_drop_wr']"));
+        document.getElementById("compareSearchB").value = state.players.fixture_claim_rb.name;
+        renderPlayerComparison();
+        check("Both sides have independent photo search results",
+          document.querySelector("#compareMatchesA img") && document.querySelector("#compareMatchesB img") &&
+          document.getElementById("compareSearch").value === state.players.fixture_drop_wr.name);
+        document.querySelector("#compareMatchesB [data-compare-player='fixture_claim_rb']").click();
+        check("Photo quick pick selects only its side and preserves the other search",
+          document.getElementById("comparePlayerB").value === "fixture_claim_rb" &&
+          document.getElementById("compareSearchB").value === "" &&
+          document.getElementById("compareSearch").value === state.players.fixture_drop_wr.name);
+        check("Selected players and comparison cards show provider portraits",
+          document.querySelector("#comparePreviewA img") && document.querySelector("#comparePreviewB img") &&
+          document.querySelectorAll("#compareResults .compare-portrait img").length === 2);
         const priorClaimName = state.players.fixture_claim_rb.name;
         state.players.fixture_claim_rb.name = '<img src=x onerror="alert(1)">';
         renderPlayerComparison(false);
         check("Comparison escapes provider player names",
-          !document.querySelector("#compareResults img") &&
+          !document.querySelector("#compareResults img[src='x']") &&
           document.getElementById("compareResults").textContent.includes("<img src=x"));
         state.players.fixture_claim_rb.name = priorClaimName;
-        document.getElementById("comparePlayerB").value = "fixture_drop_wr";
-        renderPlayerComparison(false);
+        openPlayerComparison("fixture_drop_wr", "fixture_drop_wr");
         check("Comparison handles duplicate selections explicitly",
           document.getElementById("compareResults").textContent.includes("two different players"));
         state.activeLeague = { ...claimLeague, isDemo: true };
@@ -1842,6 +1860,14 @@
         state.activeLeague = claimLeague;
 
         const connectionCopy = localStorage.getItem(CONNECTION_FIELDS_KEY);
+        const accountSyncContext = {
+          fetch: window.fetch, load: loadLeague, init: initApp, apply: applyWorkspaceSnapshot,
+          sync: syncUserAccount, tab: activateTab, leagues: state.leagues, userId: state.userId,
+          teamHtml: document.getElementById("teamSelect").innerHTML,
+          teamDispatch: document.getElementById("teamSelect").dispatchEvent,
+          leagueHtml: document.getElementById("leagueSelect").innerHTML,
+          selection: localStorage.getItem(WORKSPACE_SELECTION_KEY)
+        };
         const originalUrl = location.href;
         const providerCopy = document.getElementById("providerSelect").value;
         const accountCopy = document.getElementById("usernameInput").value;
@@ -1866,11 +1892,80 @@
           check("Provider-specific account fields do not overwrite each other",
             document.getElementById("usernameInput").value === "fixture-account" &&
             readConnectionFields().accounts.espn === "123, 456");
+          let loadedLeagueIndex = -1;
+          const accountSeason = "2025";
+          const accountLeague = { provider: "sleeper", leagueId: "saved-league", season: accountSeason };
+          window.fetch = async url => {
+            if (url.includes("/user/fixture-account")) return new Response(JSON.stringify({ user_id: "fixture-owner" }));
+            if (url.endsWith(`/fixture-owner/leagues/nfl/${accountSeason}`)) return new Response(JSON.stringify([
+              { name: "Other league", league_id: "other-league", season: accountSeason },
+              { name: "Saved league", league_id: "saved-league", season: accountSeason }
+            ]));
+            throw new Error(`Unexpected account request: ${url}`);
+          };
+          loadLeague = async index => { loadedLeagueIndex = index; state.activeLeague = state.leagues[index]; };
+          check("Reload account sync retrieves all leagues for the saved season and selects the exact league",
+            await syncUserAccount({ leagueKey: getLeagueRecordsKey(accountLeague), season: accountSeason }) &&
+            state.leagues.length === 2 && state.userId === "fixture-owner" &&
+            loadedLeagueIndex === 1 && document.getElementById("leagueSelect").value === "1");
+          document.getElementById("providerSelect").value = "espn";
+          document.getElementById("usernameInput").value = "123, 456";
+          const originalEspnFetch = fetchEspnLeague;
+          try {
+            fetchEspnLeague = async (leagueId, season) => ({
+              seasonId: season, settings: { name: `League ${leagueId}` }, teams: []
+            });
+            check("ESPN reload sync restores all saved league IDs without switching to the first",
+              await syncUserAccount({ leagueKey: getLeagueRecordsKey({ provider: "espn", leagueId: "456", season: accountSeason }), season: accountSeason }) &&
+              state.leagues.length === 2 && loadedLeagueIndex === 1);
+          } finally { fetchEspnLeague = originalEspnFetch; }
+          document.getElementById("providerSelect").value = "sleeper";
+          document.getElementById("usernameInput").value = "fixture-account";
+          localStorage.removeItem(WORKSPACE_SELECTION_KEY);
+          let resumeAccount = null, resumedTab = "", restoredCopies = 0;
+          const reloadFixture = {
+            snapshot: { provider: "sleeper", activeLeague: accountLeague, managers: [{ rosterId: "chosen-roster" }], week: 4 },
+            ui: { teamIndex: 0, tab: "tab-compare" }
+          };
+          applyWorkspaceSnapshot = backup => {
+            restoredCopies++;
+            state.activeLeague = backup.snapshot.activeLeague;
+            state.managers = backup.snapshot.managers;
+            state.week = backup.snapshot.week;
+            document.getElementById("teamSelect").innerHTML = '<option value="0">Chosen roster</option>';
+          };
+          initApp = async () => {};
+          activateTab = tab => { resumedTab = tab; };
+          document.getElementById("teamSelect").dispatchEvent = () => true;
+          syncUserAccount = async options => { resumeAccount = options; return true; };
+          await resumeReloadWorkspace(structuredClone(reloadFixture));
+          check("Page reload automatically syncs the saved account and retains roster, week and destination",
+            resumeAccount.leagueKey === getLeagueRecordsKey(accountLeague) && resumeAccount.season === accountSeason &&
+            document.getElementById("teamSelect").value === "0" && state.week === 4 && resumedTab === "tab-compare");
+          syncUserAccount = async () => { throw new Error("Account offline"); };
+          await resumeReloadWorkspace(structuredClone(reloadFixture));
+          check("Failed automatic account sync retains the saved view and explicitly warns",
+            restoredCopies === 3 && !resumingReloadWorkspace &&
+            document.getElementById("workspaceSnapshotBanner").textContent.includes("Account offline"));
           document.getElementById("usernameInput").value = "";
           rememberConnectionFields();
           restoreConnectionInput();
           check("Intentionally clearing a saved account field remains cleared", document.getElementById("usernameInput").value === "");
         } finally {
+          window.fetch = accountSyncContext.fetch;
+          loadLeague = accountSyncContext.load;
+          initApp = accountSyncContext.init;
+          applyWorkspaceSnapshot = accountSyncContext.apply;
+          syncUserAccount = accountSyncContext.sync;
+          activateTab = accountSyncContext.tab;
+          state.leagues = accountSyncContext.leagues;
+          state.userId = accountSyncContext.userId;
+          document.getElementById("teamSelect").innerHTML = accountSyncContext.teamHtml;
+          document.getElementById("teamSelect").dispatchEvent = accountSyncContext.teamDispatch;
+          document.getElementById("leagueSelect").innerHTML = accountSyncContext.leagueHtml;
+          if (accountSyncContext.selection === null) localStorage.removeItem(WORKSPACE_SELECTION_KEY);
+          else localStorage.setItem(WORKSPACE_SELECTION_KEY, accountSyncContext.selection);
+          state.activeLeague = claimLeague;
           history.replaceState(null, "", originalUrl);
           if (connectionCopy === null) localStorage.removeItem(CONNECTION_FIELDS_KEY);
           else localStorage.setItem(CONNECTION_FIELDS_KEY, connectionCopy);

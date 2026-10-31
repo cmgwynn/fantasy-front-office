@@ -10,7 +10,7 @@
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
   <link rel="icon" href="icons/app-icon.svg" type="image/svg+xml" />
   <title>Fantasy Front Office</title>
-  <link rel="stylesheet" href="styles.css?v=20261031-app-install-2" />
+  <link rel="stylesheet" href="styles.css?v=20261031-compare-search-1" />
 </head>
 <body>
 
@@ -563,12 +563,8 @@
         <h2>Who should I start?</h2>
         <p class="comparison-note">Compare two players using the active league's scoring and selected roster. No transactions or lineup changes are submitted.</p>
       </div>
-      <section id="startSitAdvice" class="comparison-card" aria-label="Weekly start sit guidance" aria-live="polite" hidden></section>
       <div class="comparison-controls card-banner">
-        <label for="compareSearch">Find players by name or NFL team
-          <input id="compareSearch" type="search" placeholder="Search the loaded player pool..." />
-        </label>
-        <label for="comparePosition">Position
+        <label for="comparePosition" class="compare-position-filter">Position
           <select id="comparePosition">
             <option value="ALL">All positions</option><option value="QB">QB</option>
             <option value="RB">RB</option><option value="WR">WR</option>
@@ -576,13 +572,22 @@
           </select>
         </label>
         <p id="comparePoolMeta" class="comparison-note"></p>
-        <label for="comparePlayerA">Player A
-          <select id="comparePlayerA"></select>
-        </label>
-        <label for="comparePlayerB">Player B
-          <select id="comparePlayerB"></select>
-        </label>
+        <section class="compare-picker" aria-label="Choose Player A">
+          <div id="comparePreviewA" class="compare-player-preview"></div>
+          <label for="compareSearch">Find Player A<input id="compareSearch" type="search" placeholder="Player name or team" autocomplete="off" aria-controls="compareMatchesA" /></label>
+          <div id="compareMatchesA" class="compare-search-matches" role="group" aria-label="Player A search results"></div>
+          <label for="comparePlayerA">Player A<select id="comparePlayerA"></select></label>
+          <p id="compareSearchMetaA" class="comparison-note" role="status"></p>
+        </section>
+        <section class="compare-picker" aria-label="Choose Player B">
+          <div id="comparePreviewB" class="compare-player-preview"></div>
+          <label for="compareSearchB">Find Player B<input id="compareSearchB" type="search" placeholder="Player name or team" autocomplete="off" aria-controls="compareMatchesB" /></label>
+          <div id="compareMatchesB" class="compare-search-matches" role="group" aria-label="Player B search results"></div>
+          <label for="comparePlayerB">Player B<select id="comparePlayerB"></select></label>
+          <p id="compareSearchMetaB" class="comparison-note" role="status"></p>
+        </section>
       </div>
+      <section id="startSitAdvice" class="comparison-card" aria-label="Weekly start sit guidance" aria-live="polite" hidden></section>
       <div id="compareResults" aria-live="polite"></div>
     </div>
 
@@ -1021,14 +1026,14 @@
 </footer>
 
 <p id="appInstallStatus" class="app-install-status" role="status"></p>
-<script src="pwa.js?v=20261031-app-install-2"></script>
-<script src="monetization-config.js?v=20261031-app-install-2"></script>
-<script src="data-fetch.js?v=20261031-app-install-2"></script>
-<script src="demo-league.js?v=20261031-app-install-2"></script>
-<script src="league-records.js?v=20261031-app-install-2"></script>
-<script src="workspace-backup.js?v=20261031-app-install-2"></script>
-<script src="playoff-simulator.js?v=20261031-app-install-2"></script>
-<script src="weekly-matchups.js?v=20261031-app-install-2"></script>
-<script src="app.js?v=20261031-app-install-2"></script>
+<script src="pwa.js?v=20261031-compare-search-1"></script>
+<script src="monetization-config.js?v=20261031-compare-search-1"></script>
+<script src="data-fetch.js?v=20261031-compare-search-1"></script>
+<script src="demo-league.js?v=20261031-compare-search-1"></script>
+<script src="league-records.js?v=20261031-compare-search-1"></script>
+<script src="workspace-backup.js?v=20261031-compare-search-1"></script>
+<script src="playoff-simulator.js?v=20261031-compare-search-1"></script>
+<script src="weekly-matchups.js?v=20261031-compare-search-1"></script>
+<script src="app.js?v=20261031-compare-search-1"></script>
 </body>
 </html>

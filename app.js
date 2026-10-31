@@ -1681,12 +1681,19 @@ async function fetchWeeklyProjections() {
   recomputeDynamicDvpRanks();
 }
 
-async function syncUserAccount() {
+async function loadSyncedAccountLeague(leagueKey = "") {
+  const index = leagueKey ? state.leagues.findIndex(league => getLeagueRecordsKey(league) === leagueKey) : 0;
+  if (index < 0) throw new Error("The saved league is no longer in this account's league list. Sync the account to choose an available league.");
+  document.getElementById("leagueSelect").value = String(index);
+  await loadLeague(index);
+}
+
+async function syncUserAccount({ leagueKey = "", season = state.season } = {}) {
   rememberConnectionFields();
   const provider = document.getElementById("providerSelect")?.value || "";
   state.provider = provider;
   if (!provider) { setStatus("Choose a provider first."); return; }
-  if (provider === "espn") return syncEspnAccount();
+  if (provider === "espn") return syncEspnAccount({ leagueKey, season });
   if (provider === "yahoo") { setStatus("Choose a Yahoo roster CSV or JSON file to import. Direct sign-in needs a secure OAuth backend."); return; }
   const u = document.getElementById("usernameInput")?.value.trim();
   if (!u) return;
@@ -1695,7 +1702,8 @@ async function syncUserAccount() {
     const uObj = await fetchJson(`https://api.sleeper.app/v1/user/${encodeURIComponent(u)}`);
     if (!uObj || !uObj.user_id) { markDataSource("account", new Error("Account not found.")); setStatus("Account not found."); return; }
     state.userId = uObj.user_id;
-    const lgs = await fetchJson(`https://api.sleeper.app/v1/user/${state.userId}/leagues/nfl/${state.season}`);
+    const lgs = await fetchJson(`https://api.sleeper.app/v1/user/${state.userId}/leagues/nfl/${season}`);
+    if (!Array.isArray(lgs)) throw new Error("The provider returned an invalid league list.");
     markDataSource("account");
     state.leagues = (lgs || []).map(o => {
       const st = o.settings || {};
@@ -1703,7 +1711,7 @@ async function syncUserAccount() {
       const pTeams = st.playoff_teams || (totTeams <= 8 ? 4 : 6);
       const pStart = st.playoff_week_start > 0 ? st.playoff_week_start : (pTeams <= 4 ? 16 : 15);
       return {
-        provider: "sleeper", name: o.name, leagueId: o.league_id, season: o.season || state.season,
+        provider: "sleeper", name: o.name, leagueId: o.league_id, season: o.season || season,
         totalTeams: totTeams, leagueType: st.type || 0, draftRounds: st.draft_rounds || 4,
         playoffTeams: pTeams, playoffWeekStart: pStart, playoffSeedType: st.playoff_seed_type || 0,
         playoffRoundType: st.playoff_round_type || 0, rosterPositions: o.roster_positions || [], scoringSettings: o.scoring_settings || {}
@@ -1715,9 +1723,10 @@ async function syncUserAccount() {
       const opt = document.createElement("option"); opt.value = i; opt.textContent = l.name;
       sel.appendChild(opt);
     });
-    if (state.leagues.length) await loadLeague(0);
-    else setStatus(`No ${state.season} leagues found for ${u}.`);
-  } catch (error) { markDataSource("account", error); setStatus("Could not connect to this provider."); }
+    if (!state.leagues.length) throw new Error(`No ${season} leagues found for ${u}.`);
+    await loadSyncedAccountLeague(leagueKey);
+    return true;
+  } catch (error) { markDataSource("account", error); setStatus(`Could not connect to this provider: ${error.message}`); return false; }
 }
 
 function normalizeYahooPosition(position) {
@@ -1934,7 +1943,7 @@ async function fetchEspnLeague(leagueId, season, views = ["mSettings", "mTeam", 
   }
 }
 
-async function syncEspnAccount() {
+async function syncEspnAccount({ leagueKey = "", season = state.season } = {}) {
   const input = document.getElementById("usernameInput");
   const leagueIds = (input?.value || "").split(/[\s,;]+/).map(value => value.trim()).filter(Boolean);
   if (!leagueIds.length) { setStatus("Enter one or more ESPN league IDs."); return; }
@@ -1942,13 +1951,13 @@ async function syncEspnAccount() {
   setStatus(`Connecting to ${leagueIds.length} ESPN league${leagueIds.length === 1 ? "" : "s"}...`);
   try {
     const leagues = await Promise.all(leagueIds.map(async leagueId => {
-      const data = await fetchEspnLeague(leagueId, state.season);
+      const data = await fetchEspnLeague(leagueId, season);
       const settings = data.settings || {};
       const teams = data.teams || [];
       const teamCount = teams.length || settings.size || 12;
       const keeper = Boolean(settings.isKeeper);
       return {
-        provider: "espn", leagueId: String(leagueId), season: String(data.seasonId || state.season),
+        provider: "espn", leagueId: String(leagueId), season: String(data.seasonId || season),
         name: settings.name || `ESPN League ${leagueId}`, totalTeams: teamCount,
         leagueType: settings.isDynasty ? 2 : (keeper ? 1 : 0),
         draftRounds: settings.draftSettings?.numRounds || 15,
@@ -1969,10 +1978,12 @@ async function syncEspnAccount() {
       select.appendChild(option);
     });
     markDataSource("account");
-    if (leagues.length) await loadLeague(0);
+    await loadSyncedAccountLeague(leagueKey);
+    return true;
   } catch (error) {
     markDataSource("account", error);
     setStatus(error.message || "Could not connect to ESPN Fantasy.");
+    return false;
   }
 }
 
@@ -7954,6 +7965,7 @@ function getComparisonRosterScenario(playerA, playerB, manager) {
 
 function openPlayerComparison(playerAId, playerBId) {
   document.getElementById("compareSearch").value = "";
+  document.getElementById("compareSearchB").value = "";
   document.getElementById("comparePosition").value = "ALL";
   renderPlayerComparison();
   [playerAId, playerBId].forEach((id, index) => {
@@ -7970,6 +7982,34 @@ function openPlayerComparison(playerAId, playerBId) {
   renderPlayerComparison(false);
 }
 
+function renderComparisonPortrait(player) {
+  if (!player) return `<span class="compare-portrait-placeholder" aria-hidden="true">?</span>`;
+  const initials = player.name.split(/\s+/).slice(0, 2).map(part => part[0]).join("");
+  return `<span class="compare-portrait"><span aria-hidden="true">${draftEscapeHtml(initials)}</span><img src="${draftEscapeHtml(avatarUrl(player))}" alt="${draftEscapeHtml(player.name)}" loading="lazy" onerror="this.remove()" /></span>`;
+}
+
+function renderComparisonPicker(side, pool, refreshChoices) {
+  const select = document.getElementById(`comparePlayer${side}`);
+  const search = document.getElementById(side === "A" ? "compareSearch" : "compareSearchB");
+  const query = normalizeDraftPlayerName(search.value);
+  const position = document.getElementById("comparePosition").value;
+  const matches = pool.filter(player => (position === "ALL" || player.position === position) &&
+    normalizeDraftPlayerName(`${player.name} ${player.team}`).includes(query))
+    .sort((a, b) => Number(b.baseValue || 0) - Number(a.baseValue || 0) || a.name.localeCompare(b.name));
+  const selected = pool.find(player => player.id === select.value);
+  if (refreshChoices) {
+    const choices = matches.slice(0, 100);
+    const options = selected && !choices.some(player => player.id === selected.id) ? [selected, ...choices] : choices;
+    select.innerHTML = `<option value="">Choose a player</option>` + options.map(player =>
+      `<option value="${draftEscapeHtml(player.id)}">${draftEscapeHtml(`${player.name} · ${player.position} · ${player.team}`)}</option>`).join("");
+    select.value = selected?.id || "";
+  }
+  document.getElementById(`comparePreview${side}`).innerHTML = `${renderComparisonPortrait(selected)}<div><span>Player ${side}</span><strong>${draftEscapeHtml(selected?.name || "Choose a player")}</strong><small>${selected ? draftEscapeHtml(`${selected.position} · ${selected.team}`) : "Search below or browse the list"}</small></div>`;
+  const results = document.getElementById(`compareMatches${side}`);
+  results.innerHTML = query ? matches.slice(0, 6).map(player => `<button type="button" class="compare-search-option" data-compare-side="${side}" data-compare-player="${draftEscapeHtml(player.id)}">${renderComparisonPortrait(player)}<span><strong>${draftEscapeHtml(player.name)}</strong><small>${draftEscapeHtml(`${player.position} · ${player.team}`)}</small></span></button>`).join("") : "";
+  document.getElementById(`compareSearchMeta${side}`).textContent = query ? matches.length ? `${matches.length} matches · ${Math.min(matches.length, 6)} quick picks; more in the list.` : "No matching players. Try another name or position." : "";
+}
+
 function renderPlayerComparison(refreshChoices = true) {
   renderStartSitAdvice();
   const selectA = document.getElementById("comparePlayerA");
@@ -7980,30 +8020,14 @@ function renderPlayerComparison(refreshChoices = true) {
     ["QB", "RB", "WR", "TE", "K", "DEF"].includes(player.position) &&
     Boolean(player.isDemo) === Boolean(state.activeLeague?.isDemo) && player.isCurrentNfl);
   if (refreshChoices) {
-    const query = document.getElementById("compareSearch").value.trim().toLowerCase();
-    const position = document.getElementById("comparePosition").value;
-    const matches = pool.filter(player => (position === "ALL" || player.position === position) &&
-      `${player.name} ${player.team}`.toLowerCase().includes(query))
-      .sort((a, b) => Number(b.baseValue || 0) - Number(a.baseValue || 0) || a.name.localeCompare(b.name));
-    const choices = matches.slice(0, 100);
-    // Keep an existing selection available while searching for its counterpart.
-    const pinned = [selectA.value, selectB.value].map(id => pool.find(player => player.id === id))
-      .filter(player => player && !choices.some(choice => choice.id === player.id));
-    const options = [...new Map([...pinned, ...choices].map(player => [player.id, player])).values()];
-    const oldA = selectA.value, oldB = selectB.value;
-    const html = `<option value="">Choose a player</option>` + options.map(player =>
-      `<option value="${draftEscapeHtml(player.id)}">${draftEscapeHtml(`${player.name} · ${player.position} · ${player.team}`)}</option>`).join("");
-    selectA.innerHTML = html;
-    selectB.innerHTML = html;
-    selectA.value = options.some(player => player.id === oldA) ? oldA : "";
-    selectB.value = options.some(player => player.id === oldB) ? oldB : "";
-    document.getElementById("comparePoolMeta").textContent = `${matches.length} matches; showing ${choices.length}${pinned.length ? " plus previous selections" : ""}. Search narrows choices without clearing selected players.${state.activeLeague?.isDemo ? " Fictional demo players only." : ""}`;
+    document.getElementById("comparePoolMeta").textContent = state.activeLeague?.isDemo ? "Fictional demo players only." : "";
   }
+  ["A", "B"].forEach(side => renderComparisonPicker(side, pool, refreshChoices));
   const playerA = pool.find(player => player.id === selectA.value);
   const playerB = pool.find(player => player.id === selectB.value);
   renderStartSitAdvice();
   if (!playerA || !playerB || playerA.id === playerB.id) {
-    results.innerHTML = `<p class="draft-empty">${playerA && playerB ? "Choose two different players to compare." : "Choose Player A and Player B above. Search by name or team to find players outside the first 100."}</p>`;
+    results.innerHTML = `<p class="draft-empty">${playerA && playerB ? "Choose two different players to compare." : "Choose a player on each side to compare."}</p>`;
     return;
   }
   const manager = state.managers[parseInt(document.getElementById("teamSelect")?.value || "0", 10)];
@@ -8011,7 +8035,7 @@ function renderPlayerComparison(refreshChoices = true) {
   const numeric = value => typeof value === "number" && Number.isFinite(value) ? value : null;
   const format = value => numeric(value) === null ? "Unavailable" : value.toFixed(1);
   const ownership = player => state.managers.filter(roster => roster.players?.includes(player.id)).map(roster => roster.teamName).join(", ") || (state.activeLeague ? "Unrostered in loaded league" : "Ownership unavailable");
-  const cards = [playerA, playerB].map((player, index) => `<article class="comparison-card"><div class="draft-eyebrow">PLAYER ${index ? "B" : "A"}</div><h3>${escape(player.name)}</h3><p class="comparison-note">${escape(player.position)} · ${escape(player.team)} · ${escape(player.injuryStatus || "Health unknown")}</p><p class="comparison-note">${escape(ownership(player))}</p><p class="comparison-note">${player.byeWeek ? `Bye: Week ${player.byeWeek}${player.byeWeek === state.week ? " (this week)" : ""}` : "Bye: unavailable / not applicable"} · ${escape(getPlayerGameDayStatus(player).label)}</p></article>`).join("");
+  const cards = [playerA, playerB].map((player, index) => `<article class="comparison-card"><div class="compare-player-preview">${renderComparisonPortrait(player)}<div><span>PLAYER ${index ? "B" : "A"}</span><h3>${escape(player.name)}</h3></div></div><p class="comparison-note">${escape(player.position)} · ${escape(player.team)} · ${escape(player.injuryStatus || "Health unknown")}</p><p class="comparison-note">${escape(ownership(player))}</p><p class="comparison-note">${player.byeWeek ? `Bye: Week ${player.byeWeek}${player.byeWeek === state.week ? " (this week)" : ""}` : "Bye: unavailable / not applicable"} · ${escape(getPlayerGameDayStatus(player).label)}</p></article>`).join("");
   const rows = [
     [`Week ${state.week} projected points`, playerA.projectedPoints, playerB.projectedPoints],
     ["Season PPG (may be estimated)", playerA.seasonPpg, playerB.seasonPpg],
@@ -8064,7 +8088,17 @@ function bindControlEvents() {
   document.getElementById("careerHistoryPanel")?.addEventListener("toggle", event => {
     if (event.currentTarget.open) loadCareerHistory();
   });
-  ["compareSearch", "comparePosition"].forEach(id => document.getElementById(id)?.addEventListener(id === "compareSearch" ? "input" : "change", () => renderPlayerComparison()));
+  ["compareSearch", "compareSearchB", "comparePosition"].forEach(id => document.getElementById(id)?.addEventListener(id === "comparePosition" ? "change" : "input", () => renderPlayerComparison()));
+  document.querySelector("#tab-compare .comparison-controls")?.addEventListener("click", event => {
+    const button = event.target.closest("[data-compare-player]");
+    if (!button) return;
+    const select = document.getElementById(`comparePlayer${button.dataset.compareSide}`);
+    if (!select || ![...select.options].some(option => option.value === button.dataset.comparePlayer)) { setStatus("This player is no longer available. Search again."); return; }
+    select.value = button.dataset.comparePlayer;
+    document.getElementById(button.dataset.compareSide === "A" ? "compareSearch" : "compareSearchB").value = "";
+    renderPlayerComparison();
+    select.focus();
+  });
   ["comparePlayerA", "comparePlayerB"].forEach(id => document.getElementById(id)?.addEventListener("change", () => renderPlayerComparison(false)));
   ["plannerWeeks", "plannerHoldInjuries", "plannerAdd", "plannerDrop"].forEach(id =>
     document.getElementById(id)?.addEventListener("change", () => renderRosterPlanner(false)));
@@ -8205,7 +8239,7 @@ function bindControlEvents() {
     if (button) queuePortfolioFaabClaim(button);
   });
 
-  document.getElementById("syncBtn")?.addEventListener("click", syncUserAccount);
+  document.getElementById("syncBtn")?.addEventListener("click", () => syncUserAccount());
   document.getElementById("mobileTabSelect")?.addEventListener("change", e => {
     document.querySelector(`.nav-btn[data-tab="${e.target.value}"]`)?.click();
   });
@@ -8537,13 +8571,22 @@ async function resumeReloadWorkspace(backup) {
     if (index >= 0) backup.ui.teamIndex = index;
     if (selection && /^tab-[a-z-]+$/.test(selection.tab) && document.getElementById(selection.tab)?.classList.contains("tab-page")) backup.ui.tab = selection.tab;
     applyWorkspaceSnapshot(structuredClone(backup));
-    if (backup.snapshot.provider !== "yahoo") {
+    if (backup.snapshot.provider !== "yahoo" && !backup.snapshot.activeLeague.isDemo) {
       try {
         await initApp(true, false, true);
-        if (state.activeLeague.provider === "espn") {
-          state.activeLeague.espnData = await fetchEspnLeague(state.activeLeague.leagueId, state.activeLeague.season);
+        const account = document.getElementById("usernameInput").value.trim();
+        if (account) {
+          const synced = await syncUserAccount({
+            leagueKey: getLeagueRecordsKey(backup.snapshot.activeLeague),
+            season: backup.snapshot.activeLeague.season
+          });
+          if (!synced) throw new Error(state.dataErrors.account || "The saved account could not be synced.");
+        } else {
+          if (state.activeLeague.provider === "espn") {
+            state.activeLeague.espnData = await fetchEspnLeague(state.activeLeague.leagueId, state.activeLeague.season);
+          }
+          await loadLeague(0);
         }
-        await loadLeague(0);
         const selectedRoster = String(backup.snapshot.managers[backup.ui.teamIndex].rosterId);
         const teamIndex = state.managers.findIndex(manager => String(manager.rosterId) === selectedRoster);
         document.getElementById("teamSelect").value = String(teamIndex >= 0 ? teamIndex : 0);

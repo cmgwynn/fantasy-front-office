@@ -24,6 +24,24 @@ a league to use roster-based features.
 
 ## Current release
 
+### Independent player comparison search
+
+Reload also resyncs the saved Sleeper username or ESPN league IDs, restoring the
+full league selector and selecting the saved league by provider/season/ID rather
+than taking the first result. Roster, selected week and destination are retained.
+Failed account syncing restores the saved snapshot with an explicit warning.
+Yahoo/demo snapshots remain imports, not automatic live account connections.
+
+Compare Players presents a photo/name preview and separate name/team search for
+each player. Each side has up to six clickable photo quick picks plus a native
+select for browsing up to 100 matches. Typing does not change either selection;
+choosing a quick pick clears only that side's query. Position filtering remains
+shared. Existing Compare links clear both queries and preload the exact players.
+Selection and result cards reuse provider player photos, with initials when
+images fail. Input normalization supports punctuation/accents consistently with
+existing draft searches. Selection controls precede advice, and all existing
+scoring, matchup, lineup eligibility, and source limitations are unchanged.
+
 ### Installable web app
 
 `/install` provides Safari/iOS, Android, and desktop installation instructions.

@@ -451,6 +451,24 @@ canvas.chart-canvas { width:100%; height:300px; background:var(--bg-card); borde
 .comparison-controls label { display:flex; flex-direction:column; gap:7px; min-width:0; color:var(--text-muted); font-size:12px; }
 .comparison-controls input, .comparison-controls select { width:100%; min-width:0; }
 .comparison-controls #comparePoolMeta { grid-column:1 / -1; }
+.compare-picker { min-width:0; padding:12px; border:1px solid var(--border); border-radius:10px; background:var(--bg-panel); display:flex; flex-direction:column; gap:10px; }
+.compare-picker:last-child { border-color:rgba(145,201,255,0.3); }
+.compare-position-filter { grid-column:1 / -1; max-width:200px; }
+.compare-player-preview { display:flex; align-items:center; gap:12px; min-width:0; }
+.compare-player-preview > div { display:flex; flex-direction:column; gap:4px; min-width:0; }
+.compare-player-preview strong { overflow-wrap:anywhere; font-size:16px; }
+.compare-player-preview span:not(.compare-portrait):not(.compare-portrait-placeholder), .compare-player-preview small { color:var(--text-muted); font-size:12px; }
+.compare-portrait, .compare-portrait-placeholder { position:relative; display:inline-flex; align-items:center; justify-content:center; width:60px; height:60px; flex:0 0 60px; border-radius:12px; background:var(--accent-bg); overflow:hidden; color:var(--accent); font-weight:800; }
+.compare-portrait img { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; }
+.compare-search-matches:empty { display:none; }
+.compare-search-matches { display:flex; flex-direction:column; gap:4px; }
+.compare-search-option { display:flex; align-items:center; gap:10px; width:100%; min-width:0; text-align:left; background:var(--bg-card); color:var(--text-main); padding:6px 8px; }
+.compare-search-option:hover { background:var(--accent-bg); }
+.compare-search-option .compare-portrait { width:32px; height:32px; flex-basis:32px; border-radius:6px; }
+.compare-search-option > span:last-child { min-width:0; display:flex; flex-direction:column; gap:3px; }
+.compare-search-option strong { font-size:12px; overflow-wrap:anywhere; }
+.compare-search-option small { font-size:11px; color:var(--text-muted); }
+.compare-picker .comparison-note:empty, #comparePoolMeta:empty { display:none; }
 .comparison-note { color:var(--text-muted); font-size:12px; line-height:1.6; overflow-wrap:anywhere; }
 #compareResults { display:flex; flex-direction:column; gap:14px; }
 #teamGradeResults { display:flex; flex-direction:column; gap:14px; }
