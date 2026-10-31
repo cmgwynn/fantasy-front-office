@@ -20,7 +20,7 @@
   <h1>Optimizer Regression Checks</h1>
   <p id="summary" role="status">Loading the app runtime...</p>
   <ol id="results"></ol>
-  <iframe id="appFrame" src="../index.html?v=20261031-visual-workspace-1&amp;resume=0" title="Optimizer test runtime"></iframe>
+  <iframe id="appFrame" src="../index.html?v=20261031-current-week-1&amp;resume=0" title="Optimizer test runtime"></iframe>
   <script>
     async function runOptimizerFixtures() {
       const results = [];
@@ -43,6 +43,7 @@
       const savedWeekExplicit = state.weekSelectionExplicit;
       const savedSeason = state.season;
       const savedCurrentNflWeek = state.currentNflWeek;
+      const savedCurrentNflSelection = state.currentNflSelection;
       const savedSeasonFreshness = state.dataFreshness.season;
       const savedSeasonError = state.dataErrors.season;
       const savedGameDayByTeam = state.gameDayByTeam;
@@ -261,6 +262,23 @@
         await syncNflSeasonSelection();
         check("NFL week refresh preserves an explicit selected week while updating current week",
           state.week === 5 && state.currentNflWeek === 8 && document.getElementById("weekSelect").value === "5");
+        const weekLabelLeague = state.activeLeague;
+        try {
+          state.activeLeague = { ...state.activeLeague, season: "2026" };
+          renderCurrentWeekLabel();
+          check("Header dropdown marks the verified current week without changing the selected week",
+            document.querySelector('#weekSelect option[value="8"]').textContent === "Week 8 · Current" &&
+            document.querySelector('#weekSelect option[value="5"]').textContent === "Week 5" &&
+            document.getElementById("weekSelect").value === "5" &&
+            [...document.getElementById("weekSelect").options].filter(option => option.textContent.includes("Current")).length === 1);
+          state.activeLeague.season = "2025";
+          renderCurrentWeekLabel();
+          check("Historical seasons do not label the live NFL week as current",
+            !document.getElementById("weekSelect").textContent.includes("Current"));
+        } finally {
+          state.activeLeague = weekLabelLeague;
+          renderCurrentWeekLabel();
+        }
         check("Week links accept only complete integers from 1 through 18",
           parseNflWeek("8") === 8 && parseNflWeek("18") === 18 &&
           ["", "0", "19", "-1", "8junk", "1.5", null, "Infinity"].every(value => parseNflWeek(value) === null));
@@ -272,6 +290,8 @@
         await syncNflSeasonSelection();
         check("Invalid NFL week status remains visible and does not replace selected data",
           state.week === 8 && state.dataErrors.season?.includes("season/week feed is invalid"));
+        check("Failed current-week sync removes the current marker instead of guessing",
+          !document.getElementById("weekSelect").textContent.includes("Current"));
         state.provider = savedStateProvider;
         window.fetch = savedFetch;
         const filterFixture = [
@@ -2231,6 +2251,8 @@
         state.weekSelectionExplicit = savedWeekExplicit;
         state.season = savedSeason;
         state.currentNflWeek = savedCurrentNflWeek;
+        state.currentNflSelection = savedCurrentNflSelection;
+        renderCurrentWeekLabel();
         document.getElementById("weekSelect").value = String(savedWeek);
         state.dataFreshness.season = savedSeasonFreshness;
         if (savedSeasonError === undefined) delete state.dataErrors.season;

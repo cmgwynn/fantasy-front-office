@@ -24,6 +24,11 @@ a league to use roster-based features.
 
 ## Current release
 
+The header week dropdown marks the verified live NFL week as "Week 8 · Current"
+(using the feed's actual week). It adds no button or header row and preserves
+the selected planning week. Historical league seasons and failed NFL-state syncs
+show plain week labels rather than a guessed current-week marker.
+
 Schedule & Coverage uses matchup cards with core-player portraits, per-week
 optimized team projections and projected edges when full coverage is available.
 Projection feeds are keyed by NFL season/week, never borrowed from the selected

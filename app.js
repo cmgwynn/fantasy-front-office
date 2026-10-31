@@ -1643,6 +1643,17 @@ function parseNflWeek(value) {
   return /^\d{1,2}$/.test(text) && Number.isInteger(week) && week >= 1 && week <= 18 ? week : null;
 }
 
+function renderCurrentWeekLabel() {
+  const select = document.getElementById("weekSelect");
+  if (!select) return;
+  const current = state.currentNflSelection;
+  const season = String(state.activeLeague?.season || state.season);
+  for (const option of select.options) {
+    const isCurrent = current && current.season === season && Number(option.value) === current.week;
+    option.textContent = `Week ${option.value}${isCurrent ? " · Current" : ""}`;
+  }
+}
+
 async function syncNflSeasonSelection() {
   try {
     const nfl = await fetchJson("https://api.sleeper.app/v1/state/nfl");
@@ -1652,13 +1663,16 @@ async function syncNflSeasonSelection() {
     }
     state.season = String(nfl.season);
     state.currentNflWeek = currentWeek;
+    state.currentNflSelection = { season: String(nfl.season), week: currentWeek };
     if (!state.weekSelectionExplicit) state.week = currentWeek;
     const select = document.getElementById("weekSelect");
     if (select) select.value = String(state.week);
     markDataSource("season");
   } catch (error) {
+    state.currentNflSelection = null;
     markDataSource("season", error);
   }
+  renderCurrentWeekLabel();
 }
 
 async function initApp(skipUrlAccountSync = false, forceRefreshSources = false, forcePlayerRefresh = false) {
@@ -8470,6 +8484,7 @@ function renderPlayerComparison(refreshChoices = true) {
 }
 
 function renderAllViews(teamIdx) {
+  renderCurrentWeekLabel();
   renderDecisionDataStatus();
   renderRosterTab(teamIdx); renderPowerTab();
   renderTradeBuilderSide(true); renderTradeBuilderSide(false);
