@@ -5,6 +5,11 @@ const leagueScheduleCache = new Map();
 const scheduleProjectionCache = new Map();
 const leagueScheduleLoads = new Map();
 let leagueScheduleContext = "";
+let lastScheduleView = null;
+
+function getScheduleShareView() {
+  return lastScheduleView && state.activeLeague && lastScheduleView.context === getLeagueRecordsKey(state.activeLeague) ? lastScheduleView : null;
+}
 
 function normalizeLeagueSchedule(league, data, week, managers = state.managers) {
   const known = new Set(managers.map(manager => String(manager.rosterId)));
@@ -277,6 +282,7 @@ async function loadLeagueSchedule(force = false) {
     status.textContent = `${report.source}${report.issues.length ? ` · ${report.issues.join(" ")}` : ""}${projectionError ? ` · ${projectionError}` : ""}`;
     const methodOpen = results.querySelector("details.gm-secondary")?.open ? " open" : "";
     results.innerHTML = games.length ? `<div class="league-matchup-cards sched-list">${ordered.map(game => renderScheduleGame(game, week, projections, myId)).join("")}</div><details class="gm-secondary"${methodOpen}><summary>Projection method</summary><p class="comparison-note">Week ${week} optimized active-roster projections, not your submitted lineup. Win odds are Fantasy Front Office's own model, so they can differ from Sleeper's in-app odds. Uses that week's Sleeper projections and supported scoring counters; ESPN totals use the reception preset, not all custom bonuses. Unknown schedules, missing player projections or unfilled starter slots withhold the total. Current Out/Doubtful players are excluded only in the selected current week; IR/PUP/Suspended remain excluded without a verified return date. No future recovery forecast is made.</p></details>` : `<p class="draft-empty">No published matchup available${mine ? " for your selected team" : ""}. Future playoff opponents may not be assigned yet.</p>`;
+    lastScheduleView = { context, week, games: ordered, projections };
     results.dataset.context = context;
     done();
   } catch (error) {

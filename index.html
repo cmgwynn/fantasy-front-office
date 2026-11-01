@@ -10,7 +10,7 @@
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
   <link rel="icon" href="icons/app-icon.svg" type="image/svg+xml" />
   <title>Fantasy Front Office</title>
-  <link rel="stylesheet" href="styles.css?v=20261101-polish-1" />
+  <link rel="stylesheet" href="styles.css?v=20261101-share-1" />
 </head>
 <body>
 
@@ -191,6 +191,7 @@
       <section class="comparison-card">
         <div class="sched-head">
           <h3>League schedule</h3>
+          <button type="button" class="share-card-btn" data-share-card="week" aria-label="Share this week as an image">Share</button>
           <label for="leagueScheduleScope" class="sched-scope"><span class="sr-only">Teams</span><select id="leagueScheduleScope"><option value="all">All matchups</option><option value="mine">Only my matchup</option></select></label>
         </div>
         <div id="leagueScheduleWeeks" class="sched-weeks" role="group" aria-label="Schedule week"></div>
@@ -213,7 +214,8 @@
     </div>
 
     <div id="tab-standings" class="tab-page">
-      <div class="tool-intro">
+      <div class="tool-intro tool-intro-share">
+        <button type="button" class="share-card-btn" data-share-card="standings" aria-label="Share standings as an image">Share</button>
         <h2>Standings</h2>
         <p id="standingsMeta" class="comparison-note"></p>
       </div>
@@ -271,7 +273,8 @@
     <div id="tab-power" class="tab-page">
       <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
         <div class="tool-intro"><h2>Power Rankings</h2><p>Model estimates, not official standings.</p></div>
-        <div style="display:flex; align-items:center; gap:8px;">
+        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+          <button type="button" class="share-card-btn" data-share-card="power" aria-label="Share power rankings as an image">Share</button>
           <label style="font-size:12px; color:var(--text-muted);">Chart View:</label>
           <select id="powerChartMode" style="min-width:360px;">
             <option value="0">Season rank trajectory</option>
@@ -685,6 +688,7 @@
           <h2 id="playoffForecastTitle">Playoff Scenarios</h2>
           <p class="comparison-note">Who's in, who's out, and the path to the title.</p>
         </div>
+        <button type="button" class="share-card-btn" data-share-card="playoffs" aria-label="Share playoff odds as an image">Share</button>
         <label class="playoff-view-picker">View
           <select id="playoffView" aria-label="Playoff Scenarios view">
             <option value="bracket" selected>Playoff bracket</option>
@@ -1094,16 +1098,17 @@
 </footer>
 
 <p id="appInstallStatus" class="app-install-status" role="status"></p>
-<script src="pwa.js?v=20261101-polish-1"></script>
-<script src="monetization-config.js?v=20261101-polish-1"></script>
-<script src="data-fetch.js?v=20261101-polish-1"></script>
-<script src="demo-league.js?v=20261101-polish-1"></script>
-<script src="league-records.js?v=20261101-polish-1"></script>
-<script src="workspace-backup.js?v=20261101-polish-1"></script>
-<script src="playoff-simulator.js?v=20261101-polish-1"></script>
-<script src="weekly-matchups.js?v=20261101-polish-1"></script>
-<script src="league-schedule.js?v=20261101-polish-1"></script>
-<script src="app.js?v=20261101-polish-1"></script>
-<script src="gameday.js?v=20261101-polish-1"></script>
+<script src="pwa.js?v=20261101-share-1"></script>
+<script src="monetization-config.js?v=20261101-share-1"></script>
+<script src="data-fetch.js?v=20261101-share-1"></script>
+<script src="demo-league.js?v=20261101-share-1"></script>
+<script src="league-records.js?v=20261101-share-1"></script>
+<script src="workspace-backup.js?v=20261101-share-1"></script>
+<script src="playoff-simulator.js?v=20261101-share-1"></script>
+<script src="weekly-matchups.js?v=20261101-share-1"></script>
+<script src="share-cards.js?v=20261101-share-1"></script>
+<script src="league-schedule.js?v=20261101-share-1"></script>
+<script src="app.js?v=20261101-share-1"></script>
+<script src="gameday.js?v=20261101-share-1"></script>
 </body>
 </html>

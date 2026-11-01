@@ -20,7 +20,7 @@
   <h1>Optimizer Regression Checks</h1>
   <p id="summary" role="status">Loading the app runtime...</p>
   <ol id="results"></ol>
-  <iframe id="appFrame" src="../index.html?v=20261101-polish-1&amp;resume=0" title="Optimizer test runtime"></iframe>
+  <iframe id="appFrame" src="../index.html?v=20261101-share-1&amp;resume=0" title="Optimizer test runtime"></iframe>
   <script>
     async function runOptimizerFixtures() {
       const results = [];
@@ -268,6 +268,13 @@
             check("Switching schedule weeks keeps the previous cards on screen until the new week renders",
               keptCardsWhileLoading && !scheduleResults.classList.contains("is-refreshing") &&
               document.querySelector("#leagueScheduleWeeks .sched-week.active")?.textContent === "9");
+            const weekShareSpec = getScheduleShareView()?.week === 9 ? window.FFOShare.builders.week() : null;
+            const shareCanvas = weekShareSpec ? await window.FFOShare.renderCard(weekShareSpec) : null;
+            const shareBlob = shareCanvas ? await new Promise(resolve => shareCanvas.toBlob(resolve, "image/png")) : null;
+            check("Schedule share card renders the visible week as a PNG for group chats",
+              weekShareSpec?.rows.length === 1 && weekShareSpec.rows[0].kind === "versus" && shareCanvas.width === 1080 &&
+              shareBlob?.type === "image/png" && shareBlob.size > 5000 &&
+              ["week", "standings", "power", "playoffs"].every(kind => document.querySelector(`[data-share-card="${kind}"]`)));
             window.fetch = async () => { throw new Error("Schedule fixture offline"); };
             await loadLeagueSchedule(true);
             check("Schedule failures are visible and do not leave stale pairings presented as current",
