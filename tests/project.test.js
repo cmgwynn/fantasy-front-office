@@ -41,7 +41,7 @@ test("HTML references existing local assets in the expected script order", () =>
   ].map(match => match[1]).filter(asset => !/^(?:[a-z]+:)?\/\//i.test(asset));
 
   assert.ok(assets.length > 0, "Expected local CSS or JavaScript assets.");
-  assert.ok(assets.filter(asset => /\.(?:css|js)\?/.test(asset)).every(asset => asset.endsWith("?v=20261101-push-1")), "CSS and JavaScript assets must use the current release version.");
+  assert.ok(assets.filter(asset => /\.(?:css|js)\?/.test(asset)).every(asset => asset.endsWith("?v=20261101-seo-1")), "CSS and JavaScript assets must use the current release version.");
   for (const asset of assets) {
     assert.ok(fs.existsSync(path.join(root, asset.split("?")[0])), `Missing local asset: ${asset}`);
   }
@@ -98,7 +98,7 @@ test("public information pages and footer expose working local links without loa
     assert.match(html, /Chavous Gwynn/);
     assert.match(html, /United States adults aged 18/);
     assert.doesNotMatch(html, /<script\b/, "Information pages must work without app initialization or provider requests.");
-    assert.match(html, /styles\.css\?v=20261101-push-1/);
+    assert.match(html, /styles\.css\?v=20261101-seo-1/);
   }
   const sandbox = { window: {} };
   vm.runInNewContext(read("monetization-config.js"), sandbox);
@@ -116,7 +116,7 @@ test("side panel extension is downloadable and limited to opening provider pages
     const target = local === "" ? "index.html" : path.extname(local) ? local : `${local}.html`;
     assert.ok(fs.existsSync(path.join(root, target)), `side-panel.html has a missing local link: ${href}`);
   }
-  assert.match(html, /styles\.css\?v=20261101-push-1/);
+  assert.match(html, /styles\.css\?v=20261101-seo-1/);
   assert.match(read("index.html"), /<a id="companionToggle"[^>]*href="\/side-panel"/);
   assert.doesNotMatch(read("app.js"), /window\.open\([^)]*"popup"/, "Provider pages must not open in pop-up windows.");
   const manifest = JSON.parse(read("extension/manifest.json"));
@@ -218,7 +218,7 @@ test("browser regression harness is wired to the app and includes saved-state co
   const html = read("tests/optimizer-regression.html");
   const appHtml = read("index.html");
 
-  assert.match(html, /src="\.\.\/index\.html\?v=20261101-push-1&amp;resume=0"/, "Regression harness must load the current app release without resuming personal snapshots.");
+  assert.match(html, /src="\.\.\/index\.html\?v=20261101-seo-1&amp;resume=0"/, "Regression harness must load the current app release without resuming personal snapshots.");
   assert.doesNotMatch(appHtml, /id="loadRecordsBtn"/, "Records must load automatically without a manual refresh button.");
   assert.match(html, /runOptimizerFixtures/, "Regression harness must execute its fixtures.");
   assert.match(html, /Cross-league queue saves to target budget/, "Saved FAAB state should remain covered.");
@@ -316,4 +316,45 @@ test("standings tab, consolation bracket and tracked-league switching are wired"
   assert.match(app, /window\.openTrackedLeague = async function/);
   assert.match(gameday, /data-gameday-manage=/);
   assert.match(gameday, /function computeStanding\(/);
+});
+
+test("SEO landing pages, sitemap and robots are consistent and script-free", () => {
+  const sitemap = read("sitemap.xml");
+  const locs = [...sitemap.matchAll(/<loc>https:\/\/fantasyfo\.com\/([^<]*)<\/loc>/g)].map(m => m[1]);
+  assert.ok(locs.includes("") && locs.includes("tools"), "Sitemap must list the home and tools hub pages.");
+  for (const slug of locs) {
+    const file = slug ? `${slug}.html` : "index.html";
+    assert.ok(fs.existsSync(path.join(root, file)), `Sitemap URL /${slug} has no page.`);
+  }
+  assert.match(read("robots.txt"), /^Sitemap: https:\/\/fantasyfo\.com\/sitemap\.xml$/m);
+  assert.match(read("robots.txt"), /^Disallow: \/tests\/$/m);
+  const app = read("app.js");
+  const landing = locs.filter(slug => slug && read(`${slug}.html`).includes("landing-page"));
+  assert.ok(landing.length >= 8, "Expected the tools hub and landing pages in the sitemap.");
+  for (const slug of landing) {
+    const html = read(`${slug}.html`);
+    assert.match(html, /<html lang="en">/);
+    assert.ok(html.includes(`<link rel="canonical" href="https://fantasyfo.com/${slug}" />`), `${slug} canonical mismatch.`);
+    assert.match(html, /<meta name="description" content="[^"]{60,160}" \/>/, `${slug} needs a 60–160 character description.`);
+    assert.match(html, /property="og:image" content="https:\/\/fantasyfo\.com\/icons\/og-image\.jpg"/);
+    assert.equal((html.match(/<h1>/g) || []).length, 1, `${slug} must have exactly one h1.`);
+    for (const [, attrs] of html.matchAll(/<script\b([^>]*)>/g)) assert.match(attrs, /type="application\/ld\+json"/, `${slug} must not load app scripts.`);
+    for (const [, json] of html.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)) JSON.parse(json);
+    for (const [, href] of html.matchAll(/\bhref="([^"]+)"/g)) {
+      if (/^(?:https?:|mailto:|#)/.test(href)) continue;
+      const [route, query = ""] = href.split("?");
+      const local = route.replace(/^\//, "");
+      const target = route === "/" ? "index.html" : path.extname(local) ? local : `${local}.html`;
+      assert.ok(fs.existsSync(path.join(root, target)), `${slug} has a missing local link: ${href}`);
+      const tool = new URLSearchParams(query).get("tool");
+      if (tool) assert.match(app, new RegExp(`\\b${tool}: "tab-`), `${slug} links to unknown tool ${tool}.`);
+    }
+  }
+  assert.ok(fs.existsSync(path.join(root, "icons/og-image.jpg")));
+  const index = read("index.html");
+  assert.match(index, /<meta name="description" content="[^"]{60,160}" \/>/);
+  assert.match(index, /<link rel="canonical" href="https:\/\/fantasyfo\.com\/" \/>/);
+  assert.match(index, /property="og:image" content="https:\/\/fantasyfo\.com\/icons\/og-image\.jpg"/);
+  assert.ok(index.includes('href="/tools"'), "App footer must link to the tools hub.");
+  for (const [, json] of index.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)) JSON.parse(json);
 });

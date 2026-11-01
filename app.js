@@ -10172,8 +10172,21 @@ async function bootWorkspace() {
   await initApp(false, false, true);
 }
 
+const TOOL_DEEP_LINKS = Object.freeze({
+  inbox: "tab-inbox", gameday: "tab-intel", roster: "tab-roster", lineup: "tab-opt", schedule: "tab-planner",
+  waivers: "tab-waiver", trade: "tab-trade", standings: "tab-standings", matchup: "tab-matchup", playoffs: "tab-bracket",
+  players: "tab-analytics", compare: "tab-compare", sos: "tab-sos", draft: "tab-draft", grades: "tab-grades",
+  power: "tab-power", records: "tab-records"
+});
+
+function applyToolDeepLink() {
+  const tabId = TOOL_DEEP_LINKS[new URLSearchParams(location.search).get("tool")];
+  if (tabId && document.querySelector(`.nav-btn[data-tab="${tabId}"]`)) activateTab(tabId);
+}
+
 function finishBootWorkspace() {
   return bootWorkspace().finally(() => {
+    applyToolDeepLink();
     if (!document.documentElement.classList.contains("ffo-booting")) return;
     document.documentElement.classList.remove("ffo-booting");
     renderConnectionLayout();

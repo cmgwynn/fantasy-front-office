@@ -1,0 +1,7 @@
+User-agent: *
+Allow: /
+Disallow: /tests/
+Disallow: /side-panel
+Disallow: /offline
+
+Sitemap: https://fantasyfo.com/sitemap.xml
