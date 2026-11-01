@@ -5671,11 +5671,14 @@ function renderWeeklyRecommendations() {
   const recommendations = buildWeeklyRecommendations();
   const meta = document.getElementById("recommendationMeta");
   if (meta) meta.textContent = `${recommendations.length} suggested action${recommendations.length === 1 ? "" : "s"} for the selected roster · Week ${state.week}`;
-  table.innerHTML = `<thead><tr><th>Priority</th><th>Action</th><th>Impact</th><th></th></tr></thead><tbody></tbody>`;
-  const body = table.querySelector("tbody");
-  body.innerHTML = recommendations.length ? recommendations.map(item =>
-    `<tr><td><span class="recommendation-priority ${item.level}">${draftEscapeHtml(item.type)}</span></td><td><div class="recommendation-action"><strong>${draftEscapeHtml(item.title)}</strong><span>${draftEscapeHtml(item.detail)}</span></div></td><td>${draftEscapeHtml(item.value)}</td><td>${item.playerId ? `<button class="btn-builder-action" type="button" data-watch-player="${draftEscapeHtml(item.playerId)}">${playerAlertState.watchlist.includes(item.playerId) ? "Watching" : "Watch"}</button>` : ""}</td></tr>`
-  ).join("") : `<tr><td colspan="4" class="draft-empty">Connect a roster to build your weekly action queue.</td></tr>`;
+  table.innerHTML = recommendations.length ? recommendations.map(item => {
+    const player = item.playerId ? state.players[item.playerId] : null;
+    return `<article class="rec-item is-${draftEscapeHtml(item.level || "normal")}">
+      ${player ? renderComparisonPortrait(player) : `<span class="rec-icon" aria-hidden="true">${item.level === "urgent" ? "!" : "•"}</span>`}
+      <div class="recommendation-action"><span class="recommendation-priority ${item.level}">${draftEscapeHtml(item.type)}</span><strong>${draftEscapeHtml(item.title)}</strong><span>${draftEscapeHtml(item.detail)}</span></div>
+      <div class="rec-side"><b>${draftEscapeHtml(item.value)}</b>${item.playerId ? `<button class="btn-builder-action" type="button" data-watch-player="${draftEscapeHtml(item.playerId)}">${playerAlertState.watchlist.includes(item.playerId) ? "Watching" : "Watch"}</button>` : ""}</div>
+    </article>`;
+  }).join("") : `<div class="draft-empty">Connect a roster to build your weekly action queue.</div>`;
 }
 
 function getTrackedPortfolioEntries() {
@@ -6230,10 +6233,8 @@ function renderPortfolioMoveComparison() {
   const selectedId = select.value;
   select.innerHTML = `<option value="">Choose a player</option>${candidates.map(player => `<option value="${draftEscapeHtml(player.id)}">${draftEscapeHtml(player.name)} · ${draftEscapeHtml(player.position)} · ${draftEscapeHtml(player.team || "FA")}</option>`).join("")}`;
   if (candidates.some(player => player.id === selectedId)) select.value = selectedId;
-  table.innerHTML = `<thead><tr><th style="text-align:left;">League / roster</th><th>Availability</th><th>Position need</th><th>Estimated PPG</th><th>Pickup outlook</th></tr></thead><tbody></tbody>`;
-  const body = table.querySelector("tbody");
   const player = state.players[select.value];
-  if (!player) { body.innerHTML = `<tr><td colspan="5" class="draft-empty">Select a player to compare the move across your leagues.</td></tr>`; return; }
+  if (!player) { table.innerHTML = `<div class="draft-empty">Select a player to compare the move across your leagues.</div>`; return; }
 
   const results = state.leagues.map(league => {
     const cacheKey = `${league.provider}:${league.leagueId}`;
@@ -6251,10 +6252,14 @@ function renderPortfolioMoveComparison() {
     const impact = Math.max(0, points - replacement);
     return { league, roster, status: "Available", need: need ? `Starter need (${need})` : "Depth", points, impact, outlook: need ? "Priority add" : impact >= 8 ? "Useful depth" : "Low priority" };
   });
-  body.innerHTML = results.map(result => result.roster
-    ? `<tr><td>${draftEscapeHtml(result.league.name)} · ${draftEscapeHtml(result.roster.name)}</td><td>${draftEscapeHtml(result.status)}</td><td>${draftEscapeHtml(result.need || "--")}</td><td>${result.points === undefined ? "--" : result.points.toFixed(1)}</td><td>${draftEscapeHtml(result.outlook || "--")}${result.impact ? ` · +${result.impact.toFixed(1)}` : ""}</td></tr>`
-    : `<tr><td>${draftEscapeHtml(result.league.name)}</td><td colspan="4">${draftEscapeHtml(result.status)}</td></tr>`
-  ).join("");
+  const tone = result => !result.roster ? "muted" : result.status === "Available" ? (result.outlook === "Priority add" ? "good" : result.outlook === "Useful depth" ? "accent" : "muted") : result.status === "Already on your roster" ? "accent" : "muted";
+  table.innerHTML = `<div class="pf-move-player">${renderPlayerProfile(player)}</div><div class="pf-move-grid">${results.map(result => result.roster
+    ? `<article class="pf-move-card is-${tone(result)}"><header><strong>${draftEscapeHtml(result.league.name)}</strong><small>${draftEscapeHtml(result.roster.name)}</small></header>
+        <div class="pf-move-ppg"><b>${result.points === undefined ? "--" : result.points.toFixed(1)}</b><small>est. PPG</small></div>
+        <span class="pf-move-outlook">${draftEscapeHtml(result.outlook || "--")}${result.impact ? ` · +${result.impact.toFixed(1)}` : ""}</span>
+        <small class="pf-move-status">${draftEscapeHtml(result.status)}${result.need ? ` · ${draftEscapeHtml(result.need)}` : ""}</small></article>`
+    : `<article class="pf-move-card is-muted"><header><strong>${draftEscapeHtml(result.league.name)}</strong></header><small class="pf-move-status">${draftEscapeHtml(result.status)}</small></article>`
+  ).join("")}</div>`;
 }
 
 function loadPlayerAlertState() {
@@ -6366,6 +6371,98 @@ async function enablePlayerBrowserAlerts() {
   if (status) status.textContent = permission === "granted" ? "Notifications enabled while this page is open; changes are checked on sync, not in the background." : "Browser notifications not enabled; changes remain visible on sync.";
 }
 
+function renderPortfolioPlayerTile(player, extraHTML = "", className = "") {
+  return `<div class="pf-player ${className}">${renderComparisonPortrait(player)}<div class="pf-player-body"><strong>${draftEscapeHtml(player.name)}</strong><small><span class="pos-pill" style="${posBadgeStyle(player.position)}">${draftEscapeHtml(player.position)}</span>${draftEscapeHtml(player.team || "FA")}</small>${extraHTML ? `<div class="pf-player-meta">${extraHTML}</div>` : ""}</div></div>`;
+}
+
+function renderExposureDots(count, total) {
+  const dots = total <= 8 ? Array.from({ length: total }, (_, index) => `<i class="${index < count ? "on" : ""}"></i>`).join("") : "";
+  return `<span class="pf-dots" title="${count} of ${total} leagues">${dots}<b>${count}/${total}</b></span>`;
+}
+
+function renderLeagueTags(names) {
+  return `<span class="pf-league-tags">${names.map(name => `<span class="pf-league-tag" title="${draftEscapeHtml(name)}">${draftEscapeHtml(name)}</span>`).join("")}</span>`;
+}
+
+function buildByeWeekSummary(trackedRosters) {
+  const weeks = new Map();
+  trackedRosters.forEach(({ league, roster }) => {
+    const starters = new Set(roster.starters || []);
+    [...new Set(roster.players || [])].forEach(id => {
+      const player = state.players[id];
+      const week = Number(player?.byeWeek);
+      if (!player || player.isPick || !week) return;
+      if (!weeks.has(week)) weeks.set(week, new Map());
+      const byPlayer = weeks.get(week);
+      if (!byPlayer.has(id)) byPlayer.set(id, { player, leagues: [], starterIn: [] });
+      byPlayer.get(id).leagues.push(league.name);
+      if (starters.has(id)) byPlayer.get(id).starterIn.push(league.name);
+    });
+  });
+  return [...weeks.entries()].sort((a, b) => a[0] - b[0]).map(([week, byPlayer]) => {
+    const entries = [...byPlayer.values()].sort((a, b) => (b.starterIn.length - a.starterIn.length) || (b.leagues.length - a.leagues.length) || ((b.player.baseValue || 0) - (a.player.baseValue || 0)));
+    const perLeague = trackedRosters.map(({ league }) => ({
+      name: league.name,
+      starters: entries.filter(entry => entry.starterIn.includes(league.name)).length,
+      total: entries.filter(entry => entry.leagues.includes(league.name)).length
+    })).filter(item => item.total);
+    const peak = Math.max(0, ...perLeague.map(item => item.starters));
+    return { week, entries, perLeague, peak, level: peak >= 3 ? "heavy" : peak >= 2 ? "watch" : "light",
+      starters: entries.reduce((sum, entry) => sum + entry.starterIn.length, 0) };
+  });
+}
+
+function renderByeBoard(container, trackedRosters) {
+  const summary = buildByeWeekSummary(trackedRosters);
+  if (!summary.length) { container.innerHTML = `<div class="draft-empty">No bye-week data for these rosters.</div>`; return; }
+  const current = Number(state.currentNflWeek) || Number(state.week) || 1;
+  const multi = trackedRosters.length > 1;
+  const byWeek = new Map(summary.map(item => [item.week, item]));
+  const first = summary[0].week, last = summary[summary.length - 1].week;
+  const maxPlayers = Math.max(...summary.map(item => item.entries.length));
+  const levelLabel = { heavy: "Rough week", watch: "Plan ahead", light: "Light" };
+  const plural = (count, word) => `${count} ${word}${count === 1 ? "" : "s"}`;
+  const cells = [];
+  for (let week = first; week <= last; week++) {
+    const item = byWeek.get(week);
+    const count = item?.entries.length || 0;
+    cells.push(`<button type="button" class="bye-cell ${item ? `is-${item.level}` : "is-empty"} ${week < current ? "is-past" : ""} ${week === current ? "is-now" : ""}" ${item ? `data-bye-jump="${week}"` : "disabled"} title="Week ${week}: ${item ? `${plural(count, "player")}, ${plural(item.starters, "starter")}` : "no byes"}">
+      <span class="bye-cell-bar"><i style="height:${count ? Math.max(12, Math.round(count / maxPlayers * 100)) : 0}%"></i></span><b>${count || ""}</b><small>W${week}</small></button>`);
+  }
+  const card = item => {
+    const diff = item.week - current;
+    const when = diff < 0 ? "Done" : diff === 0 ? "This week" : diff === 1 ? "Next week" : `In ${diff} weeks`;
+    return `<article class="bye-card is-${item.level}" data-bye-week="${item.week}">
+      <header>
+        <div class="bye-card-week"><small>Week</small><strong>${item.week}</strong></div>
+        <div class="bye-card-title"><b>${plural(item.entries.length, "player")} out · ${item.starters ? plural(item.starters, "starter") : "none in your lineup"}</b><span>${when}</span></div>
+        <span class="bye-sev">${levelLabel[item.level]}</span>
+      </header>
+      ${multi ? `<div class="bye-league-row">${item.perLeague.map(league => `<span class="bye-league ${league.starters >= 3 ? "is-heavy" : league.starters >= 2 ? "is-watch" : ""}"><b>${draftEscapeHtml(league.name)}</b>${plural(league.starters, "starter")}${league.total > league.starters ? ` · ${league.total - league.starters} bench` : ""}</span>`).join("")}</div>` : ""}
+      <div class="pf-player-grid">${item.entries.map(entry => renderPortfolioPlayerTile(entry.player,
+        `${entry.starterIn.length ? `<span class="bye-tag is-starter">Starter${multi && entry.leagues.length > 1 ? ` in ${entry.starterIn.length}` : ""}</span>` : `<span class="bye-tag">Bench</span>`}${multi ? renderLeagueTags(entry.leagues) : ""}`,
+        entry.starterIn.length ? "is-starter" : "")).join("")}</div>
+    </article>`;
+  };
+  const upcoming = summary.filter(item => item.week >= current);
+  const past = summary.filter(item => item.week < current);
+  container.innerHTML = `<div class="bye-strip" role="group" aria-label="Players on bye by week">${cells.join("")}</div>
+    <div class="bye-legend"><span class="is-heavy">3+ starters out in a league</span><span class="is-watch">2 starters</span><span class="is-light">0–1 starters</span></div>
+    ${upcoming.length ? upcoming.map(card).join("") : `<div class="draft-empty">No bye weeks left for these rosters.</div>`}
+    ${past.length ? `<details class="gm-secondary bye-past"><summary>Earlier byes (${plural(past.length, "week")})</summary>${past.map(card).join("")}</details>` : ""}`;
+  container.onclick = event => {
+    const button = event.target.closest("[data-bye-jump]");
+    if (!button) return;
+    const target = container.querySelector(`[data-bye-week="${button.dataset.byeJump}"]`);
+    if (!target) return;
+    target.closest("details")?.setAttribute("open", "");
+    target.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    target.classList.remove("is-flash");
+    void target.offsetWidth;
+    target.classList.add("is-flash");
+  };
+}
+
 async function renderLeagueIntelTab(forceRefresh = false) {
   populateHistorySeasonOptions();
   const selectors = document.getElementById("portfolioRosterSelectors");
@@ -6379,9 +6476,9 @@ async function renderLeagueIntelTab(forceRefresh = false) {
   if (forceRefresh) portfolioState.rostersByLeague.clear();
   if (!state.leagues.length) {
     selectors.innerHTML = `<div class="draft-empty">Connect an account or import a league to compare rosters.</div>`;
-    exposureTable.innerHTML = `<tbody><tr><td class="draft-empty">No league data loaded.</td></tr></tbody>`;
-    byeTable.innerHTML = `<tbody><tr><td class="draft-empty">No league data loaded.</td></tr></tbody>`;
-    tendencyTable.innerHTML = `<tbody><tr><td class="draft-empty">No active league selected.</td></tr></tbody>`;
+    exposureTable.innerHTML = `<div class="draft-empty">No league data loaded.</div>`;
+    byeTable.innerHTML = `<div class="draft-empty">No league data loaded.</div>`;
+    tendencyTable.innerHTML = `<div class="draft-empty">No active league selected.</div>`;
     renderWeeklyRecommendations();
     renderPortfolioMoveComparison();
     renderPlayerAlerts();
@@ -6430,45 +6527,37 @@ async function renderLeagueIntelTab(forceRefresh = false) {
     ["Highest exposure", exposureRows[0] ? `${exposureRows[0].player.name} · ${exposureRows[0].leagues.length}/${trackedRosters.length}` : "--"]
   ].map(([label, value]) => `<div><span>${label}</span><strong>${draftEscapeHtml(value)}</strong></div>`).join("");
 
-  exposureTable.className = "portfolio-table";
-  exposureTable.innerHTML = `<thead><tr><th style="text-align:left;">Player</th><th>Pos</th><th>NFL team</th><th>Exposure</th><th>Leagues</th></tr></thead><tbody></tbody>`;
-  const exposureBody = exposureTable.querySelector("tbody");
-  if (exposureRows.length) exposureBody.innerHTML = exposureRows.slice(0, 60).map(({ player, leagues }) =>
-    `<tr><td>${draftEscapeHtml(player.name)}</td><td>${draftEscapeHtml(player.position)}</td><td>${draftEscapeHtml(player.team || "FA")}</td><td>${leagues.length}/${trackedRosters.length}</td><td>${draftEscapeHtml(leagues.join(", "))}</td></tr>`
-  ).join("");
-  else exposureBody.innerHTML = `<tr><td colspan="5" class="draft-empty">Choose a roster with player data to see exposure.</td></tr>`;
+  exposureTable.innerHTML = exposureRows.length
+    ? exposureRows.slice(0, 60).map(({ player, leagues }) => renderPortfolioPlayerTile(player, `${renderExposureDots(leagues.length, trackedRosters.length)}${trackedRosters.length > 1 ? renderLeagueTags(leagues) : ""}`)).join("")
+    : `<div class="draft-empty">Choose a roster with player data to see exposure.</div>`;
 
-  const byWeek = new Map();
-  exposureRows.forEach(({ player, leagues }) => {
-    if (!player.byeWeek) return;
-    if (!byWeek.has(player.byeWeek)) byWeek.set(player.byeWeek, { players: [], leagues: new Set() });
-    const item = byWeek.get(player.byeWeek);
-    item.players.push(player.name);
-    leagues.forEach(name => item.leagues.add(name));
-  });
-  byeTable.innerHTML = `<thead><tr><th>Bye week</th><th>Rostered players</th><th>Affected leagues</th><th>Players</th></tr></thead><tbody></tbody>`;
-  const byeBody = byeTable.querySelector("tbody");
-  const byeRows = [...byWeek.entries()].sort((a, b) => b[1].players.length - a[1].players.length);
-  byeBody.innerHTML = byeRows.length ? byeRows.map(([week, item]) =>
-    `<tr><td>Week ${week}</td><td>${item.players.length}</td><td>${item.leagues.size}</td><td>${draftEscapeHtml(item.players.join(", "))}</td></tr>`
-  ).join("") : `<tr><td colspan="4" class="draft-empty">No bye-week data for these rosters.</td></tr>`;
+  renderByeBoard(byeTable, trackedRosters);
 
   const tendencies = state.managerTendencies || [];
   const tendencyMeta = document.getElementById("tendencyMeta");
   if (tendencyMeta) tendencyMeta.textContent = state.activeLeague?.provider === "espn"
     ? "Transaction and draft tendencies use history included by ESPN for the connected league."
     : "Recent completed acquisitions, trades, and draft picks in the active league.";
-  tendencyTable.innerHTML = `<thead><tr><th style="text-align:left;">Manager</th><th>Acquisitions</th><th>Trades</th><th>Most acquired</th><th>Position mix</th><th>Draft picks</th><th>Draft position mix</th></tr></thead><tbody></tbody>`;
-  const tendencyBody = tendencyTable.querySelector("tbody");
   const tendencyRows = tendencies.map(profile => {
     const manager = state.managers.find(item => String(item.rosterId) === String(profile.rosterId));
-    const sortedPositions = Object.entries(profile.positions).sort((a, b) => b[1] - a[1]);
-    const draftMix = Object.entries(profile.draftPositions || {}).sort((a, b) => b[1] - a[1]);
-    return { profile, name: manager?.teamName || `Team ${profile.rosterId}`, top: sortedPositions[0]?.[0] || "--", mix: sortedPositions.map(([position, count]) => `${position} ${count}`).join(" · ") || "--", draftMix: draftMix.map(([position, count]) => `${position} ${count}`).join(" · ") || "--" };
+    return { profile, manager, name: manager?.teamName || `Team ${profile.rosterId}`,
+      positions: Object.entries(profile.positions || {}).sort((a, b) => b[1] - a[1]),
+      draftPositions: Object.entries(profile.draftPositions || {}).sort((a, b) => b[1] - a[1]) };
   }).sort((a, b) => (b.profile.acquisitions - a.profile.acquisitions));
-  tendencyBody.innerHTML = tendencyRows.length ? tendencyRows.map(({ profile, name, top, mix, draftMix }) =>
-    `<tr><td>${draftEscapeHtml(name)}</td><td>${profile.acquisitions}</td><td>${profile.trades}</td><td class="tendency-position">${draftEscapeHtml(top)}</td><td>${draftEscapeHtml(mix)}</td><td>${profile.draftPicks || 0}</td><td>${draftEscapeHtml(draftMix)}</td></tr>`
-  ).join("") : `<tr><td colspan="7" class="draft-empty">No transaction or draft history available for the active league yet.</td></tr>`;
+  const mixBar = (entries, label) => {
+    const total = entries.reduce((sum, [, count]) => sum + count, 0);
+    if (!total) return "";
+    return `<div class="tendency-mix"><small>${label}</small><div class="tendency-bar">${entries.map(([position, count]) =>
+      `<span style="flex:${count};${posBadgeStyle(position)}" title="${draftEscapeHtml(`${position} ${count}`)}">${count / total >= 0.18 ? `${draftEscapeHtml(position)} ${count}` : ""}</span>`).join("")}</div></div>`;
+  };
+  tendencyTable.innerHTML = tendencyRows.length ? tendencyRows.map(({ profile, manager, name, positions, draftPositions }) => {
+    const [teamName, managerName] = splitTeamLabel({ teamName: name, rosterId: profile.rosterId });
+    return `<article class="tendency-card">
+      <header>${manager ? renderTeamAvatarHTML(manager) : ""}<div><strong>${draftEscapeHtml(teamName)}</strong>${managerName ? `<small>${draftEscapeHtml(managerName)}</small>` : ""}</div>${positions[0] ? `<span class="pos-pill" style="${posBadgeStyle(positions[0][0])}" title="Most acquired">${draftEscapeHtml(positions[0][0])}</span>` : ""}</header>
+      <div class="tendency-stats"><div><b>${profile.acquisitions}</b><small>Adds</small></div><div><b>${profile.trades}</b><small>Trades</small></div><div><b>${profile.draftPicks || 0}</b><small>Draft picks</small></div></div>
+      ${mixBar(positions, "Adds by position")}${mixBar(draftPositions, "Draft by position")}
+    </article>`;
+  }).join("") : `<div class="draft-empty">No transaction or draft history available for the active league yet.</div>`;
   renderWeeklyRecommendations();
   renderPortfolioMoveComparison();
   renderPlayerAlerts();

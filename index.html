@@ -10,7 +10,7 @@
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
   <link rel="icon" href="icons/app-icon.svg" type="image/svg+xml" />
   <title>Fantasy Front Office</title>
-  <link rel="stylesheet" href="styles.css?v=20261101-trade-lock-1" />
+  <link rel="stylesheet" href="styles.css?v=20261101-visual-cards-1" />
 </head>
 <body>
 
@@ -775,20 +775,20 @@
         <div class="draft-panel-heading"><div><h3>Tracked Rosters</h3><span id="portfolioMeta" class="draft-subtitle">Choose your roster for each connected league.</span></div></div>
         <div id="portfolioRosterSelectors" class="portfolio-roster-selectors"></div>
         <div id="portfolioSummary" class="portfolio-summary"></div>
-        <details class="gm-secondary"><summary>All player exposure</summary><div class="table-wrap"><table id="portfolioExposureTable"></table></div></details>
+        <details class="gm-secondary"><summary>All player exposure</summary><div id="portfolioExposureTable" class="pf-player-grid"></div></details>
       </section>
       <section class="portfolio-panel">
-        <div class="draft-panel-heading"><div><h3>Bye-Week Concentration</h3><span class="draft-subtitle">Shared absences across your tracked rosters</span></div></div>
-        <div class="table-wrap"><table id="portfolioByeTable"></table></div>
+        <div class="draft-panel-heading"><div><h3>Bye-Week Concentration</h3><span class="draft-subtitle">Who you lose each week, across every league</span></div></div>
+        <div id="portfolioByeTable" class="bye-board"></div>
       </section>
       <details class="gm-secondary">
         <summary>All roster suggestions</summary><p id="recommendationMeta" class="draft-subtitle"></p>
-        <div class="table-wrap"><table id="recommendationTable"></table></div>
+        <div id="recommendationTable" class="rec-list"></div>
       </details>
       <section class="portfolio-panel">
         <div class="draft-panel-heading"><div><h3>Acquisition Impact Across Leagues</h3><span class="draft-subtitle">Compare roster need and point impact before adding a player.</span></div></div>
         <label class="portfolio-player-picker">Player to compare<select id="portfolioMovePlayer"></select></label>
-        <div class="table-wrap"><table id="portfolioMoveTable"></table></div>
+        <div id="portfolioMoveTable" class="pf-move"></div>
       </section>
       <section class="portfolio-panel">
         <div class="draft-panel-heading"><div><h3>Player Alerts</h3><span id="alertPermissionStatus" class="draft-subtitle">In-app injury and availability alerts for watched players</span></div></div>
@@ -802,7 +802,7 @@
       </section>
       <details class="gm-secondary">
         <summary>Manager activity</summary><p id="tendencyMeta" class="draft-subtitle">Recent transactions.</p>
-        <div class="table-wrap"><table id="managerTendencyTable"></table></div>
+        <div id="managerTendencyTable" class="tendency-grid"></div>
       </details>
       <details class="gm-secondary">
         <summary>Previous season standings</summary>
@@ -1090,15 +1090,15 @@
 </footer>
 
 <p id="appInstallStatus" class="app-install-status" role="status"></p>
-<script src="pwa.js?v=20261101-trade-lock-1"></script>
-<script src="monetization-config.js?v=20261101-trade-lock-1"></script>
-<script src="data-fetch.js?v=20261101-trade-lock-1"></script>
-<script src="demo-league.js?v=20261101-trade-lock-1"></script>
-<script src="league-records.js?v=20261101-trade-lock-1"></script>
-<script src="workspace-backup.js?v=20261101-trade-lock-1"></script>
-<script src="playoff-simulator.js?v=20261101-trade-lock-1"></script>
-<script src="weekly-matchups.js?v=20261101-trade-lock-1"></script>
-<script src="app.js?v=20261101-trade-lock-1"></script>
-<script src="gameday.js?v=20261101-trade-lock-1"></script>
+<script src="pwa.js?v=20261101-visual-cards-1"></script>
+<script src="monetization-config.js?v=20261101-visual-cards-1"></script>
+<script src="data-fetch.js?v=20261101-visual-cards-1"></script>
+<script src="demo-league.js?v=20261101-visual-cards-1"></script>
+<script src="league-records.js?v=20261101-visual-cards-1"></script>
+<script src="workspace-backup.js?v=20261101-visual-cards-1"></script>
+<script src="playoff-simulator.js?v=20261101-visual-cards-1"></script>
+<script src="weekly-matchups.js?v=20261101-visual-cards-1"></script>
+<script src="app.js?v=20261101-visual-cards-1"></script>
+<script src="gameday.js?v=20261101-visual-cards-1"></script>
 </body>
 </html>

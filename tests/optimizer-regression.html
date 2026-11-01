@@ -20,7 +20,7 @@
   <h1>Optimizer Regression Checks</h1>
   <p id="summary" role="status">Loading the app runtime...</p>
   <ol id="results"></ol>
-  <iframe id="appFrame" src="../index.html?v=20261101-trade-lock-1&amp;resume=0" title="Optimizer test runtime"></iframe>
+  <iframe id="appFrame" src="../index.html?v=20261101-visual-cards-1&amp;resume=0" title="Optimizer test runtime"></iframe>
   <script>
     async function runOptimizerFixtures() {
       const results = [];
@@ -2377,6 +2377,31 @@
           document.getElementById("playoffForecastStatus").textContent.includes("Scenarios unavailable") &&
           !document.getElementById("playoffForecastResults").children.length);
         state.activeLeague = claimLeague;
+
+        {
+          const savedPlayers = { a: state.players.bye_fx_a, b: state.players.bye_fx_b, c: state.players.bye_fx_c };
+          Object.assign(state.players, {
+            bye_fx_a: { id: "bye_fx_a", name: "Bye A", position: "RB", team: "HOU", byeWeek: 9, baseValue: 50 },
+            bye_fx_b: { id: "bye_fx_b", name: "Bye B", position: "WR", team: "HOU", byeWeek: 9, baseValue: 40 },
+            bye_fx_c: { id: "bye_fx_c", name: "Bye C", position: "QB", team: "NO", byeWeek: 11, baseValue: 30 }
+          });
+          const tracked = [
+            { league: { name: "L1" }, roster: { players: ["bye_fx_a", "bye_fx_b", "bye_fx_c"], starters: ["bye_fx_a", "bye_fx_b"] } },
+            { league: { name: "L2" }, roster: { players: ["bye_fx_a"], starters: [] } }
+          ];
+          const byeSummary = buildByeWeekSummary(tracked);
+          const week9 = byeSummary.find(item => item.week === 9);
+          check("Bye board groups players by week, counts starters per league and rates severity",
+            byeSummary.map(item => item.week).join(",") === "9,11" && week9.entries.length === 2 && week9.starters === 2 && week9.peak === 2 && week9.level === "watch" &&
+            week9.entries[0].leagues.join(",") === "L1,L2" && week9.perLeague.find(item => item.name === "L2").starters === 0 && byeSummary[1].level === "light");
+          const byeHost = document.createElement("div");
+          renderByeBoard(byeHost, tracked);
+          check("Bye board renders a week strip and photo player cards instead of a text table",
+            byeHost.querySelectorAll(".bye-cell").length === 3 && byeHost.querySelector(".bye-cell[disabled]")?.textContent.includes("W10") &&
+            byeHost.querySelectorAll(".pf-player .compare-portrait").length === 3 && !byeHost.querySelector("table") &&
+            byeHost.querySelector('[data-bye-week="9"] .bye-sev')?.textContent === "Plan ahead");
+          Object.entries(savedPlayers).forEach(([key, value]) => { if (value) state.players[`bye_fx_${key}`] = value; else delete state.players[`bye_fx_${key}`]; });
+        }
 
         {
           const saved = { league: state.activeLeague, managers: state.managers, snapshot: state.workspaceSnapshot, seedMode: state.bracketSeedMode, overrides: state.bracketOverrides };
