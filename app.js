@@ -861,7 +861,7 @@ function generateTargetTradeOffers() {
     return;
   }
   container.innerHTML = `<p class="comparison-note">Acquire ${draftEscapeHtml(result.target.name)} from ${draftEscapeHtml(result.partner.teamName)}. Two-player offers use a 6% consolidation discount. Check roster space, trade timing and acceptance with the other manager.</p><div class="trade-target-offers">${result.offers.map((offer, index) =>
-    `<article class="trade-target-offer"><strong>${offer.match.toFixed(0)}% model-value match</strong><div>${renderTradeAssetStackHTML(offer.giveIds)}</div><p>For ${draftEscapeHtml(result.target.name)}</p><p class="comparison-note">${offer.impact.reason ? draftEscapeHtml(offer.impact.reason) : `Selected-week lineup estimate: you ${offer.impact.teamA.delta >= 0 ? "+" : ""}${offer.impact.teamA.delta.toFixed(1)} pts · partner ${offer.impact.teamB.delta >= 0 ? "+" : ""}${offer.impact.teamB.delta.toFixed(1)} pts`}</p><button type="button" data-target-offer="${index}">Review in Builder</button></article>`).join("")}</div>`;
+    `<article class="trade-target-offer"><strong>${offer.match.toFixed(0)}% model-value match</strong><div>${renderTradeAssetStackHTML(offer.giveIds)}</div><p>For ${draftEscapeHtml(result.target.name)}</p><p class="comparison-note">${offer.impact.reason ? draftEscapeHtml(offer.impact.reason) : offer.impact.currentWeekLocked ? "A player has already kicked off; this trade would take effect next week." : `Selected-week lineup estimate: you ${offer.impact.teamA.delta >= 0 ? "+" : ""}${offer.impact.teamA.delta.toFixed(1)} pts · partner ${offer.impact.teamB.delta >= 0 ? "+" : ""}${offer.impact.teamB.delta.toFixed(1)} pts`}</p><button type="button" data-target-offer="${index}">Review in Builder</button></article>`).join("")}</div>`;
   container.querySelectorAll("[data-target-offer]").forEach(button => {
     button.addEventListener("click", () => {
       const offer = result.offers[Number(button.dataset.targetOffer)];
@@ -2959,12 +2959,13 @@ function buildTradeLineupImpact(teamA, teamB, sideA, sideB) {
     const owned = new Set([...(team.players || []), ...(team.ownedPicks || []).map(pick => pick.id)]);
     if (ids.some(id => !state.players[id] || !owned.has(id))) return { reason: "A selected asset is missing or is not owned by its sending team. Refresh and revise the package." };
   }
-  if (all.some(id => !state.players[id].isPick && getPlayerGameDayStatus(state.players[id]).locked)) return { reason: "A selected player is kickoff-locked. Current-week move impact is unavailable; check provider trade-processing rules." };
   const playersA = sideA.filter(id => !state.players[id].isPick);
   const playersB = sideB.filter(id => !state.players[id].isPick);
   const beforeA = getPlannerRosterIds(teamA), beforeB = getPlannerRosterIds(teamB);
   const afterA = [...new Set(beforeA.filter(id => !playersA.includes(id)).concat(playersB))];
   const afterB = [...new Set(beforeB.filter(id => !playersB.includes(id)).concat(playersA))];
+  // A locked player can still be traded; the deal just takes effect next week, so only this-week impact is skipped.
+  if (all.some(id => !state.players[id].isPick && getPlayerGameDayStatus(state.players[id]).locked)) return { currentWeekLocked: true, beforeA, beforeB, afterA, afterB };
   if ([...new Set([...beforeA, ...beforeB, ...afterA, ...afterB])].some(id => !Number.isFinite(state.players[id]?.projectedPoints))) return { reason: "A player projection is missing or invalid. Refresh before modeling impact." };
   const impact = (team, before, after) => {
     const constraints = getLineupLockConstraints(team);
@@ -3046,6 +3047,13 @@ function updateTradeEvaluation() {
   const dB = calcOptimalLineup(afterBIds, true).total - beforeB;
   const poDeltaA = calcPlayoffWindowAvgLineupPpg(afterAIds) - calcPlayoffWindowAvgLineupPpg(impact.beforeA);
   const poDeltaB = calcPlayoffWindowAvgLineupPpg(afterBIds) - calcPlayoffWindowAvgLineupPpg(impact.beforeB);
+
+  const signed = value => `${value >= 0 ? "+" : ""}${value.toFixed(1)}`;
+  if (impact.currentWeekLocked) {
+    consoleEl.innerHTML = `<div class="trade-impact-grid">${[[nameA, dA, poDeltaA], [nameB, dB, poDeltaB]].map(([name, ros, po]) => `<div><strong>${draftEscapeHtml(name)}</strong><span>Playoffs ${signed(po)} pts/game</span><b style="color:var(--${ros >= 0 ? "good" : "bad"})">${signed(ros)} pts/game rest of season</b></div>`).join("")}</div>
+    <p class="comparison-note">A selected player has already kicked off this week, so this trade would take effect next week. Showing the rest-of-season and playoff starter impact instead of this week. Model asset value: ${adjA} vs ${adjB} (${ratio.toFixed(1)}% match), not a probability of acceptance. Does not verify roster limits, trade deadlines or processing time.</p>`;
+    return;
+  }
 
   consoleEl.innerHTML = `<div class="trade-impact-grid">${[[nameA, impact.teamA], [nameB, impact.teamB]].map(([name, result]) => `<div><strong>${draftEscapeHtml(name)}</strong><span>${result.before.toFixed(1)} → ${result.after.toFixed(1)} projected starter points</span><b style="color:var(--${result.delta >= 0 ? "good" : "bad"})">${result.delta >= 0 ? "+" : ""}${result.delta.toFixed(1)} this week</b></div>`).join("")}</div>
     <p class="comparison-note">${draftEscapeHtml(getProjectionSourceNote())} ${state.gameDayScheduleAvailable ? "Known kickoff locks respected." : "Kickoff locks unverified."} Assumes immediate availability; does not verify roster limits, trade deadlines or processing time.</p>

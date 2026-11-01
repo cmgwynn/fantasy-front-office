@@ -20,7 +20,7 @@
   <h1>Optimizer Regression Checks</h1>
   <p id="summary" role="status">Loading the app runtime...</p>
   <ol id="results"></ol>
-  <iframe id="appFrame" src="../index.html?v=20261101-gameday-1&amp;resume=0" title="Optimizer test runtime"></iframe>
+  <iframe id="appFrame" src="../index.html?v=20261101-trade-lock-1&amp;resume=0" title="Optimizer test runtime"></iframe>
   <script>
     async function runOptimizerFixtures() {
       const results = [];
@@ -897,8 +897,10 @@
         state.players.fixture_owned_rb.projectedPoints = 14;
         const lockedTradeTeam = { rosterId: 3, players: ["fixture_locked_starter"], starters: ["fixture_locked_starter"] };
         state.gameDayScheduleAvailable = true;
-        check("Trade model blocks current-week impact for a kickoff-locked asset",
-          buildTradeLineupImpact(lockedTradeTeam, state.managers[1], ["fixture_locked_starter"], ["fixture_owned_rb"]).reason?.includes("kickoff-locked"));
+        const lockedTradeImpact = buildTradeLineupImpact(lockedTradeTeam, state.managers[1], ["fixture_locked_starter"], ["fixture_owned_rb"]);
+        check("Trade model skips only current-week impact for a kickoff-locked asset and keeps next-week rosters",
+          lockedTradeImpact.currentWeekLocked === true && !lockedTradeImpact.reason && !lockedTradeImpact.teamA &&
+          lockedTradeImpact.afterA.includes("fixture_owned_rb") && lockedTradeImpact.afterB.includes("fixture_locked_starter"));
         state.gameDayScheduleAvailable = false;
         const tradeControlsBefore = ["tradeTeamA", "tradeTeamB"].map(id => ({ id, html: document.getElementById(id).innerHTML, value: document.getElementById(id).value }));
         const tradeSidesBefore = [state.tradeSideA, state.tradeSideB];
