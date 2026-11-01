@@ -116,12 +116,17 @@ No acceptance probability or automatic transaction is implied. Review hands the
 exact assets/teams to the existing Builder and revalidates ownership first.
 Compact player surnames retain compound names and suffixes (Thomas Jr., St. Brown).
 
-Desktop companion mode is optional and session-only. It replaces the sidebar
-with Inbox/Lineup/Waivers/Draft navigation, adapts for narrow desktop panes, and
-opens the real Sleeper/ESPN league in a separate browser window/tab. The user
-arranges windows; pop-up restrictions are reported. No provider is embedded,
-no login/session is intercepted and CBS/imported Yahoo links are unsupported.
-Touch phones retain the normal layout; no split-screen is forced.
+Side panel: Sleeper, ESPN and CBS forbid framing (X-Frame-Options/CSP
+frame-ancestors), so the site never embeds providers or opens pop-up windows.
+The header "Side panel" link goes to /side-panel, which explains how to install
+the optional Chrome/Edge extension in `extension/` (zip in `downloads/`). The
+extension shows `https://fantasyfo.com/?view=panel` in the browser side panel
+with only the `sidePanel` permission. In panel mode the app hides share/side
+panel links and shows "Open Sleeper league/draft", which posts the provider URL
+to the extension; the extension accepts it only from fantasyfo.com, allows only
+https Sleeper/ESPN/CBS hosts, and changes the current tab. The app accepts
+handshakes only from its parent `chrome-extension://` origin. Outside the panel
+the same action opens a normal new tab. Phones don't support side panels.
 
 Draft Room has separate practice, manual draft-day, and read-only Sleeper modes.
 Manual mode records every snake pick in order; undo/reset affect only its board.
@@ -328,7 +333,8 @@ Automatic saved-state restoration does not use this user-navigation scroll path.
 Core tools focus on lineup, pickup, trade, matchup, and upcoming coverage decisions.
 Team grades, power rankings, and records/rivalries are in the bottom Extras group.
 Weekly picks, historical standings, and secondary tables are collapsed.
-Playoff Scenarios leads with the playoff bracket and current/projected standings.
+Playoff Scenarios leads with the playoff bracket and current/projected standings;
+a View dropdown in its header switches to "Odds & scenarios" (refresh + tables).
 
 ### Decision-first Inbox and integrated recap
 

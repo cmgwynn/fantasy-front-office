@@ -10,7 +10,6 @@ function activateTab(tabId, { navigate = false, focus = false } = {}) {
   }
   const targetPage = document.getElementById(tabId);
   if (!targetPage?.classList.contains("tab-page")) return null;
-  if (document.body.classList.contains("companion-mode") && !["tab-inbox", "tab-opt", "tab-waiver", "tab-draft"].includes(tabId)) setCompanionMode(false);
   renderDecisionDataStatus();
   const changed = !targetPage.classList.contains("active");
   document.querySelectorAll(".nav-btn").forEach(button => {
@@ -58,7 +57,6 @@ function activateTab(tabId, { navigate = false, focus = false } = {}) {
   if (tabId === "tab-power") ensurePowerTrajectory();
   if (tabId === "tab-bracket") ensurePlayoffForecast();
   rememberWorkspaceSelection();
-  document.querySelectorAll("[data-companion-tab]").forEach(button => button.setAttribute("aria-pressed", String(button.dataset.companionTab === tabId)));
   updateCompanionProviderControls();
   return targetPage;
 }
@@ -235,7 +233,7 @@ const state = {
   currentMatchups: [], currentMatchupsKey: "", currentMatchupsCheckedAt: 0, livePlayerPoints: {}, currentNflWeek: 0, gameDayByTeam: {}, gameDayScheduleKey: "", gameDayScheduleCheckedAt: 0, gameDayScheduleAvailable: false, historicalRows: [], historicalSeasons: [], weeklyReportText: "",
   players: {}, rawProj: {}, rawStats: {}, managers: [],
   tradeSideA: [], tradeSideB: [], dbTrades: [], waiverTargets: [],
-  weakestPosByTeam: {}, sosWindowMode: "NEXT4", bracketOverrides: {}, bracketSeedMode: "CURRENT",
+  weakestPosByTeam: {}, sosWindowMode: "NEXT4", bracketOverrides: {}, bracketSeedMode: "CURRENT", playoffView: "bracket",
   dataFreshness: { season: 0, schedule: 0, players: 0, stats: 0, projections: 0, account: 0, matchups: 0, league: 0 }, dataErrors: {}
 };
 const portfolioState = { rostersByLeague: new Map(), loading: false };
@@ -764,34 +762,47 @@ function getProviderLeagueUrl(league = state.activeLeague, tab = document.queryS
   return null;
 }
 
-function setCompanionMode(enabled) {
-  document.body.classList.toggle("companion-mode", enabled);
-  document.getElementById("companionBar").hidden = !enabled;
-  document.getElementById("companionToggle").setAttribute("aria-pressed", String(enabled));
-  if (enabled && !["tab-inbox", "tab-opt", "tab-waiver", "tab-draft"].includes(document.querySelector(".tab-page.active")?.id)) activateTab("tab-inbox");
-  updateCompanionProviderControls();
-  document.getElementById("companionStatus").textContent = "Open the provider page, then arrange it beside Fantasy FO. Your browser may open a tab instead; no league actions are submitted here.";
+// Inside the Fantasy FO browser extension, the app runs in the browser's side panel
+// next to the provider tab; provider links change that tab instead of opening windows.
+const isExtensionPanel = new URLSearchParams(location.search).get("view") === "panel" && window.parent !== window;
+let extensionPanelOrigin = null;
+
+function initExtensionPanel() {
+  if (!isExtensionPanel) return;
+  document.body.classList.add("in-panel");
+  document.getElementById("companionBar").hidden = false;
+  window.addEventListener("message", event => {
+    if (event.source !== window.parent || !/^chrome-extension:\/\/[a-p]{32}$/.test(event.origin)) return;
+    const status = document.getElementById("companionStatus");
+    if (event.data?.type === "ffo-panel:hello") {
+      extensionPanelOrigin = event.origin;
+      updateCompanionProviderControls();
+    } else if (event.origin === extensionPanelOrigin && event.data?.type === "ffo-panel:opened") {
+      status.textContent = "Opened in your current tab.";
+    } else if (event.origin === extensionPanelOrigin && event.data?.type === "ffo-panel:failed") {
+      status.textContent = "Couldn't change the current tab. Open your league there, then keep this panel open.";
+    }
+  });
+  window.parent.postMessage({ type: "ffo-panel:ready" }, "*");
 }
 
 function updateCompanionProviderControls() {
-  const enabled = document.body.classList.contains("companion-mode");
+  const button = document.getElementById("companionOpenLeague");
+  if (!button || !isExtensionPanel) return;
   const url = getProviderLeagueUrl();
   const provider = state.activeLeague?.provider === "sleeper" ? "Sleeper" : "ESPN";
-  document.getElementById("companionToggle").textContent = enabled ? "Exit side-by-side" : url ? `Open ${provider} beside FO` : "Side-by-side tools";
-  const link = document.getElementById("companionOpenLeague");
-  link.textContent = url ? `Open ${provider} page` : "Connect a provider first";
-  if (url) link.href = url;
-  else link.removeAttribute("href");
-  link.setAttribute("aria-disabled", String(!url));
+  const target = url?.includes("/draft/") ? "draft" : "league";
+  button.textContent = url ? `Open ${provider} ${target}` : "Open league";
+  button.disabled = !url;
+  button.title = url ? `Show your ${provider} ${target} in the current tab` : "Connect a Sleeper or ESPN league first";
 }
 
-function openCompanionProvider() {
+function openProviderInCurrentTab() {
   const url = getProviderLeagueUrl();
   const status = document.getElementById("companionStatus");
-  if (!url) { status.textContent = "Connect a real Sleeper or ESPN league first. Imported Yahoo and CBS do not have a verified league-opening link here."; return; }
-  const providerWindow = window.open(url, "_blank", "noopener,noreferrer,popup,width=900,height=850");
-  status.textContent = "Your browser may open a window or tab. If nothing appeared, use the Open provider page link above or allow pop-ups. Arrange it beside Fantasy FO; sign-in stays with your provider.";
-  return providerWindow;
+  if (!url) { status.textContent = "Connect a Sleeper or ESPN league first."; return; }
+  if (extensionPanelOrigin) window.parent.postMessage({ type: "ffo-panel:open", url }, extensionPanelOrigin);
+  else window.open(url, "_blank", "noopener,noreferrer");
 }
 
 function renderTradeTargets() {
@@ -6562,6 +6573,10 @@ function renderTeamAvatarHTML(manager) {
 }
 
 function renderPlayoffBracketTab() {
+  const view = state.playoffView === "odds" ? "odds" : "bracket";
+  const viewSelect = document.getElementById("playoffView");
+  if (viewSelect) viewSelect.value = view;
+  document.querySelectorAll("[data-playoff-view]").forEach(section => { section.hidden = section.dataset.playoffView !== view; });
   renderPlayoffForecast();
   const grid = document.getElementById("bracketGridContainer");
   const standingsTable = document.getElementById("playoffStandingsTable");
@@ -9332,16 +9347,9 @@ function bindControlEvents() {
   document.getElementById("tradeTargetPlayer")?.addEventListener("change", () => document.getElementById("tradeTargetResults").replaceChildren());
   document.getElementById("tradeTargetPackage")?.addEventListener("change", () => document.getElementById("tradeTargetResults").replaceChildren());
   document.getElementById("tradeTargetGenerate")?.addEventListener("click", generateTargetTradeOffers);
-  document.getElementById("companionToggle")?.addEventListener("click", () => {
-    const enabled = !document.body.classList.contains("companion-mode");
-    setCompanionMode(enabled);
-    if (enabled && getProviderLeagueUrl()) openCompanionProvider();
-  });
-  document.getElementById("companionOpenLeague")?.addEventListener("click", event => {
-    if (!getProviderLeagueUrl()) { event.preventDefault(); openCompanionProvider(); return; }
-    document.getElementById("companionStatus").textContent = "Opening the provider page. Arrange it beside Fantasy FO using your browser or operating system's split-screen controls.";
-  });
-  document.querySelectorAll("[data-companion-tab]").forEach(button => button.addEventListener("click", () => activateTab(button.dataset.companionTab, { navigate: true, focus: true })));
+  document.getElementById("companionOpenLeague")?.addEventListener("click", openProviderInCurrentTab);
+  initExtensionPanel();
+  updateCompanionProviderControls();
   document.getElementById("waiverPos")?.addEventListener("change", renderWaiversTab);
   document.getElementById("waiverChartMode")?.addEventListener("change", renderWaiversTab);
   document.getElementById("analyticsPos")?.addEventListener("change", () => { updateAnalyticsDropdownOptions(); drawSingleAnalyticsChart(); });
@@ -9371,6 +9379,10 @@ function bindControlEvents() {
   document.getElementById("sosPos")?.addEventListener("change", renderSosTab);
   document.getElementById("sosScope")?.addEventListener("change", renderSosTab);
   document.getElementById("sosSort")?.addEventListener("change", renderSosTab);
+  document.getElementById("playoffView")?.addEventListener("change", event => {
+    state.playoffView = event.target.value;
+    renderPlayoffBracketTab();
+  });
   document.querySelectorAll(".bracket-seed-btn").forEach(button => button.addEventListener("click", () => {
     state.bracketSeedMode = button.dataset.bracketSeed;
     state.bracketOverrides = {};

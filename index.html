@@ -10,7 +10,7 @@
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
   <link rel="icon" href="icons/app-icon.svg" type="image/svg+xml" />
   <title>Fantasy Front Office</title>
-  <link rel="stylesheet" href="styles.css?v=20261031-playoff-bracket-1" />
+  <link rel="stylesheet" href="styles.css?v=20261031-side-panel-1" />
 </head>
 <body>
 
@@ -24,7 +24,7 @@
         <span id="dataFreshnessLabel" class="data-freshness">Data sources waiting</span>
       </details>
       <button id="shareBtn" class="share-button" type="button">Copy share link</button>
-      <button id="companionToggle" class="share-button" type="button" aria-pressed="false">Side-by-side tools</button>
+      <a id="companionToggle" class="share-button" href="/side-panel">Side panel</a>
     </div>
   </div>
   <div class="workspace-controls">
@@ -65,12 +65,9 @@
   </div>
 </div>
 
-<section id="companionBar" aria-label="Desktop companion" hidden>
-  <nav aria-label="Companion tools">
-    <button type="button" data-companion-tab="tab-inbox">Inbox</button><button type="button" data-companion-tab="tab-opt">Lineup</button><button type="button" data-companion-tab="tab-waiver">Waivers</button><button type="button" data-companion-tab="tab-draft">Draft</button>
-  </nav>
-  <a id="companionOpenLeague" class="share-button" target="_blank" rel="noopener noreferrer">Open provider page</a>
-  <p id="companionStatus" role="status">Arrange the two windows side by side. Provider sign-in stays on its own site.</p>
+<section id="companionBar" aria-label="Side panel" hidden>
+  <button id="companionOpenLeague" type="button">Open league</button>
+  <p id="companionStatus" role="status" aria-live="polite"></p>
 </section>
 <div class="body-layout">
   <a class="skip-to-tool" href="#mainContent">Skip to current tool</a>
@@ -665,15 +662,19 @@
 
     <!-- TAB 8: PLAYOFF BRACKET SIMULATOR -->
     <div id="tab-bracket" class="tab-page">
-      <div class="tool-intro">
-        <h2 id="playoffForecastTitle">Playoff Scenarios</h2>
-        <p class="comparison-note">Your playoff odds from 5,000 simulated finishes of the remaining schedule.</p>
+      <div class="tool-intro playoff-intro">
+        <div>
+          <h2 id="playoffForecastTitle">Playoff Scenarios</h2>
+          <p class="comparison-note">Who's in, who's out, and the path to the title.</p>
+        </div>
+        <label class="playoff-view-picker">View
+          <select id="playoffView" aria-label="Playoff Scenarios view">
+            <option value="bracket" selected>Playoff bracket</option>
+            <option value="odds">Odds &amp; scenarios</option>
+          </select>
+        </label>
       </div>
-      <div class="playoff-forecast-bar">
-        <p id="playoffForecastStatus" role="status" aria-live="polite"></p>
-        <button id="runPlayoffForecast" type="button" hidden>Refresh scenarios</button>
-      </div>
-      <section class="playoff-picture" aria-labelledby="bracketMainTitle">
+      <section class="playoff-picture" data-playoff-view="bracket" aria-labelledby="bracketMainTitle">
         <div class="playoff-picture-head">
           <div>
             <h3 id="bracketMainTitle">Playoff bracket</h3>
@@ -692,7 +693,11 @@
         <h3 class="playoff-standings-title">Standings</h3>
         <div class="table-wrap" role="region" aria-label="Current and projected standings" tabindex="0"><table id="playoffStandingsTable" class="playoff-standings"></table></div>
       </section>
-      <section class="card-banner" aria-label="Playoff odds">
+      <section class="card-banner" data-playoff-view="odds" aria-label="Playoff odds" hidden>
+        <div class="playoff-forecast-bar">
+          <p id="playoffForecastStatus" role="status" aria-live="polite"></p>
+          <button id="runPlayoffForecast" type="button" hidden>Refresh scenarios</button>
+        </div>
         <div id="playoffForecastResults"></div>
       </section>
     </div>
@@ -1055,14 +1060,14 @@
 </footer>
 
 <p id="appInstallStatus" class="app-install-status" role="status"></p>
-<script src="pwa.js?v=20261031-playoff-bracket-1"></script>
-<script src="monetization-config.js?v=20261031-playoff-bracket-1"></script>
-<script src="data-fetch.js?v=20261031-playoff-bracket-1"></script>
-<script src="demo-league.js?v=20261031-playoff-bracket-1"></script>
-<script src="league-records.js?v=20261031-playoff-bracket-1"></script>
-<script src="workspace-backup.js?v=20261031-playoff-bracket-1"></script>
-<script src="playoff-simulator.js?v=20261031-playoff-bracket-1"></script>
-<script src="weekly-matchups.js?v=20261031-playoff-bracket-1"></script>
-<script src="app.js?v=20261031-playoff-bracket-1"></script>
+<script src="pwa.js?v=20261031-side-panel-1"></script>
+<script src="monetization-config.js?v=20261031-side-panel-1"></script>
+<script src="data-fetch.js?v=20261031-side-panel-1"></script>
+<script src="demo-league.js?v=20261031-side-panel-1"></script>
+<script src="league-records.js?v=20261031-side-panel-1"></script>
+<script src="workspace-backup.js?v=20261031-side-panel-1"></script>
+<script src="playoff-simulator.js?v=20261031-side-panel-1"></script>
+<script src="weekly-matchups.js?v=20261031-side-panel-1"></script>
+<script src="app.js?v=20261031-side-panel-1"></script>
 </body>
 </html>

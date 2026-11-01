@@ -20,7 +20,7 @@
   <h1>Optimizer Regression Checks</h1>
   <p id="summary" role="status">Loading the app runtime...</p>
   <ol id="results"></ol>
-  <iframe id="appFrame" src="../index.html?v=20261031-playoff-bracket-1&amp;resume=0" title="Optimizer test runtime"></iframe>
+  <iframe id="appFrame" src="../index.html?v=20261031-side-panel-1&amp;resume=0" title="Optimizer test runtime"></iframe>
   <script>
     async function runOptimizerFixtures() {
       const results = [];
@@ -1588,26 +1588,22 @@
           state.workspaceSnapshot = trajectoryStateBefore.snapshot;
           renderPowerTrajectory();
         }
-        const companionTabBefore = document.querySelector(".tab-page.active").id;
         const companionOpenBefore = window.open;
-        let companionOpenedUrl = "";
-        window.open = url => { companionOpenedUrl = url; return null; };
-        document.getElementById("companionToggle").click();
+        let companionOpenCalls = [];
+        window.open = (...args) => { companionOpenCalls.push(args); return null; };
+        const companionToggle = document.getElementById("companionToggle");
+        companionToggle.addEventListener("click", event => event.preventDefault(), { once: true });
+        companionToggle.click();
+        check("Header side panel action links to the extension guide instead of opening a pop-up window",
+          companionToggle.tagName === "A" && companionToggle.getAttribute("href") === "/side-panel" &&
+          companionOpenCalls.length === 0 && document.getElementById("companionBar").hidden &&
+          !document.body.classList.contains("in-panel"));
+        openProviderInCurrentTab();
         window.open = companionOpenBefore;
-        check("Header side-by-side action requests the actual connected Sleeper URL in its click",
-          companionOpenedUrl === `https://sleeper.com/leagues/${encodeURIComponent(state.activeLeague.leagueId)}` &&
-          document.getElementById("companionOpenLeague").href === companionOpenedUrl &&
-          document.getElementById("companionOpenLeague").target === "_blank");
-        check("Desktop companion toggle activates compact mode with its own navigation",
-          document.body.classList.contains("companion-mode") && !document.getElementById("companionBar").hidden);
-        document.querySelector('[data-companion-tab="tab-waiver"]').click();
-        check("Desktop companion tabs activate real tools and reflect the current view",
-          document.getElementById("tab-waiver").classList.contains("active") &&
-          document.querySelector('[data-companion-tab="tab-waiver"]').getAttribute("aria-pressed") === "true");
-        activateTab("tab-trade");
-        check("Opening a full tool exits compact mode instead of stranding its navigation",
-          !document.body.classList.contains("companion-mode") && document.getElementById("companionBar").hidden);
-        activateTab(companionTabBefore);
+        check("Outside the side panel, opening the league uses a normal new tab for the connected Sleeper URL",
+          companionOpenCalls.length === 1 &&
+          companionOpenCalls[0][0] === `https://sleeper.com/leagues/${encodeURIComponent(state.activeLeague.leagueId)}` &&
+          companionOpenCalls[0][1] === "_blank" && companionOpenCalls[0][2] !== "popup");
         const targetManagersBefore = state.managers;
         const targetValueBefore = state.players.fixture_claim_rb.baseValue;
         const giveValueBefore = state.players.fixture_drop_wr.baseValue;
@@ -2331,6 +2327,17 @@
           check("Advancing a team in the bracket shows Reset picks", !document.getElementById("resetBracketBtn").hidden &&
             document.querySelector("#bracketGridContainer .bracket-match-card button.bracket-slot.winner")?.textContent.includes("Bracket 5"));
           document.getElementById("resetBracketBtn").click();
+          const playoffView = document.getElementById("playoffView");
+          const bracketSection = document.querySelector('#tab-bracket [data-playoff-view="bracket"]');
+          const oddsSection = document.querySelector('#tab-bracket [data-playoff-view="odds"]');
+          check("Playoff tab opens on the bracket with scenarios tucked behind the header dropdown",
+            playoffView.value === "bracket" && !bracketSection.hidden && oddsSection.hidden && oddsSection.contains(document.getElementById("playoffForecastResults")));
+          playoffView.value = "odds";
+          playoffView.dispatchEvent(new Event("change", { bubbles: true }));
+          check("Header dropdown switches to odds and scenarios with the refresh control",
+            state.playoffView === "odds" && bracketSection.hidden && !oddsSection.hidden && oddsSection.contains(document.getElementById("runPlayoffForecast")) && oddsSection.contains(document.getElementById("playoffForecastStatus")));
+          playoffView.value = "bracket";
+          playoffView.dispatchEvent(new Event("change", { bubbles: true }));
           playoffForecasts.delete(key);
           Object.assign(state, { activeLeague: saved.league, managers: saved.managers, workspaceSnapshot: saved.snapshot, bracketSeedMode: saved.seedMode, bracketOverrides: saved.overrides });
           renderPlayoffBracketTab();
