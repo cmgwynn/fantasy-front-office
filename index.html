@@ -10,7 +10,7 @@
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
   <link rel="icon" href="icons/app-icon.svg" type="image/svg+xml" />
   <title>Fantasy Front Office</title>
-  <link rel="stylesheet" href="styles.css?v=20261101-share-1" />
+  <link rel="stylesheet" href="styles.css?v=20261101-push-1" />
 </head>
 <body>
 
@@ -25,6 +25,7 @@
       </details>
       <button id="shareBtn" class="share-button" type="button">Copy share link</button>
       <a id="companionToggle" class="share-button" href="/side-panel">Side panel</a>
+      <button type="button" class="share-button" data-feedback>Feedback</button>
     </div>
   </div>
   <div class="workspace-controls">
@@ -470,6 +471,7 @@
     <!-- TAB 5: WAIVERS -->
     <div id="tab-waiver" class="tab-page">
       <div class="tool-intro"><h2>Waiver Planner</h2><p>Find available upgrades. Verify availability and submit claims in your league; saved bids stay here.</p></div>
+      <section id="waiverDayAll" class="comparison-card waiver-day" aria-label="Waiver day across your leagues" hidden></section>
       <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
         <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
           <select id="waiverPos" style="width:185px;" aria-label="Waiver position filter">
@@ -486,11 +488,11 @@
         <div id="waiverNeedList" class="waiver-need-list"></div>
         <div id="waiverNeedTargets" class="waiver-need-targets"></div>
       </section>
-      <section class="portfolio-panel portfolio-claim-panel">
-        <div class="draft-panel-heading"><div><h3>Cross-League Claim Plan</h3><span id="portfolioClaimMeta" class="draft-subtitle">Checking roster needs and player availability across connected leagues.</span></div></div>
+      <details class="portfolio-panel portfolio-claim-panel">
+        <summary class="draft-panel-heading"><div><h3>Queue claims by league</h3><span id="portfolioClaimMeta" class="draft-subtitle">Checking roster needs and player availability across connected leagues.</span></div></summary>
         <div id="portfolioClaimPlan" class="portfolio-claim-plan"></div>
         <div class="draft-subtitle">Claims are queued locally per league; submit them with your fantasy provider.</div>
-      </section>
+      </details>
       <section class="faab-planner">
         <p id="faabPlanStatus" class="comparison-note" role="status">Manual budget; provider balance and waiver deadline are not verified. Claim order is a local plan.</p>
         <div class="faab-settings">
@@ -693,9 +695,11 @@
           <select id="playoffView" aria-label="Playoff Scenarios view">
             <option value="bracket" selected>Playoff bracket</option>
             <option value="odds">Odds &amp; scenarios</option>
+            <option value="push">Playoff push</option>
           </select>
         </label>
       </div>
+      <section id="playoffPushView" class="playoff-push" data-playoff-view="push" aria-label="Playoff push" hidden></section>
       <section class="playoff-picture" data-playoff-view="bracket" aria-labelledby="bracketMainTitle">
         <div class="playoff-picture-head">
           <div>
@@ -1094,21 +1098,25 @@
     <a href="/privacy">Privacy</a>
     <a href="/terms">Terms</a>
     <a href="/contact">Contact</a>
+    <button type="button" class="footer-link-button" data-feedback>Send feedback</button>
   </nav>
 </footer>
 
 <p id="appInstallStatus" class="app-install-status" role="status"></p>
-<script src="pwa.js?v=20261101-share-1"></script>
-<script src="monetization-config.js?v=20261101-share-1"></script>
-<script src="data-fetch.js?v=20261101-share-1"></script>
-<script src="demo-league.js?v=20261101-share-1"></script>
-<script src="league-records.js?v=20261101-share-1"></script>
-<script src="workspace-backup.js?v=20261101-share-1"></script>
-<script src="playoff-simulator.js?v=20261101-share-1"></script>
-<script src="weekly-matchups.js?v=20261101-share-1"></script>
-<script src="share-cards.js?v=20261101-share-1"></script>
-<script src="league-schedule.js?v=20261101-share-1"></script>
-<script src="app.js?v=20261101-share-1"></script>
-<script src="gameday.js?v=20261101-share-1"></script>
+<script src="pwa.js?v=20261101-push-1"></script>
+<script src="monetization-config.js?v=20261101-push-1"></script>
+<script src="data-fetch.js?v=20261101-push-1"></script>
+<script src="demo-league.js?v=20261101-push-1"></script>
+<script src="league-records.js?v=20261101-push-1"></script>
+<script src="workspace-backup.js?v=20261101-push-1"></script>
+<script src="playoff-simulator.js?v=20261101-push-1"></script>
+<script src="weekly-matchups.js?v=20261101-push-1"></script>
+<script src="share-cards.js?v=20261101-push-1"></script>
+<script src="feedback.js?v=20261101-push-1"></script>
+<script src="playoff-push.js?v=20261101-push-1"></script>
+<script src="waiver-day.js?v=20261101-push-1"></script>
+<script src="league-schedule.js?v=20261101-push-1"></script>
+<script src="app.js?v=20261101-push-1"></script>
+<script src="gameday.js?v=20261101-push-1"></script>
 </body>
 </html>

@@ -1951,7 +1951,8 @@ async function initApp(skipUrlAccountSync = false, forceRefreshSources = false, 
       statusCheckedAt: state.dataFreshness.players || 0, statusSource: "Sleeper player database",
       age: p.age || 0, exp: p.years_exp || 0, byeWeek: CURRENT_BYE_WEEKS[team] || 0,
       searchRank: (rawSr > 0 && rawSr < 99999) ? rawSr : (isDef ? 160 : 99999),
-      projectedPoints: 0, seasonPpg: 0, baseValue: 200, vorpScore: 1, posRank: 999, ovrRank: 999
+      projectedPoints: 0, seasonPpg: 0, baseValue: 200, vorpScore: 1, posRank: 999, ovrRank: 999,
+      depthOrder: Number(p.depth_chart_order) || 0
     };
   }
 
@@ -4368,6 +4369,7 @@ function renderWaiversTab() {
   state.waiverTargets = getWaiverCandidates(selectedManager, pf, waiverReviewPlayerId);
   state.waiverRankedTargets = mode ? getWaiverCandidates(selectedManager, pf, waiverReviewPlayerId, mode) : state.waiverTargets;
   renderWaiverNeeds(selectedManager, rosterNeeds.needs);
+  window.FFOWaiverDay?.render();
 
   const tbl = document.getElementById("waiverTbl");
   if (!tbl) return;
@@ -6871,10 +6873,11 @@ function renderTeamAvatarHTML(manager) {
 }
 
 function renderPlayoffBracketTab() {
-  const view = state.playoffView === "odds" ? "odds" : "bracket";
+  const view = ["odds", "push"].includes(state.playoffView) ? state.playoffView : "bracket";
   const viewSelect = document.getElementById("playoffView");
   if (viewSelect) viewSelect.value = view;
   document.querySelectorAll("[data-playoff-view]").forEach(section => { section.hidden = section.dataset.playoffView !== view; });
+  if (view === "push") window.FFOPlayoffPush?.render();
   renderPlayoffForecast();
   const grid = document.getElementById("bracketGridContainer");
   const standingsTable = document.getElementById("playoffStandingsTable");

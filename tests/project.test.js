@@ -9,7 +9,7 @@ const root = path.resolve(__dirname, "..");
 const read = file => fs.readFileSync(path.join(root, file), "utf8");
 
 test("browser JavaScript entry points parse", () => {
-  for (const file of ["app.js", "pwa.js", "service-worker.js", "data-fetch.js", "demo-league.js", "league-records.js", "workspace-backup.js", "playoff-simulator.js", "monetization-config.js", "gameday.js", "league-schedule.js", "share-cards.js"]) {
+  for (const file of ["app.js", "pwa.js", "service-worker.js", "data-fetch.js", "demo-league.js", "league-records.js", "workspace-backup.js", "playoff-simulator.js", "monetization-config.js", "gameday.js", "league-schedule.js", "share-cards.js", "feedback.js", "playoff-push.js", "waiver-day.js"]) {
     const result = spawnSync(process.execPath, ["--check", file], {
       cwd: root,
       encoding: "utf8"
@@ -41,7 +41,7 @@ test("HTML references existing local assets in the expected script order", () =>
   ].map(match => match[1]).filter(asset => !/^(?:[a-z]+:)?\/\//i.test(asset));
 
   assert.ok(assets.length > 0, "Expected local CSS or JavaScript assets.");
-  assert.ok(assets.filter(asset => /\.(?:css|js)\?/.test(asset)).every(asset => asset.endsWith("?v=20261101-share-1")), "CSS and JavaScript assets must use the current release version.");
+  assert.ok(assets.filter(asset => /\.(?:css|js)\?/.test(asset)).every(asset => asset.endsWith("?v=20261101-push-1")), "CSS and JavaScript assets must use the current release version.");
   for (const asset of assets) {
     assert.ok(fs.existsSync(path.join(root, asset.split("?")[0])), `Missing local asset: ${asset}`);
   }
@@ -63,6 +63,11 @@ test("HTML references existing local assets in the expected script order", () =>
   assert.ok(scheduleIndex > dataFetchIndex && appIndex > scheduleIndex, "League schedule module must load before the app.");
   const shareIndex = html.indexOf('<script src="share-cards.js?');
   assert.ok(shareIndex > dataFetchIndex && appIndex > shareIndex, "Share cards module must load before the app.");
+  const pushIndex = html.indexOf('<script src="playoff-push.js?');
+  assert.ok(pushIndex > dataFetchIndex && appIndex > pushIndex, "Playoff push module must load before the app.");
+  assert.ok(html.indexOf('<script src="feedback.js?') > 0, "Feedback module must be loaded.");
+  const waiverDayIndex = html.indexOf('<script src="waiver-day.js?');
+  assert.ok(waiverDayIndex > dataFetchIndex && appIndex > waiverDayIndex, "Waiver day module must load before the app.");
   const gamedayIndex = html.indexOf('<script src="gameday.js?');
   assert.ok(gamedayIndex > appIndex, "Gameday must load after the app helpers it reuses.");
   assert.match(html, /data-tab="tab-intel"><svg[^>]*>.*?<span>Gameday<\/span>/s, "Gameday must be a top-level navigation item.");
@@ -93,7 +98,7 @@ test("public information pages and footer expose working local links without loa
     assert.match(html, /Chavous Gwynn/);
     assert.match(html, /United States adults aged 18/);
     assert.doesNotMatch(html, /<script\b/, "Information pages must work without app initialization or provider requests.");
-    assert.match(html, /styles\.css\?v=20261101-share-1/);
+    assert.match(html, /styles\.css\?v=20261101-push-1/);
   }
   const sandbox = { window: {} };
   vm.runInNewContext(read("monetization-config.js"), sandbox);
@@ -111,7 +116,7 @@ test("side panel extension is downloadable and limited to opening provider pages
     const target = local === "" ? "index.html" : path.extname(local) ? local : `${local}.html`;
     assert.ok(fs.existsSync(path.join(root, target)), `side-panel.html has a missing local link: ${href}`);
   }
-  assert.match(html, /styles\.css\?v=20261101-share-1/);
+  assert.match(html, /styles\.css\?v=20261101-push-1/);
   assert.match(read("index.html"), /<a id="companionToggle"[^>]*href="\/side-panel"/);
   assert.doesNotMatch(read("app.js"), /window\.open\([^)]*"popup"/, "Provider pages must not open in pop-up windows.");
   const manifest = JSON.parse(read("extension/manifest.json"));
@@ -213,7 +218,7 @@ test("browser regression harness is wired to the app and includes saved-state co
   const html = read("tests/optimizer-regression.html");
   const appHtml = read("index.html");
 
-  assert.match(html, /src="\.\.\/index\.html\?v=20261101-share-1&amp;resume=0"/, "Regression harness must load the current app release without resuming personal snapshots.");
+  assert.match(html, /src="\.\.\/index\.html\?v=20261101-push-1&amp;resume=0"/, "Regression harness must load the current app release without resuming personal snapshots.");
   assert.doesNotMatch(appHtml, /id="loadRecordsBtn"/, "Records must load automatically without a manual refresh button.");
   assert.match(html, /runOptimizerFixtures/, "Regression harness must execute its fixtures.");
   assert.match(html, /Cross-league queue saves to target budget/, "Saved FAAB state should remain covered.");

@@ -250,7 +250,11 @@
           const st = roster.settings || {};
           return { id: roster.roster_id, wins: Number(st.wins) || 0, losses: Number(st.losses) || 0, ties: Number(st.ties) || 0, pf: (Number(st.fpts) || 0) + (Number(st.fpts_decimal) || 0) / 100 };
         }), mine.roster_id, league.settings?.playoff_teams);
-        return { ...base, leagueId: String(league.league_id), me, opp: oppRoster ? side(oppRoster) : null, standing };
+        return { ...base, leagueId: String(league.league_id), me, opp: oppRoster ? side(oppRoster) : null, standing, playoffStart: Number(league.settings?.playoff_week_start) || null,
+          rostered: [...new Set((rosters || []).flatMap(roster => [...(roster.players || []), ...(roster.reserve || []), ...(roster.taxi || [])]).map(String))],
+          waiver: Number(league.settings?.waiver_type) === 2
+            ? { faab: true, budget: Number(league.settings?.waiver_budget) || 0, spent: Number(mine.settings?.waiver_budget_used) || 0, priority: Number(mine.settings?.waiver_position) || null }
+            : { faab: false, priority: Number(mine.settings?.waiver_position) || null } };
       } catch (error) {
         return { ...base, error: error.message || "Could not load this league." };
       }
@@ -312,7 +316,16 @@
         const record = team.record?.overall || {};
         return { id: team.id, wins: Number(record.wins) || 0, losses: Number(record.losses) || 0, ties: Number(record.ties) || 0, pf: Number(record.pointsFor) || 0 };
       }), myId, data.settings?.scheduleSettings?.playoffTeamCount);
-      return [{ ...base, leagueId: String(source.leagueId), name: data.settings?.name || base.name, me, opp, standing, teams: teams.map(team => ({ id: String(team.id), name: teamName(team) })) }];
+      const myTeam = teams.find(team => String(team.id) === myId) || {};
+      const acquisition = data.settings?.acquisitionSettings || {};
+      const rostered = [...new Set(teams.flatMap(team => (team.roster?.entries || []).map(entry => {
+        const espnId = String(entry.playerPoolEntry?.player?.id ?? entry.playerId ?? "");
+        return (typeof ESPN_PLAYER_TO_INTERNAL_ID !== "undefined" && ESPN_PLAYER_TO_INTERNAL_ID.get(espnId)) || `espn_${espnId}`;
+      })))];
+      const waiver = acquisition.isUsingAcquisitionBudget
+        ? { faab: true, budget: Number(acquisition.acquisitionBudget) || 0, spent: Number(myTeam.transactionCounter?.acquisitionBudgetSpent) || 0, priority: Number(myTeam.waiverRank) || null }
+        : { faab: false, priority: Number(myTeam.waiverRank) || null };
+      return [{ ...base, leagueId: String(source.leagueId), name: data.settings?.name || base.name, me, opp, standing, rostered, waiver, playoffStart: Number(data.settings?.scheduleSettings?.matchupPeriodCount) ? Number(data.settings.scheduleSettings.matchupPeriodCount) + 1 : null, teams: teams.map(team => ({ id: String(team.id), name: teamName(team) })) }];
     } catch (error) {
       return [{ ...base, error: `${error.message || "Could not load."} Private ESPN leagues only load while you are signed in to ESPN in this browser.` }];
     }

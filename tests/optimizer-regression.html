@@ -20,7 +20,7 @@
   <h1>Optimizer Regression Checks</h1>
   <p id="summary" role="status">Loading the app runtime...</p>
   <ol id="results"></ol>
-  <iframe id="appFrame" src="../index.html?v=20261101-share-1&amp;resume=0" title="Optimizer test runtime"></iframe>
+  <iframe id="appFrame" src="../index.html?v=20261101-push-1&amp;resume=0" title="Optimizer test runtime"></iframe>
   <script>
     async function runOptimizerFixtures() {
       const results = [];
@@ -2789,6 +2789,34 @@
         document.getElementById("inboxRecap").open = false;
         if (priorNewsletter === null) localStorage.removeItem("fantasy-front-office:newsletter:v1");
         else localStorage.setItem("fantasy-front-office:newsletter:v1", priorNewsletter);
+
+        const classify = (rank, gap, playoffStart, week = 10) => FFOPlayoffPush.classifyLeague({ playoffStart, standing: { rank, teams: 12, playoffTeams: 6, gap } }, week);
+        check("Playoff push flags bubble teams as must-win and separates clinched/eliminated teams",
+          classify(6, -0.5, 15).status === "Must-win" && classify(7, 1, 15).status === "Must-win" &&
+          classify(2, -3, 15).status === "Comfortable" && classify(1, -6, 15).status === "Clinched" &&
+          classify(11, 6, 15).status === "Eliminated" && classify(9, 3, 15).status === "Need help" &&
+          classify(4, -1, 15, 15).status === "Playoffs");
+
+        const wdIds = ["wd_fx_wr_free", "wd_fx_wr_start", "wd_fx_wr_other"];
+        wdIds.forEach((id, index) => { state.players[id] = { id, name: `WD Fixture ${index}`, position: "WR", team: "KC", isCurrentNfl: true, injuryStatus: "Healthy", projectedPoints: [90, 10, 95][index], baseValue: 1 }; });
+        try {
+          const leagueA = { key: "sleeper:wdA", name: "League A", rostered: ["wd_fx_wr_start", "wd_fx_wr_other"], me: { players: [{ id: "wd_fx_wr_start", position: "WR", proj: 10 }] } };
+          const leagueB = { key: "sleeper:wdB", name: "League B", rostered: ["wd_fx_wr_start", "wd_fx_wr_free"], me: { players: [{ id: "wd_fx_wr_start", position: "WR", proj: 10 }] } };
+          const targets = FFOWaiverDay.buildTargets([leagueA, leagueB], wdIds.map(id => state.players[id]));
+          const free = targets.find(target => target.player.id === "wd_fx_wr_free");
+          const other = targets.find(target => target.player.id === "wd_fx_wr_other");
+          check("Waiver day only offers players free in that league and measures the gain over your weakest starter",
+            free?.upgrades.length === 1 && free.upgrades[0].entry === leagueA && Math.round(free.upgrades[0].gain) === 80 &&
+            other?.upgrades.length === 1 && other.upgrades[0].entry === leagueB && !targets.some(target => target.player.id === "wd_fx_wr_start"));
+        } finally {
+          wdIds.forEach(id => delete state.players[id]);
+        }
+
+        const mailto = FFOFeedback.buildMailto("Bug", "Projections look off & weird");
+        check("Feedback opens a pre-filled support email without league data",
+          mailto.startsWith("mailto:support@fantasyfo.com?subject=") && decodeURIComponent(mailto).includes("Projections look off & weird") &&
+          decodeURIComponent(mailto).includes("Type: Bug") && !/leagueId|username/i.test(decodeURIComponent(mailto)) &&
+          document.querySelectorAll("[data-feedback]").length >= 2);
       } finally {
         playoffForecasts.clear();
         savedForecasts.forEach((value, key) => playoffForecasts.set(key, value));
