@@ -24,6 +24,29 @@ a league to use roster-based features.
 
 ## Current release
 
+Multi-league management:
+- **Gameday** shows every saved league's live matchup at once. It also shows
+  cross-league alerts and a rooting guide, and refreshes every 60 seconds.
+  - Saved leagues live only in this browser's localStorage. Connected leagues
+    are added automatically and can be hidden.
+  - Each card shows the standing line: rank, record, PF rank, and games
+    back of or ahead of the playoff line.
+  - Each card has a "Set lineup" button. The button and its alerts open that
+    league inside the app.
+- **Standings tab** has a sortable table: rank, record, GB, PF, PA, diff,
+  streak, last 5, projected finish and playoff %. It marks the playoff cut line.
+  - With two or more saved leagues, an "All my leagues" strip shows your place
+    in each one. Tapping a league switches to it.
+- **Playoff bracket**
+  - The 3rd-place game is in its own row under the Championship column.
+  - Teams that miss the playoffs get a consolation bracket that follows the
+    league settings. Sleeper `playoff_type` 0 is a Toilet Bowl (losers
+    advance, projected last place). Type 1 is a consolation bracket (winners
+    advance). This was checked against completed Sleeper `losers_bracket`
+    results.
+  - ESPN and Yahoo default to a consolation bracket.
+  - Byes are supported, along with placement games and tap-to-advance picks.
+
 Power Rankings now includes solid completed-week standing trajectories and
 dashed rest-of-regular-season standing-rank/cumulative-win forecasts. Both use
 the existing validated Sleeper schedule simulation: actual opponents, actual

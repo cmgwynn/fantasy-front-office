@@ -56,6 +56,8 @@ function activateTab(tabId, { navigate = false, focus = false } = {}) {
   }
   if (tabId === "tab-power") ensurePowerTrajectory();
   if (tabId === "tab-bracket") ensurePlayoffForecast();
+  if (tabId === "tab-intel") window.FFOGameday?.activate();
+  if (tabId === "tab-standings") renderStandingsTab();
   rememberWorkspaceSelection();
   updateCompanionProviderControls();
   return targetPage;
@@ -723,6 +725,7 @@ function renderConnectionLayout() {
   if (!connection) return;
   const connected = Boolean(state.activeLeague && state.managers.length);
   const key = connected ? "connected" : "disconnected";
+  if (!connected && document.documentElement.classList.contains("ffo-booting")) return;
   if (connection.dataset.connectionState !== key) {
     const focusInside = connection.contains(document.activeElement);
     connection.open = !connected;
@@ -1807,6 +1810,7 @@ async function initApp(skipUrlAccountSync = false, forceRefreshSources = false, 
   drawSingleAnalyticsChart();
   renderSosTab();
   renderPlayoffBracketTab();
+  renderStandingsTab();
   setStatus(`Ready | ${state.season} NFL Season • ${Object.keys(state.players).length.toLocaleString()} profiles loaded`);
   renderGMInbox();
 
@@ -1879,6 +1883,7 @@ async function syncUserAccount({ leagueKey = "", season = state.season } = {}) {
     const lgs = await fetchJson(`https://api.sleeper.app/v1/user/${state.userId}/leagues/nfl/${season}`);
     if (!Array.isArray(lgs)) throw new Error("The provider returned an invalid league list.");
     markDataSource("account");
+    window.FFOGameday?.rememberSource({ type: "sleeper", username: uObj.username || u, userId: String(state.userId) });
     state.leagues = (lgs || []).map(o => {
       const st = o.settings || {};
       const totTeams = o.total_rosters || 12;
@@ -1888,7 +1893,8 @@ async function syncUserAccount({ leagueKey = "", season = state.season } = {}) {
         provider: "sleeper", name: o.name, leagueId: o.league_id, season: o.season || season,
         totalTeams: totTeams, leagueType: st.type || 0, draftRounds: st.draft_rounds || 4,
         playoffTeams: pTeams, playoffWeekStart: pStart, playoffSeedType: st.playoff_seed_type || 0,
-        playoffRoundType: st.playoff_round_type || 0, rosterPositions: o.roster_positions || [], scoringSettings: o.scoring_settings || {}
+        playoffRoundType: st.playoff_round_type || 0, playoffType: Number.isFinite(st.playoff_type) ? st.playoff_type : null,
+        rosterPositions: o.roster_positions || [], scoringSettings: o.scoring_settings || {}
       };
     });
     const sel = document.getElementById("leagueSelect");
@@ -2056,6 +2062,7 @@ async function importYahooRosterFile(file, { demo = false } = {}) {
     populateHistorySeasonOptions();
     await loadHistoricalSeason();
     await reloadWorkspaceWrite;
+    if (!demo) window.FFOGameday?.rememberSource({ type: "yahoo", leagueId: league.leagueId, name: league.name, season: league.season, payload });
     setStatus(demo ? "Demo league loaded. All sample players and results are fictional." : `Imported ${league.name} from Yahoo file • ${state.managers.length} teams`);
   } catch (error) {
     markDataSource("account", error);
@@ -2152,6 +2159,7 @@ async function syncEspnAccount({ leagueKey = "", season = state.season } = {}) {
       select.appendChild(option);
     });
     markDataSource("account");
+    leagues.forEach(league => window.FFOGameday?.rememberSource({ type: "espn", leagueId: league.leagueId, season: league.season, name: league.name }));
     await loadSyncedAccountLeague(leagueKey);
     return true;
   } catch (error) {
@@ -6508,7 +6516,7 @@ async function runPlayoffForecast({ fresh = false } = {}) {
     playoffForecasts.set(key, { error: `Scenarios unavailable for this league: ${error.message}` });
   } finally {
     playoffForecastLoads.delete(key);
-    if (getLeagueRecordsKey() === key) renderPlayoffBracketTab();
+    if (getLeagueRecordsKey() === key) { renderPlayoffBracketTab(); renderStandingsTab(); }
   }
 }
 
@@ -6604,6 +6612,8 @@ function renderPlayoffBracketTab() {
     grid.className = "bracket-grid";
     grid.innerHTML = `<div class="card-banner bracket-empty">Connect a league to see its playoff bracket.</div>`;
     standingsTable.innerHTML = "";
+    const consolationSection = document.getElementById("consolationSection");
+    if (consolationSection) consolationSection.hidden = true;
     return;
   }
 
@@ -6611,12 +6621,12 @@ function renderPlayoffBracketTab() {
   if (badge) badge.textContent = `${pTeams} teams · Weeks ${startWk}–${endWk}${reseedMode === "RESEED" ? " · Re-seeded" : ""} · Seeded by ${seedMode === "PROJ" ? (standings.fromSimulation ? "projected finish" : "projected record") : "current standings"}`;
   const ranked = seedMode === "PROJ" ? standings.projected : standings.current;
   const myRosterId = state.managers.find(m => state.userId && m.ownerId === state.userId)?.rosterId;
-  const seeded = ranked.slice(0, Math.min(ranked.length, pTeams)).map((mgr, idx) => {
+  const withRoundScores = (mgr, seed) => {
     const roundScores = roundWeeks.map(wks => wks.reduce((sum, week) => sum + calcPlayoffWeekProjection(mgr.players, week).total, 0));
     const coreNames = calcPlayoffWeekProjection(mgr.players, startWk).topNames.join(", ");
-    return { ...mgr, seed: idx + 1, roundScores, coreNames };
-  });
-
+    return { ...mgr, seed, roundScores, coreNames };
+  };
+  const seeded = ranked.slice(0, Math.min(ranked.length, pTeams)).map((mgr, idx) => withRoundScores(mgr, idx + 1));
   function resolveSeries(matchKey, teamA, teamB, roundIdx) {
     const wks = roundWeeks[roundIdx] || [15];
     const scoreA = teamA.roundScores[roundIdx] || 0;
@@ -6644,10 +6654,10 @@ function renderPlayoffBracketTab() {
       <span class="bracket-score"><strong>${(team === series.teamA ? series.scoreA : series.scoreB).toFixed(1)}</strong><small class="${prob >= 50 ? "good" : ""}">${prob.toFixed(0)}%</small></span>
     </button>`;
 
-  function renderMatchupCardHTML(title, series) {
+  function renderMatchupCardHTML(title, series, extraClass = "") {
     const { teamA, teamB, probA, winner } = series;
     return `
-      <div class="bracket-match-card">
+      <div class="bracket-match-card${extraClass ? ` ${extraClass}` : ""}">
         <div class="bracket-match-hdr"><span>${escape(title)}</span><button type="button" class="bracket-h2h" onclick="openMatchupInSimulator(${teamA.rosterId}, ${teamB.rosterId})">Head-to-head</button></div>
         ${renderSlotHTML(series, teamA, probA, winner.rosterId === teamA.rosterId)}
         ${renderSlotHTML(series, teamB, 100 - probA, winner.rosterId === teamB.rosterId)}
@@ -6656,6 +6666,7 @@ function renderPlayoffBracketTab() {
 
   const fmtWeeks = wks => wks.length > 1 ? `Weeks ${wks[0]}–${wks[wks.length - 1]}` : `Week ${wks[0]}`;
   const columnHeader = (title, wks) => `<div class="bracket-col-hdr"><strong>${title}</strong><span>${fmtWeeks(wks)}</span></div>`;
+  const placementRowHTML = (title, cardHTML) => `<div class="bracket-placement"><div class="bracket-placement-hdr"><strong>${escape(title)}</strong></div>${cardHTML}</div>`;
   const championHTML = (champ, roundIdx) => `<div class="champ-callout">${renderTeamAvatarHTML(champ.winner)}<div><small>Projected champion</small><strong>${escape(splitTeamLabel(champ.winner)[0])}</strong><span>#${champ.winner.seed} seed · ${(champ.winner.roundScores[roundIdx] || 0).toFixed(1)} pts in the final${champ.winner.coreNames ? ` · ${escape(champ.winner.coreNames)}` : ""}</span></div></div>`;
   let sf1, sf2, champ, third;
 
@@ -6673,8 +6684,8 @@ function renderPlayoffBracketTab() {
       <div class="bracket-col">${columnHeader("Championship", roundWeeks[1])}
         ${renderMatchupCardHTML(`Final · #${sf1.winner.seed} vs #${sf2.winner.seed}`, champ)}
         ${championHTML(champ, 1)}
-        ${renderMatchupCardHTML(`3rd place · #${sf1.loser.seed} vs #${sf2.loser.seed}`, third)}
-      </div>`;
+      </div>
+      ${placementRowHTML("3rd place game", renderMatchupCardHTML(`#${sf1.loser.seed} vs #${sf2.loser.seed} · ${fmtWeeks(roundWeeks[1])}`, third, "is-placement"))}`;
   } else {
     grid.className = "bracket-grid";
     const byeTeams = [], qfSeriesList = [];
@@ -6717,16 +6728,24 @@ function renderPlayoffBracketTab() {
       <div class="bracket-col">${columnHeader("Championship", roundWeeks[2])}
         ${renderMatchupCardHTML(`Final · #${sf1.winner.seed} vs #${sf2.winner.seed}`, champ)}
         ${championHTML(champ, 2)}
-        ${renderMatchupCardHTML(`3rd place · #${sf1.loser.seed} vs #${sf2.loser.seed}`, third)}
-      </div>`;
+      </div>
+      ${placementRowHTML("3rd place game", renderMatchupCardHTML(`#${sf1.loser.seed} vs #${sf2.loser.seed} · ${fmtWeeks(roundWeeks[2])}`, third, "is-placement"))}`;
   }
 
-  grid.querySelectorAll("button.bracket-slot[data-mkey]").forEach(slotEl => {
+  renderConsolationBracket({ ranked, pTeams, roundWeeks, withRoundScores, resolveSeries, renderMatchupCardHTML, renderSlotHTML, columnHeader, placementRowHTML, fmtWeeks, myRosterId, teamSubline });
+
+  document.querySelectorAll("#bracketGridContainer button.bracket-slot[data-mkey], #consolationGrid button.bracket-slot[data-mkey]").forEach(slotEl => {
     slotEl.onclick = () => {
       const mkey = slotEl.dataset.mkey;
       state.bracketOverrides[mkey] = parseInt(slotEl.dataset.rid, 10);
       if (mkey.startsWith("qf")) { delete state.bracketOverrides.sf1; delete state.bracketOverrides.sf2; delete state.bracketOverrides.champ; delete state.bracketOverrides.third; }
       else if (mkey.startsWith("sf")) { delete state.bracketOverrides.champ; delete state.bracketOverrides.third; }
+      else if (/^cb\d/.test(mkey)) {
+        const round = parseInt(mkey.slice(2), 10);
+        Object.keys(state.bracketOverrides).forEach(key => {
+          if (key === "cb_place" || (/^cb\d/.test(key) && parseInt(key.slice(2), 10) > round)) delete state.bracketOverrides[key];
+        });
+      }
       renderPlayoffBracketTab();
     };
   });
@@ -6751,6 +6770,253 @@ function renderPlayoffBracketTab() {
     </tr>`;
   }).join("")}</tbody>`;
 }
+
+// Sleeper playoff_type: 0 = toilet bowl (losers advance), 1 = consolation (winners advance); verified against completed losers_bracket results.
+function getConsolationMode(league = state.activeLeague) {
+  if (!league) return null;
+  if (league.provider === "sleeper" && league.playoffType === 0) return "toilet";
+  if (league.provider === "sleeper" && Number.isFinite(league.playoffType) && league.playoffType > 1) return null;
+  return "consolation";
+}
+
+function bracketSeedOrder(size) {
+  let order = [1];
+  while (order.length < size) {
+    const next = order.length * 2;
+    order = order.flatMap(seed => [seed, next + 1 - seed]);
+  }
+  return order;
+}
+
+function ordinalSuffix(n) {
+  const v = n % 100;
+  const suffixes = ["th", "st", "nd", "rd"];
+  return `${n}${suffixes[(v - 20) % 10] || suffixes[v] || suffixes[0]}`;
+}
+
+function renderConsolationBracket(ctx) {
+  const section = document.getElementById("consolationSection");
+  const grid = document.getElementById("consolationGrid");
+  if (!section || !grid) return;
+  const mode = getConsolationMode();
+  const outTeams = ctx.ranked.slice(ctx.pTeams);
+  const field = outTeams.slice(-Math.min(8, outTeams.length));
+  if (!mode || field.length < 2) { section.hidden = true; grid.innerHTML = ""; return; }
+  section.hidden = false;
+  const toilet = mode === "toilet";
+  const escape = draftEscapeHtml;
+  const total = ctx.ranked.length;
+  const firstPlace = total - field.length + 1;
+  const teams = field.map(mgr => ctx.withRoundScores(mgr, ctx.ranked.indexOf(mgr) + 1));
+  const size = 2 ** Math.ceil(Math.log2(teams.length));
+  const roundCount = Math.log2(size);
+  const roundIdxFor = round => Math.min(round, ctx.roundWeeks.length - 1);
+  const resolveConsolation = (key, a, b, round) => {
+    const series = { ...ctx.resolveSeries(`__${key}`, a, b, roundIdxFor(round)), matchKey: key };
+    const defaultAdvance = toilet ? series.loser : series.winner;
+    const override = state.bracketOverrides[key];
+    const advance = override === a.rosterId ? a : override === b.rosterId ? b : defaultAdvance;
+    return { ...series, winner: advance, loser: advance.rosterId === a.rosterId ? b : a };
+  };
+  let entrants = bracketSeedOrder(size).map(seed => teams[seed - 1] || null);
+  const rounds = [];
+  let semifinalOut = [];
+  for (let round = 0; round < roundCount; round++) {
+    const games = [], byes = [], next = [];
+    for (let i = 0; i < entrants.length; i += 2) {
+      const a = entrants[i], b = entrants[i + 1];
+      if (!a || !b) { if (a || b) byes.push(a || b); next.push(a || b); continue; }
+      const series = resolveConsolation(`cb${round}_${i / 2}`, a, b, round);
+      games.push(series);
+      next.push(series.winner);
+    }
+    if (round === roundCount - 2) semifinalOut = games.length === 2 ? games.map(game => game.loser) : [];
+    rounds.push({ games, byes, weeks: ctx.roundWeeks[roundIdxFor(round)] || [15] });
+    entrants = next;
+  }
+  const finalGame = rounds[roundCount - 1].games[0];
+  const roundName = round => {
+    const fromEnd = roundCount - 1 - round;
+    return fromEnd === 0 ? (toilet ? "Toilet Bowl final" : "Consolation final") : fromEnd === 1 ? "Semifinals" : "Round 1";
+  };
+  const cardClass = toilet ? "is-toilet" : "";
+  const byeCard = byes => byes.length ? `
+    <div class="bracket-match-card ${cardClass}">
+      <div class="bracket-match-hdr"><span>First-round bye${byes.length > 1 ? "s" : ""}</span></div>
+      ${byes.map(team => `<div class="bracket-slot bye-slot ${team.rosterId === ctx.myRosterId ? "mine" : ""}"><span class="seed-pill">${team.seed}</span>${renderTeamAvatarHTML(team)}<span class="bracket-team"><strong>${escape(splitTeamLabel(team)[0])}</strong><small>${escape(ctx.teamSubline(team))}</small></span><span class="bracket-bye-tag">Bye</span></div>`).join("")}
+    </div>` : "";
+  const outcome = finalGame ? (toilet
+    ? `<div class="champ-callout is-toilet">${renderTeamAvatarHTML(finalGame.winner)}<div><small>Projected last place</small><strong>${escape(splitTeamLabel(finalGame.winner)[0])}</strong><span>${ordinalSuffix(total)} of ${total} · ${escape(splitTeamLabel(finalGame.loser)[0])} escapes to ${ordinalSuffix(total - 1)}</span></div></div>`
+    : `<div class="champ-callout is-consolation">${renderTeamAvatarHTML(finalGame.winner)}<div><small>Consolation winner</small><strong>${escape(splitTeamLabel(finalGame.winner)[0])}</strong><span>Finishes ${ordinalSuffix(firstPlace)} of ${total}</span></div></div>`) : "";
+  let placementHTML = "";
+  if (semifinalOut.length === 2) {
+    const place = toilet ? total - 3 : firstPlace + 2;
+    const placeSeries = ctx.resolveSeries("cb_place", semifinalOut[0], semifinalOut[1], roundIdxFor(roundCount - 1));
+    placementHTML = ctx.placementRowHTML(`${ordinalSuffix(place)} place game`, ctx.renderMatchupCardHTML(`#${placeSeries.teamA.seed} vs #${placeSeries.teamB.seed} · ${ctx.fmtWeeks(rounds[roundCount - 1].weeks)}`, placeSeries, "is-placement"));
+  }
+  grid.className = `bracket-grid cols-${Math.min(3, roundCount)}`;
+  grid.innerHTML = rounds.map((round, index) => `
+    <div class="bracket-col">${ctx.columnHeader(roundName(index), round.weeks)}
+      ${byeCard(round.byes)}
+      ${round.games.map(series => ctx.renderMatchupCardHTML(`#${series.teamA.seed} vs #${series.teamB.seed}${toilet ? " · loser advances" : ""}`, series, cardClass)).join("")}
+      ${index === roundCount - 1 ? outcome : ""}
+    </div>`).join("") + placementHTML;
+  const title = document.getElementById("consolationTitle");
+  const badge = document.getElementById("consolationBadge");
+  if (title) title.textContent = toilet ? "Toilet Bowl" : "Consolation bracket";
+  const startWeeks = rounds[0].weeks, endWeeks = rounds[roundCount - 1].weeks;
+  if (badge) badge.textContent = `${teams.length} teams · Weeks ${startWeeks[0]}–${endWeeks[endWeeks.length - 1]} · ${toilet ? "Losers advance" : "Winners advance"}`;
+}
+
+function getStandingsForm() {
+  const games = leagueRecordsCache.get(getLeagueRecordsKey())?.games;
+  if (!games?.length) return null;
+  const results = new Map();
+  [...games].sort((a, b) => a.week - b.week).forEach(game => {
+    [[game.homeId, game.homeScore, game.awayScore], [game.awayId, game.awayScore, game.homeScore]].forEach(([id, mine, theirs]) => {
+      const list = results.get(String(id)) || [];
+      list.push(mine > theirs ? "W" : mine < theirs ? "L" : "T");
+      results.set(String(id), list);
+    });
+  });
+  const form = new Map();
+  results.forEach((list, id) => {
+    const last = list[list.length - 1];
+    let length = 0;
+    for (let i = list.length - 1; i >= 0 && list[i] === last; i--) length++;
+    form.set(id, { streak: last ? `${last}${length}` : "", streakValue: last === "W" ? length : last === "L" ? -length : 0, last5: list.slice(-5) });
+  });
+  return form;
+}
+
+function ensureStandingsForm() {
+  const league = state.activeLeague;
+  const key = getLeagueRecordsKey();
+  if (!league || state.workspaceSnapshot || !["sleeper", "espn"].includes(league.provider) ||
+      leagueRecordsCache.has(key) || leagueRecordsLoads.has(key)) return;
+  loadLeagueRecords().then(() => {
+    if (getLeagueRecordsKey() === key && document.getElementById("tab-standings")?.classList.contains("active")) renderStandingsTab();
+  });
+}
+
+function renderMyLeaguesStandings() {
+  const section = document.getElementById("myLeaguesStandings");
+  const list = document.getElementById("myLeaguesList");
+  const api = window.FFOGameday;
+  if (!section || !list || !api) return;
+  if (api.readStore().sources.length === 0) { section.hidden = true; return; }
+  const data = api.data;
+  if (!data) {
+    api.ensureData();
+    section.hidden = false;
+    if (!list.children.length) list.innerHTML = `<p class="comparison-note">Loading your leagues…</p>`;
+    return;
+  }
+  const leagues = data.leagues.filter(league => !league.hidden && league.standing);
+  if (leagues.length < 2) { section.hidden = true; return; }
+  section.hidden = false;
+  const escape = draftEscapeHtml;
+  const active = state.activeLeague;
+  list.innerHTML = leagues.map(league => {
+    const s = league.standing;
+    const isActive = active && active.provider === league.provider && String(active.leagueId) === String(league.leagueId);
+    const inField = s.rank <= s.playoffTeams;
+    const record = `${s.wins}-${s.losses}${s.ties ? `-${s.ties}` : ""}`;
+    const clickable = ["sleeper", "espn"].includes(league.provider) && typeof window.openTrackedLeague === "function";
+    const tag = clickable ? "button" : "div";
+    const attrs = clickable ? ` type="button" data-gameday-manage="${escape(league.key)}" data-gameday-tab="tab-standings"${isActive ? ' aria-current="true"' : ""}` : "";
+    const providerLabel = { sleeper: "Sleeper", espn: "ESPN", yahoo: "Yahoo" }[league.provider] || league.provider;
+    return `<${tag} class="my-league${isActive ? " is-active" : ""}${inField ? " is-in" : " is-out"}"${attrs}>
+      <span class="my-league-rank"><b>${ordinalSuffix(s.rank)}</b><small>of ${s.teams}</small></span>
+      <span class="my-league-body"><span class="my-league-name"><span class="gd-provider is-${escape(league.provider)}">${escape(providerLabel)}</span><strong title="${escape(league.name)}">${escape(league.name)}</strong></span>
+        <small>${record} · PF ${ordinalSuffix(s.pfRank)}${Number.isFinite(league.winPct) ? ` · ${Math.round(league.winPct)}% to win Wk ${data.week}` : ""}</small>
+        <small class="my-league-gap">${escape(api.standingGapLabel(s))}</small></span>
+    </${tag}>`;
+  }).join("");
+}
+
+document.addEventListener("ffo:gameday-data", () => {
+  if (document.getElementById("tab-standings")?.classList.contains("active")) renderMyLeaguesStandings();
+});
+
+function renderStandingsTab() {
+  const table = document.getElementById("standingsTbl");
+  const meta = document.getElementById("standingsMeta");
+  if (!table) return;
+  renderMyLeaguesStandings();
+  if (!state.managers?.length || !state.activeLeague) {
+    table.innerHTML = "";
+    if (meta) meta.textContent = "Connect a league to see its standings.";
+    return;
+  }
+  if (document.getElementById("tab-standings")?.classList.contains("active")) { ensureStandingsForm(); ensurePlayoffForecast(); }
+  const escape = draftEscapeHtml;
+  const standings = getPlayoffStandings();
+  const pTeams = getResolvedPlayoffTeamCount();
+  const ranked = standings.current;
+  const leader = ranked[0];
+  const form = getStandingsForm();
+  const myRosterId = state.managers.find(m => state.userId && m.ownerId === state.userId)?.rosterId;
+  if (meta) meta.textContent = `${state.activeLeague.name} · Top ${pTeams} make the playoffs`;
+  const gamesBack = m => (((leader.wins || 0) - (m.wins || 0)) + ((m.losses || 0) - (leader.losses || 0))) / 2;
+  const fmtGb = value => value <= 0 ? "—" : (Number.isInteger(value) ? String(value) : value.toFixed(1));
+  table.innerHTML = renderSortableHeader("standingsTbl", [["Rank", "asc"], ["Team", "asc", "text-align:left;"], ["Record", "desc"], ["GB", "asc"], ["PF", "desc"], ["PA", "desc"], ["Diff", "desc"], ["Streak", "desc"], ["Last 5", "desc"], ["Proj. finish", "asc"], ["Playoff %", "desc"]]) + `<tbody>${ranked.map((manager, index) => {
+    const info = standings.info.get(manager.rosterId) || {};
+    const games = (manager.wins || 0) + (manager.losses || 0) + (manager.ties || 0);
+    const winPct = games ? ((manager.wins || 0) + (manager.ties || 0) / 2) / games : 0;
+    const diff = (manager.pf || 0) - (manager.pa || 0);
+    const teamForm = form?.get(String(manager.rosterId));
+    const last5 = teamForm?.last5 || [];
+    const playoffPct = Number.isFinite(info.playoffPct) ? info.playoffPct : (Number.isFinite(manager.playoffPct) ? manager.playoffPct : null);
+    const [teamName, managerName] = splitTeamLabel(manager);
+    const cut = index === pTeams - 1 && index < ranked.length - 1 ? " playoff-cut" : "";
+    return `<tr class="${index < pTeams ? "in-field" : "out-field"}${cut}${manager.rosterId === myRosterId ? " mine" : ""}">
+      <td data-sort-value="${index + 1}"><span class="seed-pill ${index < pTeams ? "in" : ""}">${index + 1}</span></td>
+      <th scope="row" data-sort-value="${escape(teamName.toLowerCase())}"><span class="standings-team">${renderTeamAvatarHTML(manager)}<span><strong>${escape(teamName)}</strong>${managerName ? `<small>${escape(managerName)}</small>` : ""}</span></span></th>
+      <td data-sort-value="${winPct.toFixed(4)}">${manager.wins || 0}-${manager.losses || 0}${manager.ties ? `-${manager.ties}` : ""}</td>
+      <td data-sort-value="${gamesBack(manager)}">${fmtGb(gamesBack(manager))}</td>
+      <td data-sort-value="${(manager.pf || 0).toFixed(2)}">${(manager.pf || 0).toFixed(1)}</td>
+      <td data-sort-value="${(manager.pa || 0).toFixed(2)}" class="col-pa">${(manager.pa || 0).toFixed(1)}</td>
+      <td data-sort-value="${diff.toFixed(2)}" class="col-diff ${diff >= 0 ? "pos" : "neg"}">${diff >= 0 ? "+" : ""}${diff.toFixed(1)}</td>
+      <td data-sort-value="${teamForm ? teamForm.streakValue : 0}" class="streak ${teamForm?.streak?.[0] === "W" ? "pos" : teamForm?.streak?.[0] === "L" ? "neg" : ""}">${teamForm?.streak || "--"}</td>
+      <td data-sort-value="${last5.filter(r => r === "W").length + last5.filter(r => r === "T").length / 2}" class="col-form">${last5.length ? `<span class="form-dots">${last5.map(r => `<span class="form-dot is-${r.toLowerCase()}" title="${r === "W" ? "Win" : r === "L" ? "Loss" : "Tie"}">${r}</span>`).join("")}</span>` : "--"}</td>
+      <td data-sort-value="${info.projectedSeed || 99}"><span class="seed-pill ${info.projectedSeed <= pTeams ? "in" : ""}">${info.projectedSeed || "--"}</span></td>
+      <td data-sort-value="${playoffPct ?? -1}">${playoffPct === null ? "--" : `<span class="odds-cell"><span class="odds-bar"><span style="width:${Math.min(100, playoffPct).toFixed(1)}%"></span></span>${playoffPct.toFixed(0)}%</span>`}</td>
+    </tr>`;
+  }).join("")}</tbody>`;
+  applyTableSort(table);
+}
+
+// Switch the app to a tracked league (from Gameday or the standings summary) without leaving the page.
+window.openTrackedLeague = async function openTrackedLeague({ provider, leagueId, season = state.season, username = "", teamId = "", tab = "tab-opt" } = {}) {
+  const matches = league => league.provider === provider && String(league.leagueId) === String(leagueId);
+  let index = state.leagues.findIndex(matches);
+  if (index < 0) {
+    const providerSelect = document.getElementById("providerSelect");
+    const input = document.getElementById("usernameInput");
+    if (!providerSelect || !input || (provider === "sleeper" && !username)) return false;
+    providerSelect.value = provider;
+    updateProviderControls();
+    input.value = provider === "espn" ? String(leagueId) : username;
+    setStatus("Opening league...");
+    const ok = await syncUserAccount({ leagueKey: JSON.stringify([provider, String(leagueId), String(season)]), season: String(season) });
+    index = state.leagues.findIndex(matches);
+    if (!ok || index < 0) return false;
+  } else if (state.activeLeague !== state.leagues[index]) {
+    document.getElementById("leagueSelect").value = String(index);
+    await loadLeague(index);
+  }
+  if (teamId) {
+    const teamSelect = document.getElementById("teamSelect");
+    const managerIndex = state.managers.findIndex(manager => String(manager.rosterId) === String(teamId));
+    if (teamSelect && managerIndex >= 0 && teamSelect.value !== String(managerIndex)) {
+      teamSelect.value = String(managerIndex);
+      teamSelect.dispatchEvent(new Event("change"));
+    }
+  }
+  document.querySelector(`.sidebar .nav-btn[data-tab="${tab}"]`)?.click();
+  return true;
+};
 
 function draftEscapeHtml(value) {
   return String(value ?? "").replace(/[&<>"']/g, character => ({
@@ -9002,7 +9268,7 @@ function renderAllViews(teamIdx) {
   if (document.getElementById("tab-records")?.classList.contains("active")) loadLeagueRecords();
   if (document.getElementById("careerHistoryPanel")?.open) loadCareerHistory();
   saveReloadWorkspace();
-  renderSosTab(); renderPlayoffBracketTab(); renderDraftRoom();
+  renderSosTab(); renderPlayoffBracketTab(); renderStandingsTab(); renderDraftRoom();
   if (document.getElementById("tab-inbox")?.classList.contains("active")) renderGMInbox();
   if (document.getElementById("inboxRecap")?.open) renderLeagueNewsletter();
 }
@@ -9758,10 +10024,18 @@ async function bootWorkspace() {
   await initApp(false, false, true);
 }
 
+function finishBootWorkspace() {
+  return bootWorkspace().finally(() => {
+    if (!document.documentElement.classList.contains("ffo-booting")) return;
+    document.documentElement.classList.remove("ffo-booting");
+    renderConnectionLayout();
+  });
+}
+
 if (document.readyState === "loading") {
-  document.addEventListener("DOMContentLoaded", () => { initMonetization(); bindControlEvents(); bootWorkspace(); });
+  document.addEventListener("DOMContentLoaded", () => { initMonetization(); bindControlEvents(); finishBootWorkspace(); });
 } else {
   initMonetization();
   bindControlEvents();
-  bootWorkspace();
+  finishBootWorkspace();
 }

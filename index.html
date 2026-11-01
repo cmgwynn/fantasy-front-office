@@ -10,7 +10,7 @@
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
   <link rel="icon" href="icons/app-icon.svg" type="image/svg+xml" />
   <title>Fantasy Front Office</title>
-  <link rel="stylesheet" href="styles.css?v=20261031-side-panel-1" />
+  <link rel="stylesheet" href="styles.css?v=20261101-gameday-1" />
 </head>
 <body>
 
@@ -65,6 +65,7 @@
   </div>
 </div>
 
+<script>(function(){try{var q=new URLSearchParams(location.search);if(q.get("resume")==="0"||q.has("user")||q.has("league")||!localStorage.getItem("fantasy-front-office:reload-selection:v1"))return;var d=document.documentElement,c=document.getElementById("connectionSettings");c.open=false;c.dataset.connectionState="connected";document.querySelector(".league-section").open=true;document.querySelector(".workspace-controls").classList.add("is-connected");document.querySelector(".top-nav").classList.add("is-connected");document.getElementById("connectionSettingsLabel").textContent="Manage connection";d.classList.add("ffo-booting");setTimeout(function(){d.classList.remove("ffo-booting");if(window.renderConnectionLayout)window.renderConnectionLayout()},2500)}catch(e){}})();</script>
 <section id="companionBar" aria-label="Side panel" hidden>
   <button id="companionOpenLeague" type="button">Open league</button>
   <p id="companionStatus" role="status" aria-live="polite"></p>
@@ -76,6 +77,7 @@
     <label class="mobile-nav-label" for="mobileTabSelect">VIEW</label>
     <select id="mobileTabSelect" class="mobile-nav-select" aria-label="Navigate to section">
       <option value="tab-inbox" selected>GM Inbox</option>
+      <option value="tab-intel">Gameday</option>
       <optgroup label="My Team">
       <option value="tab-roster">My Roster</option>
       <option value="tab-opt">Lineup Optimizer</option>
@@ -84,9 +86,9 @@
       <option value="tab-trade">Trade Analyzer</option>
       </optgroup>
       <optgroup label="League">
+      <option value="tab-standings">Standings</option>
       <option value="tab-matchup">Matchup Simulator</option>
       <option value="tab-bracket">Playoff Scenarios</option>
-      <option value="tab-intel">Across My Leagues</option>
       </optgroup>
       <optgroup label="Players">
       <option value="tab-analytics">Player Analytics</option>
@@ -103,6 +105,7 @@
     </select>
     <div class="sidebar-groups">
       <button class="nav-btn active nav-direct" data-tab="tab-inbox" aria-current="page"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h16v16H4Z M4 13h5l2 3h2l2-3h5"/></svg><span>GM Inbox</span></button>
+      <button class="nav-btn nav-direct" data-tab="tab-intel"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg><span>Gameday</span></button>
       <details class="nav-group" name="sidebar-section">
         <summary><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5h14v16H5Z M9 3h6v4H9Z M9 11h6 M9 15h6"/></svg><span>My Team<small class="nav-current"></small></span><span class="nav-chevron" aria-hidden="true"></span></summary>
         <div class="nav-group-items">
@@ -116,9 +119,9 @@
       <details class="nav-group" name="sidebar-section">
         <summary><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3h8v9a4 4 0 0 1-8 0Z M8 5H4v3a4 4 0 0 0 4 4 M16 5h4v3a4 4 0 0 1-4 4 M12 16v5 M8 21h8"/></svg><span>League<small class="nav-current"></small></span><span class="nav-chevron" aria-hidden="true"></span></summary>
         <div class="nav-group-items">
+          <button class="nav-btn" data-tab="tab-standings">Standings</button>
           <button class="nav-btn" data-tab="tab-matchup">Matchup Simulator</button>
           <button class="nav-btn" data-tab="tab-bracket">Playoff Scenarios</button>
-          <button class="nav-btn" data-tab="tab-intel">Across My Leagues</button>
         </div>
       </details>
       <details class="nav-group" name="sidebar-section">
@@ -204,6 +207,18 @@
         <button id="plannerReset" class="btn-builder-action" type="button">Reset scenario</button>
       </section>
       <div id="plannerResults" aria-live="polite"><p class="draft-empty">Connect a league to plan ahead.</p></div>
+    </div>
+
+    <div id="tab-standings" class="tab-page">
+      <div class="tool-intro">
+        <h2>Standings</h2>
+        <p id="standingsMeta" class="comparison-note"></p>
+      </div>
+      <section id="myLeaguesStandings" class="my-leagues" aria-labelledby="myLeaguesTitle" hidden>
+        <h3 id="myLeaguesTitle">All my leagues</h3>
+        <div id="myLeaguesList" class="my-leagues-list"></div>
+      </section>
+      <div class="table-wrap" role="region" aria-label="League standings" tabindex="0"><table id="standingsTbl" class="playoff-standings standings-table"></table></div>
     </div>
 
     <div id="tab-grades" class="tab-page">
@@ -690,6 +705,15 @@
         </div>
         <div id="bracketGridContainer" class="bracket-grid"></div>
         <p class="comparison-note bracket-hint">Matchup scores use each lineup's playoff-week projections. Tap a team to advance it.</p>
+        <section id="consolationSection" class="consolation-section" aria-labelledby="consolationTitle" hidden>
+          <div class="playoff-picture-head">
+            <div>
+              <h3 id="consolationTitle">Consolation bracket</h3>
+              <span id="consolationBadge" class="comparison-note"></span>
+            </div>
+          </div>
+          <div id="consolationGrid" class="bracket-grid"></div>
+        </section>
         <h3 class="playoff-standings-title">Standings</h3>
         <div class="table-wrap" role="region" aria-label="Current and projected standings" tabindex="0"><table id="playoffStandingsTable" class="playoff-standings"></table></div>
       </section>
@@ -737,10 +761,16 @@
 
     <!-- LEAGUE INTELLIGENCE -->
     <div id="tab-intel" class="tab-page">
-      <div class="draft-heading">
-        <div><h2>Across My Leagues</h2></div>
+      <div class="draft-heading gameday-heading">
+        <div><h2>Gameday</h2><span id="gamedayMeta" class="draft-subtitle">All your leagues, live.</span></div>
+        <button id="gamedayRefreshBtn" class="btn-builder-action gameday-refresh" type="button">Refresh</button>
       </div>
-      <p class="tool-intro-copy">Check shared injury risks, bye clashes, and pickup opportunities across your leagues.</p>
+      <div id="gamedayRoot" class="gameday-root" aria-live="off"></div>
+      <details id="gamedaySavedPanel" class="gm-secondary gameday-saved-panel">
+        <summary>Saved leagues <span id="gamedaySavedCount" class="gameday-count"></span></summary>
+        <div id="gamedaySaved" class="gameday-saved"></div>
+      </details>
+      <h3 class="gameday-subhead">Across my leagues</h3>
       <section class="portfolio-panel">
         <div class="draft-panel-heading"><div><h3>Tracked Rosters</h3><span id="portfolioMeta" class="draft-subtitle">Choose your roster for each connected league.</span></div></div>
         <div id="portfolioRosterSelectors" class="portfolio-roster-selectors"></div>
@@ -1060,14 +1090,15 @@
 </footer>
 
 <p id="appInstallStatus" class="app-install-status" role="status"></p>
-<script src="pwa.js?v=20261031-side-panel-1"></script>
-<script src="monetization-config.js?v=20261031-side-panel-1"></script>
-<script src="data-fetch.js?v=20261031-side-panel-1"></script>
-<script src="demo-league.js?v=20261031-side-panel-1"></script>
-<script src="league-records.js?v=20261031-side-panel-1"></script>
-<script src="workspace-backup.js?v=20261031-side-panel-1"></script>
-<script src="playoff-simulator.js?v=20261031-side-panel-1"></script>
-<script src="weekly-matchups.js?v=20261031-side-panel-1"></script>
-<script src="app.js?v=20261031-side-panel-1"></script>
+<script src="pwa.js?v=20261101-gameday-1"></script>
+<script src="monetization-config.js?v=20261101-gameday-1"></script>
+<script src="data-fetch.js?v=20261101-gameday-1"></script>
+<script src="demo-league.js?v=20261101-gameday-1"></script>
+<script src="league-records.js?v=20261101-gameday-1"></script>
+<script src="workspace-backup.js?v=20261101-gameday-1"></script>
+<script src="playoff-simulator.js?v=20261101-gameday-1"></script>
+<script src="weekly-matchups.js?v=20261101-gameday-1"></script>
+<script src="app.js?v=20261101-gameday-1"></script>
+<script src="gameday.js?v=20261101-gameday-1"></script>
 </body>
 </html>
