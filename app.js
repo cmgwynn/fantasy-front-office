@@ -3783,6 +3783,25 @@ function renderOptimizerPlayerCard(player, side, scores, scorePhase, unchanged =
   return `<div class="opt-player-card ${side}"><img class="avatar" src="${avatarUrl(player)}" alt="" onerror="this.style.display='none'" /><div class="opt-player-details"><b><img class="team-logo-sm" src="${teamLogoUrl(player.team)}" alt="" onerror="this.style.display='none'"/>${draftEscapeHtml(player.name)}</b><span>${unchanged ? "Starting" : side === "current" ? "Current" : "Suggested"} / ${draftEscapeHtml(player.position)} / ${draftEscapeHtml(player.team)}</span><small class="optimizer-kickoff-status ${kickoff.locked ? "locked" : kickoff.status}">${draftEscapeHtml(kickoffLabel)}</small></div><div class="opt-score-stack"><strong>Proj ${Number(player.projectedPoints || 0).toFixed(1)}</strong>${actual}</div></div>`;
 }
 
+function renderOptimizerLineupRow(slot, player, scores, scorePhase) {
+  const actualPoints = scores.get(String(player.id));
+  const kickoff = getPlayerGameDayStatus(player);
+  const status = !kickoff.locked && kickoff.kickoff
+    ? new Date(kickoff.kickoff).toLocaleString(undefined, { weekday: "short", hour: "numeric", minute: "2-digit" })
+    : kickoff.label;
+  const projected = Number(player.projectedPoints || 0);
+  const notStarted = scorePhase === "UPCOMING" || actualPoints === undefined || (scorePhase === "THIS WEEK" && !kickoff.locked && kickoff.status !== "unknown");
+  const actual = notStarted ? "--" : actualPoints.toFixed(1);
+  const beat = actual !== "--" && scorePhase === "FINAL" ? (actualPoints >= projected ? "is-up" : "is-down") : "";
+  return `<div class="opt-sheet-row">
+    <span class="opt-sheet-slot" style="${posBadgeStyle(slot === "FLEX" || slot === "SUPER_FLEX" ? "" : player.position)}">${draftEscapeHtml(slot === "SUPER_FLEX" ? "SF" : slot)}</span>
+    <span class="opt-sheet-photo"><img src="${draftEscapeHtml(avatarUrl(player))}" alt="" loading="lazy" onerror="this.remove()" /></span>
+    <span class="opt-sheet-name"><strong>${draftEscapeHtml(player.name)}</strong><small><img class="team-logo-sm" src="${teamLogoUrl(player.team)}" alt="" onerror="this.remove()" />${draftEscapeHtml(player.position)} · ${draftEscapeHtml(player.team || "FA")}${kickoff.status === "unknown" ? "" : `<span class="optimizer-kickoff-status ${kickoff.status}">${draftEscapeHtml(status)}</span>`}</small></span>
+    <span class="opt-sheet-num"><b>${projected.toFixed(1)}</b><small>Proj</small></span>
+    <span class="opt-sheet-num ${beat}"><b>${actual}</b><small>${scorePhase === "THIS WEEK" ? "So far" : "Actual"}</small></span>
+  </div>`;
+}
+
 function renderOptimizerTab(idx) {
   renderGameDayChecklist(state.managers[idx]);
   const tm = state.managers[idx];
@@ -3823,29 +3842,33 @@ function renderOptimizerTab(idx) {
     if (oPl.id === "0") openSlotCount++;
 
     const row = document.createElement("div");
-    row.className = "opt-row" + (isSev ? " sev" : (isSub ? " warn" : ""));
     const unchanged = oPl.id !== "0" && oPl.id === cPl.id;
-    row.classList.toggle("is-unchanged", unchanged);
+    if (unchanged) {
+      row.innerHTML = renderOptimizerLineupRow(slot, oPl, scores, scorePhase);
+      unchangedRows.appendChild(row.firstElementChild);
+      return;
+    }
+    row.className = "opt-row" + (isSev ? " sev" : (isSub ? " warn" : ""));
     const slotMessage = oPl.id === "0" ? `Open ${draftEscapeHtml(slot)}` : (isSub ? `${draftEscapeHtml(slot)}<br>+${lost.toFixed(1)} projected` : `✓ ${draftEscapeHtml(slot)}`);
-    row.innerHTML = unchanged
-      ? `<span class="opt-slot-result optimal">${slotMessage}</span>${renderOptimizerPlayerCard(oPl, "optimal", scores, scorePhase, true)}`
-      : `${renderOptimizerPlayerCard(cPl, "current", scores, scorePhase)}<div class="opt-slot-result ${oPl.id === "0" ? "suboptimal" : isSev ? "severe" : isSub ? "suboptimal" : "optimal"}">${slotMessage}</div>${renderOptimizerPlayerCard(oPl, "optimal", scores, scorePhase)}`;
-    (unchanged ? unchangedRows : rowsEl).appendChild(row);
+    row.innerHTML = `${renderOptimizerPlayerCard(cPl, "current", scores, scorePhase)}<div class="opt-slot-result ${oPl.id === "0" ? "suboptimal" : isSev ? "severe" : isSub ? "suboptimal" : "optimal"}">${slotMessage}</div>${renderOptimizerPlayerCard(oPl, "optimal", scores, scorePhase)}`;
+    rowsEl.appendChild(row);
   });
-  if (!rowsEl.children.length) {
+  const allSet = !rowsEl.children.length;
+  if (unchangedRows.children.length) {
+    const details = document.createElement("details");
+    details.className = "tool-disclosure optimizer-unchanged";
+    details.open = allSet;
+    const summary = document.createElement("summary");
+    summary.innerHTML = allSet
+      ? `<span class="opt-sheet-check" aria-hidden="true">✓</span> Lineup is set <small>${unchangedRows.children.length} starters · no projected upgrades</small>`
+      : `Keeping ${unchangedRows.children.length} starter${unchangedRows.children.length === 1 ? "" : "s"} <small>no change needed</small>`;
+    details.append(summary, unchangedRows);
+    rowsEl.appendChild(details);
+  } else if (allSet) {
     const message = document.createElement("p");
     message.className = "comparison-note";
     message.textContent = "No projected upgrades. Your starters are already selected.";
     rowsEl.appendChild(message);
-  }
-  if (unchangedRows.children.length) {
-    const details = document.createElement("details");
-    details.className = "tool-disclosure optimizer-unchanged";
-    details.open = subCnt === 0 && openSlotCount === 0;
-    const summary = document.createElement("summary");
-    summary.textContent = `${unchangedRows.children.length} unchanged starters`;
-    details.append(summary, unchangedRows);
-    rowsEl.appendChild(details);
   }
 
   const currentProjected = currentPlayers.reduce((sum, player) => sum + Number(player.projectedPoints || 0), 0);
@@ -3856,8 +3879,9 @@ function renderOptimizerTab(idx) {
   const actualSuffix = scorePhase === "THIS WEEK" ? "actual so far" : "actual";
   const actualCurrentLabel = scorePhase === "UPCOMING" ? "not started" : (currentPlayers.some(player => scores.has(String(player.id))) ? `${currentScored.toFixed(1)} ${actualSuffix}` : "actual --");
   const actualOptimalLabel = scorePhase === "UPCOMING" ? "not started" : (optimalScoredPlayers.length ? `${optimalScored.toFixed(1)} ${actualSuffix}` : "actual --");
-  document.getElementById("optCurTot").textContent = `CURRENT LINEUP: ${currentProjected.toFixed(1)} projected · ${actualCurrentLabel}`;
-  document.getElementById("optBestTot").textContent = `OPTIMUM: ${optimalProjected.toFixed(1)} projected · ${actualOptimalLabel} (+${Math.max(0, optimalProjected - currentProjected).toFixed(1)} projected)`;
+  const projectedGain = Math.max(0, optimalProjected - currentProjected);
+  document.getElementById("optCurTot").innerHTML = `<small>Your lineup</small><b>${currentProjected.toFixed(1)}</b><span>projected · ${draftEscapeHtml(actualCurrentLabel)}</span>`;
+  document.getElementById("optBestTot").innerHTML = `<small>Best possible${projectedGain >= 0.05 ? ` <em>+${projectedGain.toFixed(1)}</em>` : ""}</small><b>${optimalProjected.toFixed(1)}</b><span>projected · ${draftEscapeHtml(actualOptimalLabel)}</span>`;
   document.getElementById("optSubAlert").textContent = [
     subCnt ? `${subCnt} projected upgrade${subCnt === 1 ? "" : "s"}` : "Lineup optimized",
     openSlotCount ? `${openSlotCount} open slot${openSlotCount === 1 ? "" : "s"}` : ""

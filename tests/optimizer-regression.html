@@ -20,7 +20,7 @@
   <h1>Optimizer Regression Checks</h1>
   <p id="summary" role="status">Loading the app runtime...</p>
   <ol id="results"></ol>
-  <iframe id="appFrame" src="../index.html?v=20261101-visual-cards-1&amp;resume=0" title="Optimizer test runtime"></iframe>
+  <iframe id="appFrame" src="../index.html?v=20261101-optimizer-1&amp;resume=0" title="Optimizer test runtime"></iframe>
   <script>
     async function runOptimizerFixtures() {
       const results = [];
@@ -1238,7 +1238,8 @@
           check("Optimizer keeps unchanged starters visible when no upgrade is needed without duplicate cards",
             document.querySelectorAll("#optRows > .opt-row").length === 0 &&
             document.querySelector("#optRows > details").open &&
-            document.querySelectorAll("#optRows .opt-player-card").length === 2);
+            document.querySelectorAll("#optRows .opt-sheet-row").length === 2 && !document.querySelector("#optRows .opt-player-card") &&
+            document.querySelector("#optRows > details summary").textContent.includes("Lineup is set") && document.querySelector("#optRows .opt-sheet-slot")?.textContent === "RB");
           state.managers[0].players.push("fixture_bench_rb");
           const replacementAdvice = buildWeeklyRecommendations([]).filter(item => item.type === "Start / sit");
           check("Inbox follows RB/FLEX reshuffling to recommend only the real bench-to-starter replacement",
@@ -1256,8 +1257,8 @@
             document.querySelectorAll("#optRows > .opt-row").length === 1 &&
             document.querySelector("#optRows > .opt-row").textContent.includes("Quinshon Judkins") &&
             document.querySelector("#optRows > .opt-row").textContent.includes("+4.5") &&
-            document.getElementById("optCurTot").textContent.includes("23.5 projected") &&
-            document.getElementById("optBestTot").textContent.includes("28.0 projected") &&
+            document.querySelector("#optCurTot b").textContent === "23.5" &&
+            document.querySelector("#optBestTot b").textContent === "28.0" && document.querySelector("#optBestTot em").textContent === "+4.5" && document.querySelector("#optRows > details summary").textContent.includes("Keeping 1 starter") &&
             document.querySelector("#optRows").lastElementChild.tagName === "DETAILS");
           state.activeLeague = { ...state.activeLeague, rosterPositions: ["RB", "RB", "FLEX"] };
           addPlayer("fixture_third_rb", "Third RB", "RB", 10);
