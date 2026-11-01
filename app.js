@@ -58,6 +58,7 @@ function activateTab(tabId, { navigate = false, focus = false } = {}) {
   if (tabId === "tab-bracket") ensurePlayoffForecast();
   if (tabId === "tab-intel") window.FFOGameday?.activate();
   if (tabId === "tab-standings") renderStandingsTab();
+  renderContextBar();
   rememberWorkspaceSelection();
   updateCompanionProviderControls();
   return targetPage;
@@ -730,13 +731,170 @@ function renderConnectionLayout() {
     const focusInside = connection.contains(document.activeElement);
     connection.open = !connected;
     if (connected && focusInside) document.getElementById("connectionSettingsLabel").focus({ preventScroll: true });
-    if (connected) document.querySelector(".league-section").open = true;
     connection.dataset.connectionState = key;
   }
   document.querySelector(".workspace-controls").classList.toggle("is-connected", connected);
   document.querySelector(".top-nav").classList.toggle("is-connected", connected);
   document.getElementById("connectionSettingsLabel").textContent = connected ? "Manage connection" : "Connect a league";
+  renderContextBar();
 }
+
+// Page-level League / Team / Week controls. Each tool shows only what it uses.
+var CONTEXT_CONTROLS = {
+  "tab-inbox": "team week", "tab-intel": null,
+  "tab-roster": "team week", "tab-opt": "team week", "tab-planner": "team", "tab-waiver": "team week", "tab-trade": "team week",
+  "tab-standings": "", "tab-matchup": "team week", "tab-bracket": "",
+  "tab-analytics": "week", "tab-weekly-matchups": "team week", "tab-compare": "team week", "tab-sos": "team week",
+  "tab-draft": "", "tab-grades": "team week", "tab-power": "", "tab-records": ""
+};
+var INBOX_SCOPE_KEY = "fantasy-front-office:inbox-scope";
+
+function getInboxScope() {
+  if (getContextLeagues().length < 2) return "league";
+  try { return localStorage.getItem(INBOX_SCOPE_KEY) === "league" ? "league" : "all"; } catch { return "all"; }
+}
+
+function setInboxScope(scope) {
+  try { localStorage.setItem(INBOX_SCOPE_KEY, scope); } catch {}
+}
+
+function getContextLeagues() {
+  const items = [];
+  const seen = new Set();
+  state.leagues.forEach((league, index) => {
+    const key = `${league.provider}:${league.leagueId}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    items.push({ key, name: league.name, provider: league.provider, index });
+  });
+  (window.FFOGameday?.data?.leagues || []).forEach(league => {
+    if (league.hidden || league.error || seen.has(league.key) || !/^(sleeper|espn):/.test(league.key)) return;
+    seen.add(league.key);
+    items.push({ key: league.key, name: league.name, provider: league.provider });
+  });
+  return items;
+}
+
+function renderContextBar() {
+  const bar = document.getElementById("contextBar");
+  if (!bar) return;
+  const tabId = document.querySelector(".tab-page.active")?.id || "tab-inbox";
+  const connected = Boolean(state.activeLeague && state.managers.length);
+  if (!CONTEXT_CONTROLS) return;
+  const controls = tabId in CONTEXT_CONTROLS ? CONTEXT_CONTROLS[tabId] : "team week";
+  bar.hidden = !connected || controls === null;
+  if (bar.hidden) return;
+  const leagues = getContextLeagues();
+  const inboxAll = tabId === "tab-inbox" && getInboxScope() === "all";
+  const activeKey = state.activeLeague ? `${state.activeLeague.provider}:${state.activeLeague.leagueId}` : "";
+  const providerLabel = { sleeper: "Sleeper", espn: "ESPN", yahoo: "Yahoo" };
+  const pills = [];
+  if (tabId === "tab-inbox" && leagues.length > 1) {
+    pills.push(`<button type="button" class="ctx-league is-all${inboxAll ? " active" : ""}" data-ctx-scope="all" aria-pressed="${inboxAll}">All leagues <small>${leagues.length}</small></button>`);
+  }
+  if (leagues.length > 1 || tabId === "tab-inbox") {
+    leagues.forEach(league => {
+      const active = !inboxAll && league.key === activeKey;
+      pills.push(`<button type="button" class="ctx-league${active ? " active" : ""}" data-ctx-league="${draftEscapeHtml(league.key)}"${league.index !== undefined ? ` data-ctx-index="${league.index}"` : ""} aria-pressed="${active}" title="${draftEscapeHtml(league.name)}"><i class="ctx-provider is-${draftEscapeHtml(league.provider)}" aria-label="${draftEscapeHtml(providerLabel[league.provider] || league.provider)}"></i>${draftEscapeHtml(league.name)}</button>`);
+    });
+  }
+  const html = pills.join("");
+  const host = document.getElementById("ctxLeagues");
+  if (host.dataset.html !== html) { host.innerHTML = html; host.dataset.html = html; }
+  bar.classList.toggle("has-pills", pills.length > 0);
+  bar.classList.toggle("is-inbox-all", inboxAll);
+  bar.dataset.team = !inboxAll && controls.includes("team") ? "on" : "off";
+  bar.dataset.week = !inboxAll && controls.includes("week") ? "on" : "off";
+  document.getElementById("tab-inbox")?.classList.toggle("is-all-leagues", inboxAll);
+  const allHost = document.getElementById("gmAllLeagues");
+  if (allHost) allHost.hidden = !inboxAll;
+}
+
+async function switchContextLeague(button) {
+  const tabId = document.querySelector(".tab-page.active")?.id || "tab-inbox";
+  if (tabId === "tab-inbox") setInboxScope("league");
+  const key = button.dataset.ctxLeague;
+  const activeKey = state.activeLeague ? `${state.activeLeague.provider}:${state.activeLeague.leagueId}` : "";
+  if (key === activeKey) {
+    renderContextBar();
+    if (tabId === "tab-inbox") renderGMInbox();
+    return;
+  }
+  document.querySelectorAll(".ctx-league").forEach(pill => pill.classList.toggle("is-loading", pill === button));
+  try {
+    if (button.dataset.ctxIndex !== undefined) {
+      const select = document.getElementById("leagueSelect");
+      select.value = button.dataset.ctxIndex;
+      select.dispatchEvent(new Event("change"));
+    } else if (window.FFOGameday) {
+      await window.FFOGameday.manageLeague(key, tabId);
+    }
+  } finally {
+    renderContextBar();
+  }
+}
+
+function renderInboxAllLeagues() {
+  const host = document.getElementById("gmAllLeagues");
+  if (!host || host.hidden) return;
+  const gameday = window.FFOGameday;
+  const data = gameday?.data;
+  if (!data) {
+    if (!host.childNodes.length) host.innerHTML = `<p class="draft-empty">Loading your leagues…</p>`;
+    gameday?.ensureData().then(() => { renderContextBar(); renderInboxAllLeagues(); });
+    return;
+  }
+  const leagues = data.leagues.filter(league => !league.hidden);
+  const alerts = gameday.buildAlerts(leagues);
+  const alertCount = key => alerts.filter(alert => alert.leagueKey === key).length;
+  const providerLabel = { sleeper: "Sleeper", espn: "ESPN", yahoo: "Yahoo" };
+  const fmt = value => Number(value || 0).toFixed(1);
+  const card = league => {
+    const label = providerLabel[league.provider] || league.provider;
+    const openButton = /^(sleeper|espn):/.test(league.key) ? `<button type="button" class="gm-all-open" data-ctx-league="${draftEscapeHtml(league.key)}">Open inbox</button>` : "";
+    if (league.error) return `<article class="gm-all-card is-error"><header><span class="gd-provider is-${draftEscapeHtml(league.provider)}">${label}</span><strong>${draftEscapeHtml(league.name)}</strong></header><p class="draft-empty">${draftEscapeHtml(league.error)}</p></article>`;
+    const standing = league.standing;
+    const record = standing ? `${standing.wins}-${standing.losses}${standing.ties ? `-${standing.ties}` : ""}` : "";
+    const gap = standing ? gameday.standingGapLabel(standing) : "";
+    const inField = standing && standing.rank <= standing.playoffTeams;
+    const pct = league.winPct;
+    const tone = pct === null || pct === undefined ? "" : pct >= 60 ? " is-winning" : pct <= 40 ? " is-losing" : " is-close";
+    const flags = alertCount(league.key);
+    const side = (team, mine) => team ? `<div class="gm-all-side${mine ? " is-me" : ""}"><span title="${draftEscapeHtml(team.name)}">${draftEscapeHtml(team.name)}</span><b>${fmt(team.points)}</b><small>proj ${fmt(team.projected)}</small></div>` : `<div class="gm-all-side"><span>No opponent</span></div>`;
+    return `<article class="gm-all-card${tone}">
+      <header><span class="gd-provider is-${draftEscapeHtml(league.provider)}">${label}</span><strong title="${draftEscapeHtml(league.name)}">${draftEscapeHtml(league.name)}</strong>${flags ? `<span class="gm-all-flags" title="Lineup flags">${flags} to fix</span>` : `<span class="gm-all-ok">Lineup ✓</span>`}</header>
+      ${standing ? `<p class="gm-all-standing"><b>${gameday.ordinal(standing.rank)}</b> of ${standing.teams || "—"} · ${record}${gap ? ` · <span class="${inField ? "is-in" : "is-out"}">${draftEscapeHtml(gap)}</span>` : ""}</p>` : ""}
+      ${league.me ? `<div class="gm-all-score">${side(league.me, true)}<span class="gm-all-vs">vs</span>${side(league.opp, false)}</div>` : ""}
+      ${pct === null || pct === undefined ? "" : `<div class="gd-win"><div class="gd-win-bar"><span style="width:${Number(pct).toFixed(1)}%"></span></div><small><b>${Math.round(pct)}%</b> to win</small></div>`}
+      <footer>${openButton}${/^(sleeper|espn):/.test(league.key) ? `<button type="button" class="btn-builder-action" data-gameday-manage="${draftEscapeHtml(league.key)}">Set lineup</button>` : ""}</footer>
+    </article>`;
+  };
+  const needs = leagues.filter(league => alertCount(league.key)).length;
+  const live = data.scoreboard?.games?.filter(game => game.state === "in").length || 0;
+  host.innerHTML = `${gameday.renderAlerts(alerts)}
+    <div class="gm-all-grid">${leagues.length ? leagues.map(card).join("") : `<p class="draft-empty">No saved leagues yet. Connect a league and it appears here.</p>`}</div>`;
+  document.getElementById("gmInboxContext").textContent = `Week ${data.week} · ${leagues.length} league${leagues.length === 1 ? "" : "s"}${needs ? ` · ${needs} need${needs === 1 ? "s" : ""} attention` : " · all lineups set"}${live ? ` · ${live} game${live === 1 ? "" : "s"} live` : ""}`;
+  const portfolio = document.getElementById("gmPortfolioDetails");
+  if (portfolio) portfolio.open = true;
+}
+
+document.addEventListener("click", event => {
+  const scope = event.target.closest("[data-ctx-scope]");
+  if (scope) {
+    setInboxScope("all");
+    renderContextBar();
+    renderGMInbox();
+    return;
+  }
+  const league = event.target.closest("[data-ctx-league]");
+  if (league) switchContextLeague(league);
+});
+["leagueSelect", "teamSelect"].forEach(id => document.getElementById(id)?.addEventListener("change", () => setTimeout(renderContextBar)));
+if (document.getElementById("leagueSelect")) new MutationObserver(() => renderContextBar()).observe(document.getElementById("leagueSelect"), { childList: true });
+document.addEventListener("ffo:gameday-data", () => {
+  renderContextBar();
+  if (document.getElementById("tab-inbox")?.classList.contains("active")) renderInboxAllLeagues();
+});
 
 function captureLeagueView() {
   return {
@@ -2354,7 +2512,6 @@ async function loadLeague(idx) {
   state.activeLeague = state.leagues[idx];
   renderInboxScoreboard();
   if (!state.activeLeague) return;
-  document.querySelector(".league-section")?.setAttribute("open", "");
   if (state.activeLeague.provider === "yahoo") {
     renderAllViews(parseInt(document.getElementById("teamSelect")?.value || "0", 10));
     setStatus(state.activeLeague.isDemo ? "Demo projections are a fixed Week 6 snapshot, not week-specific forecasts." : "Imported projections are a fixed snapshot. Re-import to update player data.");
@@ -6045,6 +6202,8 @@ function renderInboxScoreboard() {
 }
 
 async function renderGMInbox(forceRefresh = false) {
+  renderContextBar();
+  renderInboxAllLeagues();
   renderInboxScoreboard();
   renderDecisionDataStatus();
   const version = ++gmInboxRenderVersion;
@@ -6118,7 +6277,7 @@ async function renderGMInbox(forceRefresh = false) {
   renderInboxSchedule(selectedManager);
   renderGameDayChecklist(selectedManager);
   if (document.getElementById("inboxRecap")?.open) renderLeagueNewsletter();
-  document.getElementById("gmInboxContext").textContent = `Week ${state.week}${state.activeLeague.isDemo ? " · Demo" : ""} · ${selectedManager?.teamName || "Your roster"}${urgentCount ? ` · ${urgentCount} urgent decision${urgentCount === 1 ? "" : "s"}` : ""}`;
+  if (getInboxScope() !== "all") document.getElementById("gmInboxContext").textContent = `Week ${state.week}${state.activeLeague.isDemo ? " · Demo" : ""} · ${selectedManager?.teamName || "Your roster"}${urgentCount ? ` · ${urgentCount} urgent decision${urgentCount === 1 ? "" : "s"}` : ""}`;
   document.getElementById("gmInboxDataDetails").hidden = false;
   document.getElementById("gmInboxDataNote").textContent = `${getProjectionSourceNote()} Suggestions are estimates. Review and submit changes in your league.`;
   const leagueRecords = Object.values(feedback).filter(record => record.leagueKey === leagueKey);
@@ -8615,7 +8774,8 @@ function normalizeLeagueSchedule(league, data, week, managers = state.managers) 
   const games = [];
   const issues = [];
   const seen = new Set();
-  const add = (homeId, awayId, note = "") => {
+  const pts = value => typeof value === "number" && Number.isFinite(value) ? value : null;
+  const add = (homeId, awayId, note = "", homePts = null, awayPts = null) => {
     const home = String(homeId ?? ""), away = awayId === null || awayId === undefined ? null : String(awayId);
     if (!known.has(home) || (away !== null && (!known.has(away) || away === home)) ||
         seen.has(home) || (away !== null && seen.has(away))) {
@@ -8624,14 +8784,14 @@ function normalizeLeagueSchedule(league, data, week, managers = state.managers) 
     }
     seen.add(home);
     if (away !== null) seen.add(away);
-    games.push({ homeId: home, awayId: away, note });
+    games.push({ homeId: home, awayId: away, note, homePts: pts(homePts), awayPts: away === null ? null : pts(awayPts) });
   };
   if (!Array.isArray(data)) throw new Error("Provider schedule response is invalid.");
   if (league.provider === "sleeper") {
     const pairs = new Map();
     data.forEach(team => {
       if (team.matchup_id === null || team.matchup_id === undefined) {
-        add(team.roster_id, null, "Provider bye / unpaired");
+        add(team.roster_id, null, "Provider bye / unpaired", team.points);
         return;
       }
       const key = String(team.matchup_id);
@@ -8639,7 +8799,7 @@ function normalizeLeagueSchedule(league, data, week, managers = state.managers) 
       pairs.get(key).push(team);
     });
     pairs.forEach(teams => {
-      if (teams.length === 2) add(teams[0].roster_id, teams[1].roster_id);
+      if (teams.length === 2) add(teams[0].roster_id, teams[1].roster_id, "", teams[0].points, teams[1].points);
       else issues.push("Unresolved matchup groups were excluded.");
     });
   } else if (league.provider === "espn") {
@@ -8654,11 +8814,12 @@ function normalizeLeagueSchedule(league, data, week, managers = state.managers) 
       const scoringWeeks = getEspnMatchupWeeks(league, game);
       if (!scoringWeeks.includes(week)) return;
       const note = scoringWeeks.length > 1 ? `Multiweek matchup: Weeks ${scoringWeeks.join(", ")}` : "";
-      if (game.home && game.away) add(game.home.teamId, game.away.teamId, note);
+      const single = scoringWeeks.length === 1;
+      if (game.home && game.away) add(game.home.teamId, game.away.teamId, note, single ? game.home.totalPoints : null, single ? game.away.totalPoints : null);
       else if (game.home || game.away) add((game.home || game.away).teamId, null, note || "Provider bye / unpaired");
     });
   } else {
-    data.forEach(game => add(game.homeId, game.awayId, game.note || ""));
+    data.forEach(game => add(game.homeId, game.awayId, game.note || "", game.homeScore ?? game.homePoints, game.awayScore ?? game.awayPoints));
   }
   if (seen.size < known.size) issues.push(`${known.size - seen.size} team${known.size - seen.size === 1 ? "" : "s"} have no published pairing for this week.`);
   return { games, issues: [...new Set(issues)] };
@@ -8711,9 +8872,49 @@ function getScheduleFeaturedPlayers(manager, week, projections) {
 }
 
 function renderScheduleTeam(manager, id, week, projections) {
-  const name = manager?.teamName || `Team ${id}`;
+  const [teamName, owner] = manager ? splitTeamLabel(manager) : [`Team ${id}`, ""];
   const players = getScheduleFeaturedPlayers(manager, week, projections);
-  return `<div class="schedule-team"><span class="team-initials" aria-hidden="true">${draftEscapeHtml(name.split(/\s+/).slice(0, 2).map(part => part[0]).join(""))}</span><div><strong>${draftEscapeHtml(name)}</strong><div class="schedule-core">${players.map(({player, points}) => `<span title="${draftEscapeHtml(`${player.name} · ${points.toFixed(1)} projected`)}">${renderComparisonPortrait(player)}<small>${points.toFixed(1)}</small></span>`).join("")}</div>${players.length ? '<small>Top projected roster players</small>' : '<small>Player projections unavailable</small>'}</div></div>`;
+  const avatar = manager ? renderTeamAvatarHTML(manager) : '<span class="team-initials" aria-hidden="true">?</span>';
+  const core = players.length ? `<div class="schedule-core" aria-label="Top projected players">${players.map(({player, points}) => `<span title="${draftEscapeHtml(`${player.name} · ${points.toFixed(1)} projected`)}">${renderComparisonPortrait(player)}<small>${points.toFixed(1)}</small></span>`).join("")}</div>` : "";
+  return `<div class="schedule-team">${avatar}<div class="sched-team-text"><strong title="${draftEscapeHtml(manager?.teamName || teamName)}">${draftEscapeHtml(teamName)}</strong>${owner ? `<small>${draftEscapeHtml(owner)}</small>` : ""}${core}</div></div>`;
+}
+
+function renderScheduleWeekStrip(selected) {
+  const strip = document.getElementById("leagueScheduleWeeks");
+  if (!strip) return;
+  const current = Number(state.week) || 0;
+  const playoffStart = Number(state.activeLeague?.playoffWeekStart) || 0;
+  strip.innerHTML = `<button type="button" class="sched-step" data-sched-week="${Math.max(1, selected - 1)}" aria-label="Previous week"${selected <= 1 ? " disabled" : ""}>‹</button><div class="sched-week-chips">${Array.from({ length: 18 }, (_, index) => {
+    const week = index + 1;
+    const cls = ["sched-week", week === selected ? "active" : "", week === current ? "is-current" : "", week < current ? "is-past" : "", playoffStart && week >= playoffStart ? "is-playoff" : ""].filter(Boolean).join(" ");
+    return `<button type="button" class="${cls}" data-sched-week="${week}" aria-pressed="${week === selected}" title="Week ${week}${week === current ? " · current" : ""}${playoffStart && week >= playoffStart ? " · playoffs" : ""}">${week}</button>`;
+  }).join("")}</div><button type="button" class="sched-step" data-sched-week="${Math.min(18, selected + 1)}" aria-label="Next week"${selected >= 18 ? " disabled" : ""}>›</button>`;
+  strip.querySelector(".sched-week.active")?.scrollIntoView({ block: "nearest", inline: "center" });
+}
+
+function renderScheduleGame(game, week, projections, myId) {
+  const home = state.managers.find(team => String(team.rosterId) === game.homeId);
+  const away = game.awayId === null ? null : state.managers.find(team => String(team.rosterId) === game.awayId);
+  const a = projections ? getScheduleTeamProjection(home, week, projections) : null;
+  const b = projections && away ? getScheduleTeamProjection(away, week, projections) : null;
+  const current = Number(state.week) || 0;
+  const phase = week < current ? "final" : week === current ? "live" : "upcoming";
+  const hasScores = game.homePts !== null && game.homePts !== undefined && (game.awayPts !== null && game.awayPts !== undefined) && (game.homePts > 0 || game.awayPts > 0);
+  const actual = hasScores && phase !== "upcoming";
+  const scoreA = actual ? game.homePts : a, scoreB = actual ? game.awayPts : b;
+  const pct = a !== null && b !== null ? Math.round(computeHeadToHeadWinProb(a, b)) : null;
+  const sideClass = (mine, other, odds) => {
+    if (phase === "final" && actual) return mine > other ? " is-win" : mine < other ? " is-loss" : "";
+    return odds !== null && odds > 50 ? " is-fav" : "";
+  };
+  const fmt = value => value === null || value === undefined ? "—" : value.toFixed(1);
+  const sub = proj => actual ? (phase === "final" ? "Final" : `proj ${fmt(proj)}`) : proj === null ? "no projection" : "projected";
+  const isMine = myId !== undefined && [game.homeId, game.awayId].includes(String(myId));
+  const label = phase === "final" && actual ? "Final" : phase === "live" && actual ? "Live" : pct !== null ? "Win odds" : "Matchup";
+  const mid = !away ? '<div class="sched-mid"><span class="sched-phase">Bye</span></div>'
+    : `<div class="sched-mid"><span class="sched-phase${phase === "live" && actual ? " is-live" : ""}">${label}</span>${pct !== null && !(phase === "final" && actual) ? `<div class="sched-odds" role="img" aria-label="${draftEscapeHtml(`${pct}% to ${100 - pct}% projected win odds`)}"><i style="width:${pct}%"></i></div><small>${pct}% · ${100 - pct}%</small>` : actual && phase === "final" ? `<small>${fmt(Math.abs(scoreA - scoreB))} margin</small>` : '<small>vs</small>'}</div>`;
+  const side = (manager, id, score, proj, cls, where) => `<div class="sched-side is-${where}${cls}">${renderScheduleTeam(manager, id, week, projections)}<div class="sched-score"><b>${fmt(score)}</b><small>${sub(proj)}</small></div></div>`;
+  return `<article class="league-matchup-card sched-game${isMine ? " is-mine" : ""}">${isMine ? '<span class="sched-mine-tag">Your matchup</span>' : ""}${side(home, game.homeId, scoreA, a, sideClass(scoreA, scoreB, pct), "home")}${mid}${away ? side(away, game.awayId, scoreB, b, sideClass(scoreB, scoreA, pct === null ? null : 100 - pct), "away") : '<div class="sched-side is-away is-empty"><strong>No opponent this week</strong></div>'}${game.note && game.note !== "Provider bye / unpaired" ? `<small class="sched-note">${draftEscapeHtml(game.note)}</small>` : ""}</article>`;
 }
 
 async function loadLeagueSchedule(force = false) {
@@ -8734,6 +8935,7 @@ async function loadLeagueSchedule(force = false) {
     select.value = String(state.week);
   }
   const week = Number(select.value);
+  renderScheduleWeekStrip(week);
   const key = `${context}:${week}`;
   const snapshot = Boolean(state.workspaceSnapshot) || league.provider === "yahoo";
   const cacheKey = `${key}:${snapshot ? "snapshot" : "provider"}`;
@@ -8789,16 +8991,10 @@ async function loadLeagueSchedule(force = false) {
     const manager = state.managers[Number(document.getElementById("teamSelect").value || "0")];
     const mine = document.getElementById("leagueScheduleScope").value === "mine";
     const games = report.games.filter(game => !mine || [game.homeId, game.awayId].includes(String(manager?.rosterId)));
-    const name = id => state.managers.find(team => String(team.rosterId) === id)?.teamName || `Team ${id}`;
-    status.textContent = `Week ${week} · ${report.source}. ${report.issues.join(" ")} ${projectionError}`;
-    results.innerHTML = games.length ? `<div class="league-matchup-cards">${games.map(game => {
-      const home = state.managers.find(team => String(team.rosterId) === game.homeId);
-      const away = state.managers.find(team => String(team.rosterId) === game.awayId);
-      const a = projections ? getScheduleTeamProjection(home, week, projections) : null;
-      const b = projections && game.awayId !== null ? getScheduleTeamProjection(away, week, projections) : null;
-      const lean = a !== null && b !== null ? a === b ? "Even projection" : `${name(a > b ? game.homeId : game.awayId)} projected edge · ${Math.abs(a - b).toFixed(1)} pts` : "Projection unavailable";
-      return `<article class="league-matchup-card">${renderScheduleTeam(home, game.homeId, week, projections)}<div class="schedule-projections"><span>${a === null ? "—" : a.toFixed(1)} <small>projected</small></span><small>VS</small><span>${b === null ? "—" : b.toFixed(1)} <small>projected</small></span></div>${game.awayId === null ? "<strong>No opponent assigned</strong>" : renderScheduleTeam(away, game.awayId, week, projections)}<p class="schedule-lean${a === null || b === null ? " is-unavailable" : ""}">${draftEscapeHtml(lean)}</p>${game.note ? `<small>${draftEscapeHtml(game.note)}</small>` : ""}</article>`;
-    }).join("")}</div><details class="gm-secondary"><summary>Projection method</summary><p class="comparison-note">Week ${week} optimized active-roster projections, not your submitted lineup or win probability. Uses that week's Sleeper projections and supported scoring counters; ESPN totals use the reception preset, not all custom bonuses. Unknown schedules, missing player projections or unfilled starter slots withhold the total. Current Out/Doubtful players are excluded only in the selected current week; IR/PUP/Suspended remain excluded without a verified return date. No future recovery forecast is made.</p></details>` : `<p class="draft-empty">No published matchup available${mine ? " for your selected team" : ""}. Future playoff opponents may not be assigned yet.</p>`;
+    const myId = manager?.rosterId;
+    const ordered = [...games].sort((x, y) => Number([y.homeId, y.awayId].includes(String(myId))) - Number([x.homeId, x.awayId].includes(String(myId))) || Number(x.awayId === null) - Number(y.awayId === null));
+    status.textContent = `${report.source}${report.issues.length ? ` · ${report.issues.join(" ")}` : ""}${projectionError ? ` · ${projectionError}` : ""}`;
+    results.innerHTML = games.length ? `<div class="league-matchup-cards sched-list">${ordered.map(game => renderScheduleGame(game, week, projections, myId)).join("")}</div><details class="gm-secondary"><summary>Projection method</summary><p class="comparison-note">Week ${week} optimized active-roster projections, not your submitted lineup. Win odds compare those projections. Uses that week's Sleeper projections and supported scoring counters; ESPN totals use the reception preset, not all custom bonuses. Unknown schedules, missing player projections or unfilled starter slots withhold the total. Current Out/Doubtful players are excluded only in the selected current week; IR/PUP/Suspended remain excluded without a verified return date. No future recovery forecast is made.</p></details>` : `<p class="draft-empty">No published matchup available${mine ? " for your selected team" : ""}. Future playoff opponents may not be assigned yet.</p>`;
   } catch (error) {
     if (!current()) return;
     status.textContent = `Week ${week} schedule unavailable: ${error.message} Reload the page to retry.`;
@@ -9610,6 +9806,13 @@ function bindControlEvents() {
   document.getElementById("gmSchedule")?.addEventListener("click", handleGMInboxClick);
   document.getElementById("gmChecklist")?.addEventListener("click", handleGMInboxClick);
   document.getElementById("leagueScheduleWeek")?.addEventListener("change", () => loadLeagueSchedule());
+  document.getElementById("leagueScheduleWeeks")?.addEventListener("click", event => {
+    const button = event.target.closest("[data-sched-week]");
+    const select = document.getElementById("leagueScheduleWeek");
+    if (!button || button.disabled || !select) return;
+    select.value = button.dataset.schedWeek;
+    loadLeagueSchedule();
+  });
   document.getElementById("leagueScheduleScope")?.addEventListener("change", () => loadLeagueSchedule());
   document.getElementById("gmInboxCompleted")?.addEventListener("click", handleGMInboxClick);
   document.getElementById("portfolioPressureList")?.addEventListener("click", handleGMInboxClick);

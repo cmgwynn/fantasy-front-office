@@ -20,7 +20,7 @@
   <h1>Optimizer Regression Checks</h1>
   <p id="summary" role="status">Loading the app runtime...</p>
   <ol id="results"></ol>
-  <iframe id="appFrame" src="../index.html?v=20261101-optimizer-1&amp;resume=0" title="Optimizer test runtime"></iframe>
+  <iframe id="appFrame" src="../index.html?v=20261101-context-bar-1&amp;resume=0" title="Optimizer test runtime"></iframe>
   <script>
     async function runOptimizerFixtures() {
       const results = [];
@@ -85,7 +85,6 @@
         const connection = document.getElementById("connectionSettings");
         const initialConnectionOpen = connection.open;
         const initialConnectionState = connection.dataset.connectionState;
-        const initialLeagueOpen = document.querySelector(".league-section").open;
         try {
           state.activeLeague = null; state.managers = [];
           renderConnectionLayout();
@@ -95,8 +94,19 @@
           state.managers = [{ rosterId: 1 }];
           renderConnectionLayout();
           check("Connected visits collapse setup and expose league selectors", !connection.open &&
-            document.querySelector(".league-section").open &&
+            !document.getElementById("contextBar").hidden &&
             document.querySelector(".workspace-controls").classList.contains("is-connected"));
+          const priorActiveTab = document.querySelector(".tab-page.active");
+          const contextFor = tabId => {
+            document.querySelectorAll(".tab-page").forEach(page => page.classList.toggle("active", page.id === tabId));
+            renderContextBar();
+            const bar = document.getElementById("contextBar");
+            return bar.hidden ? "hidden" : `${bar.dataset.team}/${bar.dataset.week}`;
+          };
+          check("Context bar shows only the selectors each page uses and hides on Gameday",
+            contextFor("tab-planner") === "on/off" && contextFor("tab-analytics") === "off/on" &&
+            contextFor("tab-standings") === "off/off" && contextFor("tab-opt") === "on/on" && contextFor("tab-intel") === "hidden");
+          document.querySelectorAll(".tab-page").forEach(page => page.classList.toggle("active", page === priorActiveTab));
           connection.open = true;
           renderConnectionLayout();
           check("Rerenders preserve manually opened connection settings", connection.open);
@@ -109,7 +119,6 @@
           renderConnectionLayout();
           connection.open = initialConnectionOpen;
           connection.dataset.connectionState = initialConnectionState || "disconnected";
-          document.querySelector(".league-section").open = initialLeagueOpen;
         }
         for (const compact of [false, true]) {
           const plot = { l: 68, t: 28, w: compact ? 200 : 900, h: 284 };
@@ -221,6 +230,16 @@
               document.getElementById("leagueScheduleWeek").value === "8" &&
               document.querySelectorAll("#leagueScheduleResults .league-matchup-card").length === 2 && requests === 1 &&
               !document.getElementById("leagueScheduleResults").textContent.includes("Published pairing"));
+            check("Schedule week strip marks the selected week and pins the user's matchup first",
+              document.querySelectorAll("#leagueScheduleWeeks .sched-week").length === 18 &&
+              document.querySelector("#leagueScheduleWeeks .sched-week.active")?.textContent === "8" &&
+              document.querySelector("#leagueScheduleResults .sched-game")?.classList.contains("is-mine"));
+            const finalPair = normalizeLeagueSchedule({ provider: "sleeper" }, [
+              { roster_id: 1, matchup_id: 2, points: 120.5 }, { roster_id: 2, matchup_id: 2, points: 98.25 }
+            ], 3, scheduleManagers);
+            const finalHtml = renderScheduleGame(finalPair.games[0], 3, null, undefined);
+            check("Completed schedule weeks show final scores and mark the winner",
+              finalPair.games[0].homePts === 120.5 && finalHtml.includes("120.5") && finalHtml.includes("is-win") && finalHtml.includes("is-loss"));
             document.getElementById("leagueScheduleScope").value = "mine";
             await loadLeagueSchedule();
             check("My-team schedule filters without refetching and still names the opponent",

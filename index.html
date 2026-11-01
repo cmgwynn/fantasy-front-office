@@ -10,7 +10,7 @@
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
   <link rel="icon" href="icons/app-icon.svg" type="image/svg+xml" />
   <title>Fantasy Front Office</title>
-  <link rel="stylesheet" href="styles.css?v=20261101-optimizer-1" />
+  <link rel="stylesheet" href="styles.css?v=20261101-context-bar-1" />
 </head>
 <body>
 
@@ -30,6 +30,7 @@
   <div class="workspace-controls">
     <details id="connectionSettings" class="control-section connection-section" open>
       <summary id="connectionSettingsLabel" class="control-section-heading">Connect a league</summary>
+      <div class="connection-panel">
       <div class="connection-fields">
         <label class="control-field provider-field" for="providerSelect">Provider
           <select id="providerSelect" aria-label="League provider">
@@ -47,25 +48,12 @@
         <button id="syncBtn" class="connect-button" type="button" disabled>Connect</button>
       </div>
       <div id="providerHelp" class="provider-help" aria-live="polite" hidden></div>
-    </details>
-    <details class="control-section league-section">
-      <summary class="control-section-heading">CURRENT LEAGUE</summary>
-      <div class="league-fields">
-        <label id="leagueInputLabel" class="control-field" for="leagueSelect">League
-          <select id="leagueSelect"><option>-- Sync account first --</option></select>
-        </label>
-        <label id="rosterInputLabel" class="control-field" for="teamSelect">Roster
-          <select id="teamSelect"><option>-- Select League --</option></select>
-        </label>
-        <label id="weekInputLabel" class="control-field week-field" for="weekSelect">Week
-          <select id="weekSelect"></select>
-        </label>
       </div>
     </details>
   </div>
 </div>
 
-<script>(function(){try{var q=new URLSearchParams(location.search);if(q.get("resume")==="0"||q.has("user")||q.has("league")||!localStorage.getItem("fantasy-front-office:reload-selection:v1"))return;var d=document.documentElement,c=document.getElementById("connectionSettings");c.open=false;c.dataset.connectionState="connected";document.querySelector(".league-section").open=true;document.querySelector(".workspace-controls").classList.add("is-connected");document.querySelector(".top-nav").classList.add("is-connected");document.getElementById("connectionSettingsLabel").textContent="Manage connection";d.classList.add("ffo-booting");setTimeout(function(){d.classList.remove("ffo-booting");if(window.renderConnectionLayout)window.renderConnectionLayout()},2500)}catch(e){}})();</script>
+<script>(function(){try{var q=new URLSearchParams(location.search);if(q.get("resume")==="0"||q.has("user")||q.has("league")||!localStorage.getItem("fantasy-front-office:reload-selection:v1"))return;var d=document.documentElement,c=document.getElementById("connectionSettings");c.open=false;c.dataset.connectionState="connected";document.querySelector(".workspace-controls").classList.add("is-connected");document.querySelector(".top-nav").classList.add("is-connected");document.getElementById("connectionSettingsLabel").textContent="Manage connection";d.classList.add("ffo-booting");setTimeout(function(){d.classList.remove("ffo-booting");if(window.renderConnectionLayout)window.renderConnectionLayout()},2500)}catch(e){}})();</script>
 <section id="companionBar" aria-label="Side panel" hidden>
   <button id="companionOpenLeague" type="button">Open league</button>
   <p id="companionStatus" role="status" aria-live="polite"></p>
@@ -146,6 +134,20 @@
   </nav>
 
   <main id="mainContent" class="content-stack" tabindex="-1" aria-label="Current tool">
+    <div id="contextBar" class="context-bar" hidden>
+      <div id="ctxLeagues" class="ctx-leagues" role="group" aria-label="Switch league"></div>
+      <div class="ctx-fields">
+        <label id="leagueInputLabel" class="ctx-field ctx-league-field" for="leagueSelect"><span>League</span>
+          <select id="leagueSelect"><option>-- Sync account first --</option></select>
+        </label>
+        <label id="rosterInputLabel" class="ctx-field ctx-team-field" for="teamSelect"><span>Team</span>
+          <select id="teamSelect"><option>-- Select League --</option></select>
+        </label>
+        <label id="weekInputLabel" class="ctx-field ctx-week-field week-field" for="weekSelect"><span>Week</span>
+          <select id="weekSelect"></select>
+        </label>
+      </div>
+    </div>
     <div id="workspaceSnapshotBanner" class="workspace-banner" role="status" hidden></div>
     <p id="decisionDataStatus" class="decision-data-status" role="status" hidden></p>
     <!-- TAB 1: ROSTER -->
@@ -187,12 +189,13 @@
         <p class="comparison-note">Your league matchups, upcoming byes, and coverage options.</p>
       </div>
       <section class="comparison-card">
-        <div class="draft-panel-heading"><h3>League schedule</h3></div>
-        <div class="planner-controls">
-          <label for="leagueScheduleWeek">Week<select id="leagueScheduleWeek"></select></label>
-          <label for="leagueScheduleScope">Teams<select id="leagueScheduleScope"><option value="all">Entire league</option><option value="mine">My selected team</option></select></label>
+        <div class="sched-head">
+          <h3>League schedule</h3>
+          <label for="leagueScheduleScope" class="sched-scope"><span class="sr-only">Teams</span><select id="leagueScheduleScope"><option value="all">All matchups</option><option value="mine">Only my matchup</option></select></label>
         </div>
-        <p id="leagueScheduleStatus" class="comparison-note" role="status">Connect a league to see its schedule.</p>
+        <div id="leagueScheduleWeeks" class="sched-weeks" role="group" aria-label="Schedule week"></div>
+        <label for="leagueScheduleWeek" class="sr-only">Week<select id="leagueScheduleWeek" tabindex="-1"></select></label>
+        <p id="leagueScheduleStatus" class="comparison-note sched-status" role="status">Connect a league to see its schedule.</p>
         <div id="leagueScheduleResults"></div>
       </section>
       <h3>Bye-week coverage</h3>
@@ -831,6 +834,7 @@
       </div>
       <div id="gmInboxSummary" class="gm-inbox-summary"></div>
       <div id="gmBriefing" aria-live="polite"></div>
+      <section id="gmAllLeagues" class="gm-all" aria-label="All your leagues" hidden></section>
       <section id="gmScoreboard" class="portfolio-panel gm-scoreboard" aria-label="Current fantasy matchup and league scoreboard" hidden></section>
       <details id="gmInboxDataDetails" class="gm-action-details" hidden><summary>Data &amp; estimates</summary><p id="gmInboxDataNote" class="comparison-note"></p></details>
       <section class="portfolio-panel gm-queue">
@@ -850,7 +854,7 @@
       </section>
       <section id="gmChecklist" class="comparison-card" aria-label="Game-day checklist" hidden></section>
       <section id="gmSchedule" class="portfolio-panel" aria-label="Upcoming schedule and lineup coverage" hidden></section>
-      <details class="gm-secondary">
+      <details id="gmPortfolioDetails" class="gm-secondary">
         <summary>Across your leagues <span id="gmPortfolioCount"></span></summary>
         <div id="portfolioPressureList" class="portfolio-pressure-list"></div>
       </details>
@@ -1090,15 +1094,15 @@
 </footer>
 
 <p id="appInstallStatus" class="app-install-status" role="status"></p>
-<script src="pwa.js?v=20261101-optimizer-1"></script>
-<script src="monetization-config.js?v=20261101-optimizer-1"></script>
-<script src="data-fetch.js?v=20261101-optimizer-1"></script>
-<script src="demo-league.js?v=20261101-optimizer-1"></script>
-<script src="league-records.js?v=20261101-optimizer-1"></script>
-<script src="workspace-backup.js?v=20261101-optimizer-1"></script>
-<script src="playoff-simulator.js?v=20261101-optimizer-1"></script>
-<script src="weekly-matchups.js?v=20261101-optimizer-1"></script>
-<script src="app.js?v=20261101-optimizer-1"></script>
-<script src="gameday.js?v=20261101-optimizer-1"></script>
+<script src="pwa.js?v=20261101-context-bar-1"></script>
+<script src="monetization-config.js?v=20261101-context-bar-1"></script>
+<script src="data-fetch.js?v=20261101-context-bar-1"></script>
+<script src="demo-league.js?v=20261101-context-bar-1"></script>
+<script src="league-records.js?v=20261101-context-bar-1"></script>
+<script src="workspace-backup.js?v=20261101-context-bar-1"></script>
+<script src="playoff-simulator.js?v=20261101-context-bar-1"></script>
+<script src="weekly-matchups.js?v=20261101-context-bar-1"></script>
+<script src="app.js?v=20261101-context-bar-1"></script>
+<script src="gameday.js?v=20261101-context-bar-1"></script>
 </body>
 </html>

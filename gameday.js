@@ -744,7 +744,7 @@
   window.FFOGameday = Object.freeze({
     STORE_KEY, readStore, rememberSource, removeSource, setLeagueHidden, sourceKey,
     normalizeScoreboard, remainingFraction, finishPlayer, sideTotals, winProbability, finalizeLeague,
-    buildAlerts, buildRooting, renderGamedayHtml, morph, activate, refresh, renderGameday, scoreSleeperProjection,
+    buildAlerts, buildRooting, renderAlerts, renderGamedayHtml, morph, activate, refresh, renderGameday, scoreSleeperProjection,
     loadYahooSource, computeStanding, standingGapLabel, ordinal, ensureData, manageLeague, get data() { return gd.data; }, set data(value) { gd.data = value; gd.loadedAt = Date.now(); }
   });
 })();

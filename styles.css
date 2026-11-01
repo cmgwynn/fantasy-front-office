@@ -40,16 +40,12 @@ button:active { transform:translateY(1px); }
 .workspace-controls { display:grid; grid-template-columns:minmax(0,1.15fr) minmax(0,1fr); gap:22px; align-items:start; }
 .control-section { min-width:0; padding-top:10px; border-top:1px solid var(--border); }
 .control-section-heading { margin-bottom:8px; color:var(--text-muted); font-size:9px; font-weight:800; letter-spacing:.08em; }
-.league-section > summary { cursor:pointer; list-style:none; }
-.league-section > summary::-webkit-details-marker { display:none; }
-.league-section[open] > summary { margin-bottom:8px; }
 .connection-section > summary { cursor:pointer; }
 .connection-section:not([open]) > summary { margin-bottom:0; }
 .workspace-controls.is-connected { display:flex; flex-direction:column; gap:8px; }
-.workspace-controls.is-connected > .league-section { order:-1; width:100%; }
 .workspace-controls.is-connected > .connection-section { width:100%; padding-top:8px; }
 .workspace-controls.is-connected .connection-section > summary { font-size:11px; font-weight:500; letter-spacing:normal; }
-.connection-fields, .league-fields { display:flex; align-items:end; gap:9px; min-width:0; }
+.connection-fields { display:flex; align-items:end; gap:9px; min-width:0; }
 .control-field { display:flex; flex:1 1 0; flex-direction:column; gap:5px; min-width:0; color:var(--text-muted); font-size:10px; font-weight:700; }
 .control-field select, .control-field input { width:100%; min-width:0; }
 .provider-field { flex:1 1 175px; }
@@ -951,7 +947,6 @@ button:disabled { cursor:not-allowed; opacity:0.45; }
   .connection-fields .connect-button { grid-column:2; grid-row:2; align-self:end; min-height:44px; white-space:nowrap; }
   .connection-fields .account-field input { min-height:44px; }
   .connection-fields .yahoo-import-label { grid-column:1 / -1; }
-  .league-fields { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr) 150px; gap:8px; }
   .control-field { font-size:9px; }
   .control-field select, .control-field input { padding:7px 8px; font-size:11px; }
   .provider-help { font-size:9px; }
@@ -1047,11 +1042,10 @@ button:disabled { cursor:not-allowed; opacity:0.45; }
   .data-health { display:none; }
   .status-pill { max-width:42vw; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .workspace-controls { grid-template-columns:1.1fr 1fr; gap:12px; }
-  .connection-fields, .league-fields { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:6px; }
+  .connection-fields { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:6px; }
   .connection-fields { grid-template-columns:minmax(0,1fr) minmax(0,1.2fr) auto; align-items:end; }
   .connection-fields .provider-field, .connection-fields .account-field, .connection-fields .connect-button { grid-column:auto; grid-row:1; }
   .connection-fields .connect-button, .connection-fields .account-field input { min-height:34px; }
-  .league-fields { grid-template-columns:repeat(2,minmax(0,1fr)); }
   .week-field { grid-column:2; max-width:none; }
   .control-field { gap:3px; font-size:9px; }
   .control-field select, .control-field input, .connection-fields button { min-height:30px; padding:4px 7px; font-size:10px; }
@@ -1425,4 +1419,144 @@ html.ffo-booting #mainContent > .tab-page.active { opacity:0; visibility:hidden;
   .opt-sheet-num b { font-size:14px; }
   .opt-sheet-name strong { font-size:13px; white-space:normal; line-height:1.2; }
   .opt-sheet-name .optimizer-kickoff-status { display:none; }
+}
+
+/* Slim connected header: one row, connection settings open as a dropdown */
+.top-nav.is-connected { flex-direction:row; flex-wrap:wrap; align-items:center; gap:10px 14px; padding:10px 18px; position:relative; z-index:30; }
+.top-nav.is-connected .top-brand-row { flex:1 1 0; min-width:0; flex-wrap:nowrap; }
+.top-nav.is-connected .title-label { flex:none; white-space:nowrap; }
+@media (min-width: 701px) { .top-nav.is-connected { flex-wrap:nowrap; } .top-nav.is-connected .header-status-group { min-width:0; flex:0 1 auto; } }
+.top-nav.is-connected .workspace-controls { display:block; flex:none; }
+.top-nav.is-connected .connection-section { position:relative; border-top:0; padding-top:0; width:auto; }
+.top-nav.is-connected .connection-section > summary { display:flex; align-items:center; min-height:32px; margin:0; padding:6px 10px; border:1px solid var(--border); border-radius:8px; list-style:none; color:var(--text-muted); font-size:11px; font-weight:600; letter-spacing:normal; white-space:nowrap; }
+.top-nav.is-connected .connection-section > summary::-webkit-details-marker { display:none; }
+.top-nav.is-connected .connection-section > summary:hover, .top-nav.is-connected .connection-section[open] > summary { color:var(--text-main); background:var(--bg-card); }
+.top-nav.is-connected .connection-section[open] > .connection-panel { position:absolute; right:0; top:calc(100% + 8px); width:min(620px, calc(100vw - 40px)); padding:14px; border:1px solid var(--border); border-radius:12px; background:var(--bg-card); box-shadow:0 18px 40px rgba(0,0,0,.45); }
+@media (max-width: 700px) {
+  .top-nav.is-connected { padding:10px 12px; }
+  .top-nav.is-connected .top-brand-row { flex-basis:100%; flex-wrap:wrap; row-gap:16px; }
+  .top-nav.is-connected .title-label { padding-right:96px; }
+  .top-nav.is-connected #companionToggle { display:none; }
+  .top-nav.is-connected .workspace-controls { position:absolute; top:8px; right:12px; }
+  .top-nav.is-connected .connection-section > summary { font-size:0; padding:4px 9px; min-height:28px; }
+  .top-nav.is-connected .connection-section > summary::before { content:"⚙ Leagues"; font-size:11px; }
+  .top-nav.is-connected .connection-section[open] > .connection-panel { position:fixed; left:12px; right:12px; top:64px; width:auto; }
+  .top-nav.is-connected .connection-fields { display:grid; grid-template-columns:1fr; }
+}
+
+/* In-page context bar */
+.context-bar { display:flex; flex-wrap:wrap; align-items:center; gap:10px 14px; margin:0 0 14px; padding:8px; border:1px solid var(--border); border-radius:12px; background:var(--bg-card); }
+.context-bar[hidden] { display:none; }
+.ctx-leagues { display:flex; gap:6px; flex:1 1 320px; min-width:0; overflow-x:auto; scrollbar-width:thin; padding:2px; }
+.ctx-leagues:empty { display:none; }
+.ctx-league { display:inline-flex; align-items:center; gap:7px; flex:none; max-width:220px; min-height:34px; padding:6px 12px; border:1px solid var(--border); border-radius:999px; background:transparent; color:var(--text-muted); font-size:12px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; cursor:pointer; }
+.ctx-league:hover { color:var(--text-main); background:var(--bg-panel); }
+.ctx-league.active { color:var(--text-main); border-color:var(--accent); background:var(--accent-bg); }
+.ctx-league.is-loading { opacity:.6; cursor:progress; }
+.ctx-league small { padding:1px 6px; border-radius:999px; background:var(--bg-panel); font-size:10px; }
+.ctx-provider { flex:none; width:8px; height:8px; border-radius:50%; background:var(--text-muted); }
+.ctx-provider.is-sleeper { background:#7FD7FF; } .ctx-provider.is-espn { background:#FF8A80; } .ctx-provider.is-yahoo { background:#C9A4FF; }
+.ctx-fields { display:flex; align-items:center; gap:8px; margin-left:auto; min-width:0; }
+.ctx-field { display:inline-flex; align-items:center; gap:6px; min-width:0; color:var(--text-muted); font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.06em; }
+.ctx-field select { min-height:34px; padding:5px 30px 5px 10px; font-size:12px; text-transform:none; letter-spacing:normal; max-width:260px; }
+.context-bar.has-pills .ctx-league-field, .context-bar[data-team="off"] .ctx-team-field, .context-bar[data-week="off"] .ctx-week-field { display:none; }
+.context-bar:not(.has-pills) .ctx-fields { margin-left:0; }
+.context-bar .ctx-week-field { flex:none; grid-column:auto; max-width:none; }
+.context-bar .ctx-week-field select { width:auto; }
+.ctx-fields { flex-wrap:wrap; justify-content:flex-end; }
+@media (max-width: 700px) {
+  .ctx-leagues { flex-basis:100%; }
+  .ctx-fields { width:100%; margin-left:0; }
+  .ctx-field { flex:1 1 0; }
+  .ctx-field > span { display:none; }
+  .ctx-field select { width:100%; max-width:none; }
+  .context-bar .ctx-week-field { flex:0 0 130px; }
+  .context-bar .ctx-week-field select { width:100%; }
+}
+
+/* GM Inbox: all-leagues view */
+.gm-all[hidden] { display:none; }
+.gm-all { display:flex; flex-direction:column; gap:14px; }
+.tab-page.is-all-leagues > :is(#gmInboxSummary, #gmScoreboard, #gmInboxDataDetails, .gm-queue, #gmChecklist, #gmSchedule, .gm-secondary:not(#gmPortfolioDetails)) { display:none !important; }
+.gm-all-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(min(100%, 300px), 1fr)); gap:12px; }
+.gm-all-card { display:flex; flex-direction:column; gap:10px; padding:14px; border:1px solid var(--border); border-top:3px solid var(--border); border-radius:12px; background:var(--bg-card); min-width:0; }
+.gm-all-card.is-winning { border-top-color:var(--good); } .gm-all-card.is-losing { border-top-color:var(--bad); } .gm-all-card.is-close { border-top-color:var(--warn); }
+.gm-all-card header { display:flex; align-items:center; gap:8px; min-width:0; }
+.gm-all-card header strong { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:14px; }
+.gm-all-flags { flex:none; padding:2px 8px; border-radius:999px; background:var(--bad-bg); color:var(--bad); font-size:11px; font-weight:800; }
+.gm-all-ok { flex:none; padding:2px 8px; border-radius:999px; background:var(--good-bg); color:var(--good); font-size:11px; font-weight:800; }
+.gm-all-standing { margin:0; color:var(--text-muted); font-size:12px; }
+.gm-all-standing b { color:var(--text-main); }
+.gm-all-standing .is-in { color:var(--good); font-weight:700; } .gm-all-standing .is-out { color:var(--warn); font-weight:700; }
+.gm-all-score { display:grid; grid-template-columns:minmax(0,1fr) auto minmax(0,1fr); align-items:center; gap:8px; }
+.gm-all-side { display:flex; flex-direction:column; min-width:0; }
+.gm-all-side:last-child { align-items:flex-end; text-align:right; }
+.gm-all-side span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--text-muted); font-size:12px; font-weight:600; }
+.gm-all-side.is-me span { color:var(--accent); }
+.gm-all-side b { font-size:24px; line-height:1.15; font-variant-numeric:tabular-nums; }
+.gm-all-side small { color:var(--text-muted); font-size:11px; }
+.gm-all-vs { color:var(--text-muted); font-size:11px; font-weight:700; text-transform:uppercase; }
+.gm-all-card footer { display:flex; gap:8px; margin-top:auto; }
+.gm-all-card footer > * { flex:1; }
+.gm-all-open { min-height:34px; }
+
+/* League schedule: week strip + head-to-head rows */
+.sched-head { display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; }
+.sched-head h3 { margin:0; }
+.sched-scope select { min-height:34px; padding:5px 30px 5px 10px; font-size:12px; }
+.sched-weeks { display:flex; align-items:center; gap:6px; margin-top:12px; min-width:0; }
+.sched-weeks:empty { display:none; }
+.sched-week-chips { display:flex; gap:4px; flex:1 1 auto; min-width:0; overflow-x:auto; scrollbar-width:none; padding:2px; }
+.sched-week-chips::-webkit-scrollbar { display:none; }
+.sched-week, .sched-step { flex:none; min-width:30px; height:34px; padding:0 8px; border:1px solid var(--border); border-radius:9px; background:transparent; color:var(--text-muted); font-size:12px; font-weight:800; cursor:pointer; position:relative; }
+.sched-week { flex:1 0 30px; padding:0 4px; }
+.sched-week:hover, .sched-step:hover:not(:disabled) { color:var(--text-main); background:var(--bg-panel); }
+.sched-step:disabled { opacity:.35; cursor:default; }
+.sched-week.is-past { color:color-mix(in srgb, var(--text-muted) 70%, transparent); }
+.sched-week.is-playoff { border-style:dashed; }
+.sched-week.is-current::after { content:""; position:absolute; left:50%; bottom:3px; width:5px; height:5px; margin-left:-2.5px; border-radius:50%; background:var(--accent); }
+.sched-week.active { color:var(--bg-base); background:var(--accent); border-color:var(--accent); }
+.sched-week.active.is-current::after { background:currentColor; }
+.sched-status { margin:8px 0 10px; font-size:11px; }
+.sched-list { grid-template-columns:1fr; gap:8px; }
+.league-matchup-card.sched-game { display:grid; grid-template-columns:minmax(0,1fr) 116px minmax(0,1fr); align-items:center; gap:12px; padding:12px 14px; background:var(--bg-panel); position:relative; }
+.sched-game.is-mine { border-color:var(--accent); background:linear-gradient(135deg,var(--accent-bg),var(--bg-panel) 70%); padding-top:26px; }
+.sched-mine-tag { position:absolute; top:7px; left:14px; color:var(--accent); font-size:10px; font-weight:800; letter-spacing:.08em; text-transform:uppercase; }
+.sched-side { display:flex; align-items:center; justify-content:space-between; gap:10px; min-width:0; }
+.sched-side.is-away { flex-direction:row-reverse; }
+.sched-side.is-away .schedule-team { flex-direction:row-reverse; text-align:right; }
+.sched-side.is-away .schedule-core { justify-content:flex-end; }
+.sched-side.is-empty { justify-content:center; color:var(--text-muted); font-size:12px; }
+.sched-game .schedule-team { gap:10px; min-width:0; }
+.sched-game .schedule-team .team-initials { width:36px; height:36px; flex:0 0 36px; border-radius:11px; overflow:hidden; font-size:12px; }
+.sched-game .schedule-team .team-initials img { width:100%; height:100%; object-fit:cover; }
+.sched-team-text { display:flex; flex-direction:column; gap:1px; min-width:0; }
+.sched-team-text strong { font-size:13px; line-height:1.25; white-space:normal; overflow-wrap:anywhere; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+.sched-team-text > small { color:var(--text-muted); font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.sched-game .schedule-core { margin-top:4px; }
+.sched-game .schedule-core small { font-size:10px; color:var(--text-muted); }
+.sched-game .schedule-core .compare-portrait { width:26px; height:26px; flex-basis:26px; }
+.sched-score { display:flex; flex-direction:column; align-items:flex-end; flex:none; }
+.sched-side.is-away .sched-score { align-items:flex-start; }
+.sched-score b { font-size:22px; line-height:1.1; font-variant-numeric:tabular-nums; color:var(--text-main); }
+.sched-score small { color:var(--text-muted); font-size:10px; text-transform:uppercase; letter-spacing:.05em; }
+.sched-side.is-fav .sched-score b { color:var(--score-blue); }
+.sched-side.is-win .sched-score b { color:var(--good); }
+.sched-side.is-loss { opacity:.6; }
+.sched-mid { display:flex; flex-direction:column; align-items:center; gap:5px; text-align:center; }
+.sched-mid small { white-space:nowrap; color:var(--text-muted); font-size:11px; font-variant-numeric:tabular-nums; }
+.sched-phase { color:var(--text-muted); font-size:10px; font-weight:800; letter-spacing:.08em; text-transform:uppercase; }
+.sched-phase.is-live { color:var(--warn); }
+.sched-odds { width:100%; height:6px; border-radius:999px; background:var(--score-blue-bg, rgba(127,215,255,.18)); overflow:hidden; }
+.sched-odds i { display:block; height:100%; background:var(--accent); border-radius:999px; }
+.sched-note { grid-column:1 / -1; color:var(--text-muted); font-size:11px; }
+@media (max-width: 760px) {
+  .league-matchup-card.sched-game { grid-template-columns:1fr; gap:8px; }
+  .sched-side.is-away, .sched-side.is-away .schedule-team { flex-direction:row; text-align:left; }
+  .sched-side.is-away .schedule-core { justify-content:flex-start; }
+  .sched-side.is-away .sched-score { align-items:flex-end; }
+  .sched-mid { flex-direction:row; justify-content:center; gap:8px; order:3; }
+  .sched-mid .sched-odds { flex:1 1 auto; max-width:180px; }
+  .sched-side.is-away { order:2; }
+  .sched-note { order:4; }
 }
