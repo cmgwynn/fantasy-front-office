@@ -1,5 +1,22 @@
 (() => {
-  async function fetchJson(input, options) {
+  // Several tools request the same public Sleeper feeds during one load; share one response briefly.
+  const SHARED_TTL_MS = 30000;
+  const SHARED_FEEDS = /^https:\/\/api\.sleeper\.app\/v1\/(state\/nfl|projections\/nfl\/regular\/\d{4}\/\d+)$/;
+  const shared = new Map();
+
+  function fetchJson(input, options) {
+    const url = String(input);
+    if (options || !SHARED_FEEDS.test(url)) return requestJson(input, options);
+    const hit = shared.get(url);
+    // Reuse only responses produced by the current fetch implementation (tests and extensions may swap it).
+    if (hit && hit.fetch === window.fetch && Date.now() - hit.at < SHARED_TTL_MS) return hit.promise.then(data => structuredClone(data));
+    const promise = requestJson(input);
+    shared.set(url, { at: Date.now(), fetch: window.fetch, promise });
+    promise.catch(() => { if (shared.get(url)?.promise === promise) shared.delete(url); });
+    return promise.then(data => structuredClone(data));
+  }
+
+  async function requestJson(input, options) {
     const endpoint = new URL(String(input), location.href);
     const controller = new AbortController();
     const signal = options?.signal ? AbortSignal.any([options.signal, controller.signal]) : controller.signal;

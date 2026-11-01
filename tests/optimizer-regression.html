@@ -20,7 +20,7 @@
   <h1>Optimizer Regression Checks</h1>
   <p id="summary" role="status">Loading the app runtime...</p>
   <ol id="results"></ol>
-  <iframe id="appFrame" src="../index.html?v=20261101-live-odds-1&amp;resume=0" title="Optimizer test runtime"></iframe>
+  <iframe id="appFrame" src="../index.html?v=20261101-polish-1&amp;resume=0" title="Optimizer test runtime"></iframe>
   <script>
     async function runOptimizerFixtures() {
       const results = [];
@@ -254,6 +254,20 @@
             check("My-team schedule filters without refetching and still names the opponent",
               requests === 1 && document.querySelectorAll("#leagueScheduleResults .league-matchup-card").length === 1 &&
               document.getElementById("leagueScheduleResults").textContent.includes("Team B"));
+            const heldWeekRequests = [];
+            window.fetch = () => new Promise(resolve => heldWeekRequests.push(() => resolve({ ok: true, json: async () => [
+              { roster_id: 1, matchup_id: 4 }, { roster_id: 2, matchup_id: 4 }
+            ] })));
+            document.getElementById("leagueScheduleWeek").value = "9";
+            const pendingScheduleWeek = loadLeagueSchedule();
+            await Promise.resolve();
+            const scheduleResults = document.getElementById("leagueScheduleResults");
+            const keptCardsWhileLoading = scheduleResults.querySelectorAll(".league-matchup-card").length > 0 && scheduleResults.classList.contains("is-refreshing");
+            for (let i = 0; i < 20 && pendingScheduleWeek; i++) { heldWeekRequests.splice(0).forEach(release => release()); await new Promise(resolve => setTimeout(resolve, 0)); }
+            await pendingScheduleWeek;
+            check("Switching schedule weeks keeps the previous cards on screen until the new week renders",
+              keptCardsWhileLoading && !scheduleResults.classList.contains("is-refreshing") &&
+              document.querySelector("#leagueScheduleWeeks .sched-week.active")?.textContent === "9");
             window.fetch = async () => { throw new Error("Schedule fixture offline"); };
             await loadLeagueSchedule(true);
             check("Schedule failures are visible and do not leave stale pairings presented as current",

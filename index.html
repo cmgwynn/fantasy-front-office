@@ -10,7 +10,7 @@
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
   <link rel="icon" href="icons/app-icon.svg" type="image/svg+xml" />
   <title>Fantasy Front Office</title>
-  <link rel="stylesheet" href="styles.css?v=20261101-live-odds-1" />
+  <link rel="stylesheet" href="styles.css?v=20261101-polish-1" />
 </head>
 <body>
 
@@ -766,7 +766,7 @@
     <div id="tab-intel" class="tab-page">
       <div class="draft-heading gameday-heading">
         <div><h2>Gameday</h2><span id="gamedayMeta" class="draft-subtitle">All your leagues, live.</span></div>
-        <button id="gamedayRefreshBtn" class="btn-builder-action gameday-refresh" type="button">Refresh</button>
+        <div class="gameday-actions"><button id="gamedayAlertsBtn" class="btn-builder-action gameday-alerts" type="button" aria-pressed="false" hidden>Alerts off</button><button id="gamedayRefreshBtn" class="btn-builder-action gameday-refresh" type="button">Refresh</button></div>
       </div>
       <div id="gamedayRoot" class="gameday-root" aria-live="off"></div>
       <details id="gamedaySavedPanel" class="gm-secondary gameday-saved-panel">
@@ -1094,15 +1094,16 @@
 </footer>
 
 <p id="appInstallStatus" class="app-install-status" role="status"></p>
-<script src="pwa.js?v=20261101-live-odds-1"></script>
-<script src="monetization-config.js?v=20261101-live-odds-1"></script>
-<script src="data-fetch.js?v=20261101-live-odds-1"></script>
-<script src="demo-league.js?v=20261101-live-odds-1"></script>
-<script src="league-records.js?v=20261101-live-odds-1"></script>
-<script src="workspace-backup.js?v=20261101-live-odds-1"></script>
-<script src="playoff-simulator.js?v=20261101-live-odds-1"></script>
-<script src="weekly-matchups.js?v=20261101-live-odds-1"></script>
-<script src="app.js?v=20261101-live-odds-1"></script>
-<script src="gameday.js?v=20261101-live-odds-1"></script>
+<script src="pwa.js?v=20261101-polish-1"></script>
+<script src="monetization-config.js?v=20261101-polish-1"></script>
+<script src="data-fetch.js?v=20261101-polish-1"></script>
+<script src="demo-league.js?v=20261101-polish-1"></script>
+<script src="league-records.js?v=20261101-polish-1"></script>
+<script src="workspace-backup.js?v=20261101-polish-1"></script>
+<script src="playoff-simulator.js?v=20261101-polish-1"></script>
+<script src="weekly-matchups.js?v=20261101-polish-1"></script>
+<script src="league-schedule.js?v=20261101-polish-1"></script>
+<script src="app.js?v=20261101-polish-1"></script>
+<script src="gameday.js?v=20261101-polish-1"></script>
 </body>
 </html>

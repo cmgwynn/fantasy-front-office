@@ -483,7 +483,7 @@
     const { me, opp } = league;
     const pct = league.winPct;
     const sideBlock = (side, mine) => side ? `<div class="gd-side${mine ? " is-me" : ""}">${side.avatar ? `<span class="gd-photo gd-team-photo" style="width:34px;height:34px"><img src="${esc(side.avatar)}" alt="" width="34" height="34" loading="lazy" onerror="this.remove()"><b>${esc(side.name.slice(0, 1))}</b></span>` : `<span class="gd-photo gd-team-photo" style="width:34px;height:34px"><b>${esc(side.name.slice(0, 1))}</b></span>`}<div class="gd-side-name"><strong title="${esc(side.name)}">${esc(side.name)}</strong><small>${side.playing} live · ${side.toPlay} to play</small></div><div class="gd-side-score"><b data-gd-score>${fmt(side.points)}</b><small>proj ${fmt(side.projected)}</small></div></div>` : `<div class="gd-side is-empty"><small>No opponent this week</small></div>`;
-    const winBar = pct === null ? "" : `<div class="gd-win" aria-label="Win chance ${Math.round(pct)}%"><div class="gd-win-bar"><span style="width:${pct.toFixed(1)}%"></span></div><small><b>${Math.round(pct)}%</b> to win</small></div>`;
+    const winBar = pct === null ? "" : `<div class="gd-win" aria-label="Win chance ${Math.round(pct)}%"><div class="gd-win-bar"><span style="width:${pct.toFixed(1)}%"></span></div><small title="Fantasy Front Office's own live model (projections plus remaining game time). It can differ a few points from Sleeper's or ESPN's in-app odds."><b>${Math.round(pct)}%</b> to win <i class="gd-model">FFO model</i></small></div>`;
     const state = pct === null ? "" : pct >= 60 ? " is-winning" : pct <= 40 ? " is-losing" : " is-close";
     return `<article class="gd-card${state}" data-gd-key="${esc(league.key)}">${head}${renderStanding(league.standing)}${renderTeamPicker(league)}
       <div class="gd-score">${sideBlock(me, true)}${sideBlock(opp, false)}</div>${winBar}
@@ -640,6 +640,7 @@
         const root = document.getElementById("gamedayRoot");
         if (root && gd.data) { root.style.minHeight = ""; writeViewCache(); }
         document.dispatchEvent(new CustomEvent("ffo:gameday-data"));
+        if (gd.data && !gd.error) notifyLineupAlerts();
       }
     })();
     return gd.loading;
@@ -665,6 +666,7 @@
   function activate() {
     if (!gd.data && !gd.loadedAt && !gd.restored) { gd.restored = true; restoreViewCache(); }
     renderSavedManager();
+    renderAlertsButton();
     renderGameday();
     if (!gd.data || Date.now() - gd.loadedAt > REFRESH_MS) refresh();
     if (!gd.timer) gd.timer = setInterval(tick, REFRESH_MS / 4);
@@ -700,6 +702,7 @@
     const remove = event.target.closest("[data-gameday-remove]");
     if (remove) { removeSource(remove.dataset.gamedayRemove); renderSavedManager(); refresh(); return; }
     if (event.target.closest("#gamedayRefreshBtn")) refresh({ force: true });
+    if (event.target.closest("#gamedayAlertsBtn")) toggleAlerts();
   });
 
   document.addEventListener("change", event => {
@@ -739,12 +742,109 @@
     }
   });
 
+  const ALERTS_KEY = "fantasy-front-office:gameday-alerts:v1";
+  const ALERT_POLL_MS = 5 * 60 * 1000;
+  const alertsSupported = () => typeof window.Notification === "function";
+
+  function readAlertState() {
+    try { return { on: false, seen: [], ...JSON.parse(localStorage.getItem(ALERTS_KEY) || "{}") }; } catch { return { on: false, seen: [] }; }
+  }
+
+  function writeAlertState(next) {
+    if (!persist) return;
+    try { localStorage.setItem(ALERTS_KEY, JSON.stringify(next)); } catch {}
+  }
+
+  function alertsEnabled() {
+    return alertsSupported() && Notification.permission === "granted" && readAlertState().on;
+  }
+
+  function lineupAlertId(data, alert) {
+    return `${data.season}:${data.week}:${alert.leagueKey}:${alert.player.key || alert.player.slot}:${alert.text}`;
+  }
+
+  async function showLineupNotification(title, body, tag) {
+    const options = { body, tag, icon: "/icons/app-192.png", badge: "/icons/app-192.png", data: { url: "/" } };
+    try {
+      const registration = await navigator.serviceWorker?.getRegistration();
+      if (registration) { await registration.showNotification(title, options); return; }
+    } catch {}
+    try {
+      const note = new Notification(title, options);
+      note.onclick = () => { window.focus(); document.querySelector('.nav-btn[data-tab="tab-intel"]')?.click(); note.close(); };
+    } catch {}
+  }
+
+  // Notify once per new pre-kickoff lineup problem (Out/Doubtful/IR, bye, empty slot).
+  function notifyLineupAlerts({ baseline = false } = {}) {
+    if (!gd.data || !alertsEnabled()) return [];
+    const alertState = readAlertState();
+    const prefix = `${gd.data.season}:${gd.data.week}:`;
+    const seen = new Set(alertState.seen.filter(id => id.startsWith(prefix)));
+    const fresh = buildAlerts(gd.data.leagues.filter(league => !league.hidden))
+      .filter(alert => alert.level === "danger")
+      .map(alert => ({ alert, id: lineupAlertId(gd.data, alert) }))
+      .filter(entry => !seen.has(entry.id));
+    if (!fresh.length) return [];
+    fresh.forEach(entry => seen.add(entry.id));
+    writeAlertState({ ...alertState, seen: [...seen].slice(-200) });
+    if (baseline || fresh.length > 3) {
+      const leagues = new Set(fresh.map(entry => entry.alert.league)).size;
+      showLineupNotification(`${fresh.length} lineup problem${fresh.length === 1 ? "" : "s"} to fix`, `${fresh.slice(0, 3).map(entry => entry.alert.player.empty ? entry.alert.text : `${entry.alert.player.name} (${entry.alert.text})`).join(", ")}${fresh.length > 3 ? "…" : ""} · ${leagues} league${leagues === 1 ? "" : "s"}`, `ffo-lineup-${gd.data.week}`);
+    } else {
+      fresh.forEach(({ alert, id }) => showLineupNotification(alert.player.empty ? `${alert.text} in ${alert.league}` : `${alert.player.name}: ${alert.text}`, `${alert.player.empty ? "Fill it" : "Starting"} in ${alert.league} — swap before kickoff.`, id));
+    }
+    return fresh;
+  }
+
+  function renderAlertsButton() {
+    const button = document.getElementById("gamedayAlertsBtn");
+    if (!button) return;
+    button.hidden = !alertsSupported();
+    const on = alertsEnabled();
+    button.setAttribute("aria-pressed", String(on));
+    button.classList.toggle("is-on", on);
+    button.textContent = on ? "Alerts on" : "Alerts off";
+    button.title = on
+      ? "You'll get a notification when a starter is ruled Out/Doubtful, on bye, or a slot is empty — while Fantasy Front Office is open (tab or installed app)."
+      : "Get notified about lineup problems across all your leagues while Fantasy Front Office is open.";
+  }
+
+  async function toggleAlerts() {
+    if (!alertsSupported()) return;
+    if (alertsEnabled()) {
+      writeAlertState({ ...readAlertState(), on: false });
+      renderAlertsButton();
+      return;
+    }
+    const permission = Notification.permission === "granted" ? "granted" : await Notification.requestPermission();
+    if (permission !== "granted") {
+      const meta = document.getElementById("gamedayMeta");
+      if (meta) meta.textContent = "Notifications are blocked for this site. Allow them in your browser settings to turn alerts on.";
+      renderAlertsButton();
+      return;
+    }
+    writeAlertState({ ...readAlertState(), on: true });
+    renderAlertsButton();
+    await ensureData();
+    if (!notifyLineupAlerts({ baseline: true }).length) showLineupNotification("Gameday alerts are on", "No lineup problems right now. We'll tell you if a starter is ruled out while the app is open.", "ffo-alerts-on");
+  }
+
+  setInterval(() => {
+    if (!alertsEnabled() || gd.loading || !readStore().sources.length) return;
+    if (Date.now() - gd.loadedAt >= ALERT_POLL_MS) refresh();
+  }, 60000);
+
+  navigator.serviceWorker?.addEventListener("message", event => {
+    if (event.data?.type === "ffo:open-tab") document.querySelector(`.nav-btn[data-tab="${event.data.tab}"]`)?.click();
+  });
+
   document.addEventListener("visibilitychange", () => { if (isActive() && Date.now() - gd.loadedAt > REFRESH_MS) refresh(); });
 
   window.FFOGameday = Object.freeze({
     STORE_KEY, readStore, rememberSource, removeSource, setLeagueHidden, sourceKey,
     normalizeScoreboard, remainingFraction, finishPlayer, sideTotals, winProbability, finalizeLeague,
     buildAlerts, buildRooting, renderAlerts, renderGamedayHtml, morph, activate, refresh, renderGameday, scoreSleeperProjection,
-    loadYahooSource, computeStanding, standingGapLabel, ordinal, ensureData, manageLeague, get data() { return gd.data; }, set data(value) { gd.data = value; gd.loadedAt = Date.now(); }
+    loadYahooSource, notifyLineupAlerts, computeStanding, standingGapLabel, ordinal, ensureData, manageLeague, get data() { return gd.data; }, set data(value) { gd.data = value; gd.loadedAt = Date.now(); }
   });
 })();

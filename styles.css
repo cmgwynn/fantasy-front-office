@@ -1560,3 +1560,28 @@ html.ffo-booting #mainContent > .tab-page.active { opacity:0; visibility:hidden;
   .sched-side.is-away { order:2; }
   .sched-note { order:4; }
 }
+#leagueScheduleResults { transition:opacity .15s ease; }
+#leagueScheduleResults.is-refreshing { opacity:.55; pointer-events:none; }
+
+/* First-visit onboarding card */
+#tab-inbox.is-empty .gm-queue { display:none; }
+.onboard { display:grid; gap:12px; padding:22px; border:1px solid var(--border); border-radius:16px; background:linear-gradient(135deg, rgba(74,222,170,.10), rgba(74,222,170,0) 60%); }
+#tab-inbox.is-empty #gmBriefing .onboard h3 { font-size:24px; margin:0; line-height:1.2; }
+.onboard p { margin:0; }
+.onboard-form { display:flex; gap:10px; flex-wrap:wrap; }
+.onboard-form input { flex:1 1 220px; min-height:46px; font-size:16px; padding:0 14px; border-radius:10px; }
+.onboard-form .connect-button { min-height:46px; padding:0 20px; }
+.onboard-alt { font-size:14px; }
+.onboard .link-button { background:none; border:0; padding:0; color:var(--accent, #4adeaa); font:inherit; cursor:pointer; text-decoration:underline; text-underline-offset:3px; }
+.gd-model { font-style:normal; font-size:10px; letter-spacing:.04em; text-transform:uppercase; color:var(--text-muted); opacity:.75; margin-left:4px; cursor:help; }
+.espn-guide summary { cursor:pointer; font-weight:600; color:var(--text); }
+.espn-guide ol { margin:8px 0 6px; padding-left:20px; display:grid; gap:6px; }
+.espn-guide code { font-size:12px; padding:1px 4px; border-radius:4px; background:rgba(255,255,255,.08); }
+.espn-guide p { margin:4px 0 0; font-size:12px; color:var(--text-muted); }
+.gameday-actions { display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end; }
+.gameday-alerts.is-on { border-color:var(--accent, #4adeaa); color:var(--accent, #4adeaa); }
+.onboard .onboard-alt .link-button { display:inline; width:auto; min-height:0; min-width:0; }
+#providerHelp .espn-guide { font-size:12px; }
+#providerHelp .espn-guide p { font-size:11px; color:var(--text-muted); }
+#providerHelp .espn-guide code { font-size:11px; }
+@media (max-width:700px) { .onboard-form .connect-button { flex:1 1 100%; } }
