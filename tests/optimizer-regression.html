@@ -20,7 +20,7 @@
   <h1>Optimizer Regression Checks</h1>
   <p id="summary" role="status">Loading the app runtime...</p>
   <ol id="results"></ol>
-  <iframe id="appFrame" src="../index.html?v=20261101-context-bar-1&amp;resume=0" title="Optimizer test runtime"></iframe>
+  <iframe id="appFrame" src="../index.html?v=20261101-live-odds-1&amp;resume=0" title="Optimizer test runtime"></iframe>
   <script>
     async function runOptimizerFixtures() {
       const results = [];
@@ -240,6 +240,15 @@
             const finalHtml = renderScheduleGame(finalPair.games[0], 3, null, undefined);
             check("Completed schedule weeks show final scores and mark the winner",
               finalPair.games[0].homePts === 120.5 && finalHtml.includes("120.5") && finalHtml.includes("is-win") && finalHtml.includes("is-loss"));
+            const gdDescriptor = Object.getOwnPropertyDescriptor(window, "FFOGameday");
+            window.FFOGameday = { data: { leagues: [{ key: "sleeper:schedule-fixture", winPct: 63.4, me: { teamId: "2" }, opp: { teamId: "1" } }] } };
+            try {
+              check("Live schedule odds reuse Gameday's live win chance from the right side",
+                getGamedayLiveOdds({ homeId: "1", awayId: "2" }) === 37 && getGamedayLiveOdds({ homeId: "2", awayId: "1" }) === 63 &&
+                getGamedayLiveOdds({ homeId: "1", awayId: "3" }) === null);
+            } finally {
+              if (gdDescriptor) Object.defineProperty(window, "FFOGameday", gdDescriptor); else delete window.FFOGameday;
+            }
             document.getElementById("leagueScheduleScope").value = "mine";
             await loadLeagueSchedule();
             check("My-team schedule filters without refetching and still names the opponent",

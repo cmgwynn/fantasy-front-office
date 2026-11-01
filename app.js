@@ -894,6 +894,7 @@ if (document.getElementById("leagueSelect")) new MutationObserver(() => renderCo
 document.addEventListener("ffo:gameday-data", () => {
   renderContextBar();
   if (document.getElementById("tab-inbox")?.classList.contains("active")) renderInboxAllLeagues();
+  if (document.getElementById("tab-planner")?.classList.contains("active") && Number(document.getElementById("leagueScheduleWeek")?.value) === Number(state.week)) loadLeagueSchedule();
 });
 
 function captureLeagueView() {
@@ -8892,6 +8893,18 @@ function renderScheduleWeekStrip(selected) {
   strip.querySelector(".sched-week.active")?.scrollIntoView({ block: "nearest", inline: "center" });
 }
 
+// Reuse Gameday's live (clock-aware) odds so the same matchup never shows two different win chances.
+function getGamedayLiveOdds(game) {
+  const league = state.activeLeague;
+  if (!league || game.awayId === null) return null;
+  const entry = (window.FFOGameday?.data?.leagues || []).find(item => item.key === `${league.provider}:${league.leagueId}`);
+  if (!entry || !Number.isFinite(entry.winPct) || !entry.me || !entry.opp) return null;
+  const me = String(entry.me.teamId), opp = String(entry.opp.teamId);
+  if (game.homeId === me && game.awayId === opp) return Math.round(entry.winPct);
+  if (game.homeId === opp && game.awayId === me) return Math.round(100 - entry.winPct);
+  return null;
+}
+
 function renderScheduleGame(game, week, projections, myId) {
   const home = state.managers.find(team => String(team.rosterId) === game.homeId);
   const away = game.awayId === null ? null : state.managers.find(team => String(team.rosterId) === game.awayId);
@@ -8902,7 +8915,8 @@ function renderScheduleGame(game, week, projections, myId) {
   const hasScores = game.homePts !== null && game.homePts !== undefined && (game.awayPts !== null && game.awayPts !== undefined) && (game.homePts > 0 || game.awayPts > 0);
   const actual = hasScores && phase !== "upcoming";
   const scoreA = actual ? game.homePts : a, scoreB = actual ? game.awayPts : b;
-  const pct = a !== null && b !== null ? Math.round(computeHeadToHeadWinProb(a, b)) : null;
+  const liveOdds = phase === "live" ? getGamedayLiveOdds(game) : null;
+  const pct = liveOdds !== null ? liveOdds : a !== null && b !== null ? Math.round(computeHeadToHeadWinProb(a, b)) : null;
   const sideClass = (mine, other, odds) => {
     if (phase === "final" && actual) return mine > other ? " is-win" : mine < other ? " is-loss" : "";
     return odds !== null && odds > 50 ? " is-fav" : "";
@@ -8910,7 +8924,7 @@ function renderScheduleGame(game, week, projections, myId) {
   const fmt = value => value === null || value === undefined ? "—" : value.toFixed(1);
   const sub = proj => actual ? (phase === "final" ? "Final" : `proj ${fmt(proj)}`) : proj === null ? "no projection" : "projected";
   const isMine = myId !== undefined && [game.homeId, game.awayId].includes(String(myId));
-  const label = phase === "final" && actual ? "Final" : phase === "live" && actual ? "Live" : pct !== null ? "Win odds" : "Matchup";
+  const label = phase === "final" && actual ? "Final" : liveOdds !== null ? "Live odds" : phase === "live" && actual && pct !== null ? "Pregame odds" : phase === "live" && actual ? "Live" : pct !== null ? "Win odds" : "Matchup";
   const mid = !away ? '<div class="sched-mid"><span class="sched-phase">Bye</span></div>'
     : `<div class="sched-mid"><span class="sched-phase${phase === "live" && actual ? " is-live" : ""}">${label}</span>${pct !== null && !(phase === "final" && actual) ? `<div class="sched-odds" role="img" aria-label="${draftEscapeHtml(`${pct}% to ${100 - pct}% projected win odds`)}"><i style="width:${pct}%"></i></div><small>${pct}% · ${100 - pct}%</small>` : actual && phase === "final" ? `<small>${fmt(Math.abs(scoreA - scoreB))} margin</small>` : '<small>vs</small>'}</div>`;
   const side = (manager, id, score, proj, cls, where) => `<div class="sched-side is-${where}${cls}">${renderScheduleTeam(manager, id, week, projections)}<div class="sched-score"><b>${fmt(score)}</b><small>${sub(proj)}</small></div></div>`;
