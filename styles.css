@@ -55,8 +55,6 @@ button:active { transform:translateY(1px); }
 #connectionForm .yahoo-import-label { min-height:44px; }
 .connection-result { font-size:13px; color:var(--text-muted); line-height:1.5; overflow-wrap:anywhere; }
 .connection-result:not(:empty) { margin-top:14px; }
-.connection-demo { padding:4px 2px; }
-.connection-demo .btn-builder-action { margin-top:8px; min-height:44px; }
 .connection-sources { display:grid; gap:8px; padding:0; margin:14px 0; list-style:none; }
 .connection-sources li { padding:10px 12px; border:1px solid var(--border); border-radius:8px; font-size:13px; overflow-wrap:anywhere; }
 .connection-fields { display:flex; align-items:end; gap:9px; min-width:0; }

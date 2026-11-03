@@ -273,7 +273,7 @@ test("release metadata matches the app assets and fresh welcome avoids eager dat
 });
 
 test("release prompts are dismissible and failed snapshot saves never trigger reload", async () => {
-  let version = "20261102-connect-1";
+  let version = "20261102-connect-2";
   let clock = 60001;
   let banner = null;
   let reloads = 0;
@@ -289,7 +289,7 @@ test("release prompts are dismissible and failed snapshot saves never trigger re
     fetch: async () => ({ ok: true, json: async () => ({ version }) }),
     document: {
       hidden: false, addEventListener() {},
-      querySelector: selector => selector === "main" ? { prepend: node => { banner = node; } } : { src: "https://fantasyfo.com/app.js?v=20261102-connect-1" },
+      querySelector: selector => selector === "main" ? { prepend: node => { banner = node; } } : { src: "https://fantasyfo.com/app.js?v=20261102-connect-2" },
       getElementById: () => banner,
       createElement: () => ({ setAttribute() {}, querySelector: selector => controls.get(selector), remove() { banner = null; } })
     }

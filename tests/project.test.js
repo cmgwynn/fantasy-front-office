@@ -41,7 +41,7 @@ test("HTML references existing local assets in the expected script order", () =>
   ].map(match => match[1]).filter(asset => !/^(?:[a-z]+:)?\/\//i.test(asset));
 
   assert.ok(assets.length > 0, "Expected local CSS or JavaScript assets.");
-  assert.ok(assets.filter(asset => /\.(?:css|js)\?/.test(asset)).every(asset => asset.endsWith("?v=20261102-connect-1")), "CSS and JavaScript assets must use the current release version.");
+  assert.ok(assets.filter(asset => /\.(?:css|js)\?/.test(asset)).every(asset => asset.endsWith("?v=20261102-connect-2")), "CSS and JavaScript assets must use the current release version.");
   for (const asset of assets) {
     assert.ok(fs.existsSync(path.join(root, asset.split("?")[0])), `Missing local asset: ${asset}`);
   }
@@ -98,7 +98,7 @@ test("public information pages and footer expose working local links without loa
     assert.match(html, /Chavous Gwynn/);
     assert.match(html, /United States adults aged 18/);
     assert.doesNotMatch(html, /<script\b/, "Information pages must work without app initialization or provider requests.");
-    assert.match(html, /styles\.css\?v=20261102-connect-1/);
+    assert.match(html, /styles\.css\?v=20261102-connect-2/);
   }
   const sandbox = { window: {} };
   vm.runInNewContext(read("monetization-config.js"), sandbox);
@@ -116,7 +116,7 @@ test("side panel extension is downloadable and limited to opening provider pages
     const target = local === "" ? "index.html" : path.extname(local) ? local : `${local}.html`;
     assert.ok(fs.existsSync(path.join(root, target)), `side-panel.html has a missing local link: ${href}`);
   }
-  assert.match(html, /styles\.css\?v=20261102-connect-1/);
+  assert.match(html, /styles\.css\?v=20261102-connect-2/);
   assert.match(read("index.html"), /<a id="companionToggle"[^>]*href="\/side-panel"/);
   assert.doesNotMatch(read("app.js"), /window\.open\([^)]*"popup"/, "Provider pages must not open in pop-up windows.");
   const manifest = JSON.parse(read("extension/manifest.json"));
@@ -170,7 +170,9 @@ test("static interface IDs, labels, and tab navigation targets are consistent", 
   assert.match(html, /<option value="tab-connect" selected>/, "Initial mobile navigation must match the connection page.");
   assert.match(html, /<div id="tab-connect" class="tab-page active">/, "New visitors start in main-area connection setup.");
   assert.match(html, /<div id="tab-roster" class="tab-page">/, "Roster Overview must not start active.");
-  assert.doesNotMatch(html, /id="demoLeagueBtn"|>Explore demo</, "The demo entry point should not clutter the main app header.");
+  assert.doesNotMatch(html, /id="demoLeagueBtn"|data-try-demo|connection-demo|>Explore demo</, "Demo entry points must not appear in the app.");
+  assert.match(html, /data-tab="tab-connect"[^>]*>[\s\S]*?<\/button>\s*<\/div>\s*<\/nav>/, "Connect leagues must be the final desktop navigation destination.");
+  assert.match(html, /<option value="tab-connect" selected>Connect leagues<\/option>\s*<\/select>/, "Connect leagues must be the final mobile navigation destination.");
   assert.doesNotMatch(html, /tab-workspace|Workspace &amp; Backups|id="(?:saveWorkspaceBtn|exportWorkspaceBtn|restoreWorkspaceBtn)"/, "Manual backup tools must not appear in the app.");
   assert.doesNotMatch(html.slice(0, html.indexOf('<main id="mainContent"')), /id="(?:leagueSelect|teamSelect|weekSelect)"/, "League, team and week selectors belong on the page, not in the header.");
   assert.match(html, /<div id="contextBar" class="context-bar" hidden>[\s\S]*?id="leagueSelect"[\s\S]*?id="teamSelect"[\s\S]*?id="weekSelect"/, "The page context bar must hold the league, team and week selectors.");
@@ -220,7 +222,7 @@ test("browser regression harness is wired to the app and includes saved-state co
   const html = read("tests/optimizer-regression.html");
   const appHtml = read("index.html");
 
-  assert.match(html, /src="\.\.\/index\.html\?v=20261102-connect-1&amp;resume=0"/, "Regression harness must load the current app release without resuming personal snapshots.");
+  assert.match(html, /src="\.\.\/index\.html\?v=20261102-connect-2&amp;resume=0"/, "Regression harness must load the current app release without resuming personal snapshots.");
   assert.doesNotMatch(appHtml, /id="loadRecordsBtn"/, "Records must load automatically without a manual refresh button.");
   assert.match(html, /runOptimizerFixtures/, "Regression harness must execute its fixtures.");
   assert.match(html, /Cross-league queue saves to target budget/, "Saved FAAB state should remain covered.");

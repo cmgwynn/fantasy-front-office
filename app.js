@@ -85,13 +85,6 @@ document.addEventListener("click", e => {
     activateTab("tab-intel", { navigate: true, focus: true });
     return;
   }
-  const demo = e.target.closest("[data-try-demo]");
-  if (demo) {
-    demo.disabled = true;
-    const file = new File([JSON.stringify(FFODemo.createDemoLeague())], "demo.json", { type: "application/json" });
-    importYahooRosterFile(file, { demo: true }).finally(() => { demo.disabled = false; });
-    return;
-  }
   const sortButton = e.target.closest(".th-sort[data-sort-table]");
   if (sortButton) {
     handleTableSortClick(sortButton);
@@ -1984,7 +1977,7 @@ function prepareWelcomeShell() {
   ensureDynamicTradeControls();
   updateProviderControls();
   renderGMInbox();
-  setStatus("Ready | Connect a league or try the fictional demo.");
+  setStatus("Ready | Connect a league to get started.");
 }
 
 async function initApp(skipUrlAccountSync = false, forceRefreshSources = false, forcePlayerRefresh = false) {
@@ -10038,8 +10031,8 @@ function renderOnboardingCard(container) {
     <h3>Every league you play in, one front office.</h3>
     <p>Connect Sleeper, ESPN or a Yahoo roster file for lineups, waivers, trades and Gameday in one place. Free, no sign-up.</p>
     <p class="onboard-trust">Read-only. No password. We cannot change your lineup or submit claims.</p>
-    <button type="button" class="btn-builder-action" data-open-connections>Connect leagues or try the demo</button>
-    <p class="comparison-note">Preview lineup swaps, waiver ideas and a league overview without connecting. Live multi-league scores and playoff simulations require a real league.</p>
+    <button type="button" class="btn-builder-action" data-open-connections>Connect leagues</button>
+    <p class="comparison-note">Connect your league to use lineup, waiver and trade tools, live multi-league scores and playoff simulations.</p>
   </div>`;
 }
 
@@ -10290,7 +10283,7 @@ function showConnectedBetaGate() {
     gate.id = "usageAccessGate";
     gate.className = "usage-access-gate";
     gate.setAttribute("aria-label", "Usage agreement required");
-    gate.innerHTML = '<h2>Accept the usage agreement to sync</h2><p>Real league syncing and connected tools require limited usage measurement for this US-only beta, ages 18+. Your saved leagues and plans remain on this device.</p><div class="usage-connect" data-usage-connect></div><button type="button" class="btn-builder-action" data-usage-continue disabled>Continue to league</button><button type="button" class="btn-builder-action" data-open-connections>Open connection setup</button><a href="/?resume=0">Use the fictional demo instead</a>';
+    gate.innerHTML = '<h2>Accept the usage agreement to sync</h2><p>Real league syncing and connected tools require limited usage measurement for this US-only beta, ages 18+. Your saved leagues and plans remain on this device.</p><div class="usage-connect" data-usage-connect></div><button type="button" class="btn-builder-action" data-usage-continue disabled>Continue to league</button><button type="button" class="btn-builder-action" data-open-connections>Open connection setup</button><a href="/tools">Explore the public tool guides</a>';
     gate.querySelector("[data-usage-continue]").addEventListener("click", async event => {
       const button = event.currentTarget;
       button.disabled = true;
@@ -10397,7 +10390,7 @@ function applyToolDeepLink() {
   if (!tabId || !document.querySelector(`.nav-btn[data-tab="${tabId}"]`)) return;
   if (!state.activeLeague && !["tab-intel", "tab-connect"].includes(tabId)) {
     activateTab("tab-connect");
-    setStatus("Connect a league to open the linked tool, or try the fictional demo.");
+    setStatus("Connect a league to open the linked tool.");
     return;
   }
   activateTab(tabId);

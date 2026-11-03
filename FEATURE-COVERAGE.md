@@ -37,9 +37,9 @@ a league to use roster-based features.
 - The welcome screen and connection form render without waiting for player,
   schedule or statistics downloads. Sleeper/ESPN connections initialize that
   data on demand and share a pending initialization request.
-- The welcome screen has a read-only explanation and a fictional demo. The
-  demo demonstrates lineup/waiver tools, not live multi-league scores or
-  simulations, and does not replace automatic real-league reload snapshots.
+- The welcome screen explains read-only league connections. Public demo
+  buttons and invitations are removed; fictional fixtures remain for testing
+  and compatibility with previously saved sample workspaces.
 - Playoff push labels are standings signals, not mathematical clinches,
   elimination or must-win claims. Handcuffs require known, lower depth-chart
   placement and are candidates rather than guaranteed replacements.
@@ -58,14 +58,14 @@ Sync, real Yahoo imports and saved-workspace Continue stay disabled
 until an eligible user accepts. Checking the unchecked box saves agreement
 immediately and enables the relevant controls; unchecking disables them again.
 Checkbox DOM nodes are retained across status updates to preserve focus.
-The fictional demo is never disabled by this requirement.
+Public information pages remain available without this agreement.
 
 ### Main-area league connections
 
 New visitors start on **Connect leagues**, a dedicated desktop/mobile navigation
-tab. One main-area form handles Sleeper usernames, ESPN league IDs and Yahoo
-files, with the required agreement before Sync. The fictional demo is available
-on the same page. Inbox welcome and Gameday Add links route here rather than
+tab at the bottom of both desktop and mobile navigation lists. One main-area
+form handles Sleeper usernames, ESPN league IDs and Yahoo files, with the required
+agreement before Sync. Inbox welcome and Gameday Add links route here rather than
 duplicating forms. Adding accounts retains saved Gameday sources on the device;
 the page lists saved connections and links to the combined Gameday view.
 Successful connections open Inbox (or the requested deep-linked tool); failed

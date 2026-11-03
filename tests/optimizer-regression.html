@@ -20,7 +20,7 @@
   <h1>Optimizer Regression Checks</h1>
   <p id="summary" role="status">Loading the app runtime...</p>
   <ol id="results"></ol>
-  <iframe id="appFrame" src="../index.html?v=20261102-connect-1&amp;resume=0" title="Optimizer test runtime"></iframe>
+  <iframe id="appFrame" src="../index.html?v=20261102-connect-2&amp;resume=0" title="Optimizer test runtime"></iframe>
   <script>
     async function runOptimizerFixtures() {
       const results = [];
@@ -3027,7 +3027,10 @@
           };
           waitForReady();
         });
-        const coldWelcome = frame.contentWindow.eval(`Boolean(document.querySelector("[data-try-demo]")) &&
+        const coldWelcome = frame.contentWindow.eval(`Boolean(document.querySelector("#connectionForm")) &&
+          !document.querySelector("[data-try-demo], .connection-demo") &&
+          document.querySelector(".sidebar-groups").lastElementChild.dataset.tab === "tab-connect" &&
+          document.querySelector("#mobileTabSelect").lastElementChild.value === "tab-connect" &&
           !performance.getEntriesByType("resource").some(entry => entry.name.includes("api.sleeper.app/v1/players/nfl"))`);
         await frame.contentWindow.eval(`FFOUsage.checkAccess()`);
         frame.contentWindow.FFOUsage = Object.freeze({
@@ -3039,7 +3042,7 @@
         });
         await frame.contentWindow.eval("initApp(true)");
         const results = await frame.contentWindow.eval(`(${runOptimizerFixtures.toString()})()`);
-        results.unshift({ name: "Cold welcome offers a demo without downloading the NFL player database", passed: coldWelcome });
+        results.unshift({ name: "Cold welcome offers connection setup without a demo or player database download, with Connect leagues last in both navigation lists", passed: coldWelcome });
         const failures = results.filter(result => !result.passed);
         resultList.innerHTML = results.map(result => `<li class="${result.passed ? "pass" : "fail"}"><strong>${result.passed ? "PASS" : "FAIL"}</strong> ${result.name}${result.detail ? `: ${result.detail}` : ""}</li>`).join("");
         summary.textContent = failures.length ? `${failures.length} of ${results.length} checks failed.` : `${results.length} checks passed.`;
