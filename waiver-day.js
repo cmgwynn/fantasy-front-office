@@ -59,7 +59,7 @@
     const taken = trackedLeagues().length - spots.length;
     return `<article class="wd-target">
       <div class="wd-target-head">${renderComparisonPortrait(player)}<div><b>${esc(player.name)}</b><small>${esc(player.position)} · ${esc(player.team)} · ${player.projectedPoints.toFixed(1)} proj</small></div>
-      <span class="wd-count" title="Leagues where this player would start for you">Starts in ${upgrades.length}</span></div>
+      <span class="wd-count" title="Same-position projection comparisons, not optimized lineups">Potential upgrade in ${upgrades.length}</span></div>
       <ul class="wd-spots">${chips}</ul>${taken > 0 ? `<p class="wd-taken">Rostered in ${taken} of your other league${taken === 1 ? "" : "s"}</p>` : ""}
     </article>`;
   }
@@ -75,12 +75,17 @@
     }
     const leagues = trackedLeagues();
     if (leagues.length < 2) { root.hidden = true; root.innerHTML = ""; return; }
+    if (Number(gd.data.week) !== Number(state.week) || String(gd.data.season) !== String(state.activeLeague?.season || state.season)) {
+      root.hidden = false;
+      root.innerHTML = '<h3>Waiver day · all your leagues</h3><p class="comparison-note">Select the current Gameday season and week to compare potential upgrades. Historical projections cannot be matched to current saved rosters.</p>';
+      return;
+    }
     const targets = buildTargets(leagues);
     root.hidden = false;
-    root.innerHTML = `<div class="push-section-head"><h3>Waiver day · all your leagues</h3><span class="comparison-note">This week's free agents who'd start for you, by league</span></div>
+    root.innerHTML = `<div class="push-section-head"><h3>Waiver day · all your leagues</h3><span class="comparison-note">Potential same-position upgrades · Week ${Number(state.week)}</span></div>
       <div class="wd-budgets">${leagues.map(budgetChip).join("")}</div>
-      ${targets.length ? `<div class="wd-targets">${targets.map(targetCard).join("")}</div>` : '<p class="draft-empty">No free agent out-projects your current starters in any league this week.</p>'}
-      <p class="comparison-note">Compared on one weekly projection across leagues, so custom scoring may shift close calls. Availability is from the last Gameday refresh — confirm in each league before claiming.</p>`;
+      ${targets.length ? `<div class="wd-targets">${targets.map(targetCard).join("")}</div>` : '<p class="draft-empty">No potential upgrades found in the eligible player pool. This is not a full lineup or roster-space check.</p>'}
+      <p class="comparison-note">Uses the active league's Week ${Number(state.week)} projections across all leagues; scoring differences can change the result. Compares same-position starters, not flex eligibility, kickoff locks or legal add/drop moves. Review in each league's Waiver Planner before claiming. Availability is from the last Gameday refresh.</p>`;
   }
 
   document.addEventListener("ffo:gameday-data", () => {

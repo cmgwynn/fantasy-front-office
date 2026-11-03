@@ -14,6 +14,8 @@ regression suite before publishing. Verify the public app after deployment.
 HTML assets and the regression iframe use a shared release query version.
 Bump those versions together whenever publishing changed assets to avoid a new
 HTML page reusing older cached scripts or styles.
+Update `release.json` to the same version. Open tabs check it without caching
+and offer a user-controlled reload; they never interrupt a plan with an automatic reload.
 Fresh visits start on GM Inbox unless a previous league or manually saved workspace resumes.
 GM Inbox and Draft Room are direct destinations. Multi-tool groups organize
 My Team, League, Players, and Extras. Labels describe the job each view performs; in-view notes explain
@@ -23,6 +25,73 @@ authorization failure does not mean the release is missing. Connect or import
 a league to use roster-based features.
 
 ## Current release
+
+### Trust, onboarding and freshness
+
+- The welcome screen and connection form render without waiting for player,
+  schedule or statistics downloads. Sleeper/ESPN connections initialize that
+  data on demand and share a pending initialization request.
+- The welcome screen has a read-only explanation and a fictional demo. The
+  demo demonstrates lineup/waiver tools, not live multi-league scores or
+  simulations, and does not replace automatic real-league reload snapshots.
+- Playoff push labels are standings signals, not mathematical clinches,
+  elimination or must-win claims. Handcuffs require known, lower depth-chart
+  placement and are candidates rather than guaranteed replacements.
+- Cross-league waiver cards say potential upgrade, disclose shared scoring
+  and lineup limitations, and refuse mismatched season/week comparisons.
+- Inbox availability problems sort ahead of projection gains. Reasons, league,
+  week, dismiss and one-hour snooze are visible; expired snoozes reopen while
+  the page is visible. Historical helpfulness is not a calibrated probability.
+- Roster age and selected-week warnings update while the page is open.
+  The all-leagues Inbox identifies restored, aging and failed-refresh data.
+
+### Optional aggregate usage measurement
+
+This is separate from Cloudflare Web Analytics. Usage privacy in the footer
+is opt-in and off by default. Fixed events measure visits, demo starts,
+connection starts/successes/failures, tool opens, recommendation reviews and
+returns in a later seven-day reporting bucket. A given event/provider/tool
+combination is counted at most once per page load. These are approximate
+event counts for consenting users, not unique visitors or an attributable
+cohort funnel. Public submissions can be spoofed; do not use them for billing.
+
+The endpoint accepts only fixed event/provider/tool enums, caps bodies at
+512 bytes, rejects extra fields and cross-origin browser submissions, and
+writes no account IDs, roster information, URL parameters, user agents or IPs
+to the dataset. Normal Cloudflare network/security processing still applies.
+Keep Cloudflare security protections enabled and monitor function usage.
+
+One operator setup step is required:
+
+1. Cloudflare **Workers & Pages → fantasy-front-office → Settings → Bindings**.
+2. **Add → Analytics engine**. Variable name: `FFO_USAGE`.
+3. Dataset: `ffo_usage`. Save and redeploy for the binding to take effect.
+4. `GET /api/usage` must return 200. Until configured it returns 503 explicitly,
+   and new users cannot enable measurement in the preference dialog.
+5. Test using Usage privacy, then connect a test league. Turn it off again
+   to verify that subsequent actions send no events.
+
+Only `/api/usage` invokes the Pages Function, via `_routes.json`. Static
+pages and provider-data requests remain unchanged. Review Analytics Engine
+availability/pricing for the account before enabling the binding.
+Cloudflare currently documents a Workers Free allowance of 100,000 data
+points and 10,000 read queries per day; Pages Function requests also consume
+the account's Workers request allowance. No paid upgrade is required for
+this integration. Check the [current pricing](https://developers.cloudflare.com/analytics/analytics-engine/pricing/)
+before enabling it rather than assuming these limits will never change.
+
+In the Analytics Engine SQL API, aggregate with sampling weights:
+
+```sql
+SELECT blob1 AS event, blob2 AS provider, blob3 AS tool,
+       SUM(_sample_interval) AS estimated_events
+FROM ffo_usage
+WHERE timestamp >= NOW() - INTERVAL '7' DAY
+GROUP BY event, provider, tool
+```
+
+The endpoint is covered with a mocked dataset in unit tests. Do not send
+real account information to verify it. No API tokens belong in browser code.
 
 Multi-league management:
 - **Gameday** shows every saved league's live matchup at once. It also shows

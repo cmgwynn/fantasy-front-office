@@ -858,6 +858,7 @@
     STORE_KEY, readStore, rememberSource, removeSource, setLeagueHidden, sourceKey,
     normalizeScoreboard, remainingFraction, finishPlayer, sideTotals, winProbability, finalizeLeague,
     buildAlerts, buildRooting, renderAlerts, renderGamedayHtml, morph, activate, refresh, renderGameday, scoreSleeperProjection,
-    loadYahooSource, notifyLineupAlerts, computeStanding, standingGapLabel, ordinal, ensureData, manageLeague, get data() { return gd.data; }, set data(value) { gd.data = value; gd.loadedAt = Date.now(); }
+    loadYahooSource, notifyLineupAlerts, computeStanding, standingGapLabel, ordinal, ensureData, manageLeague, get data() { return gd.data; }, set data(value) { gd.data = value; gd.loadedAt = Date.now(); },
+    get freshness() { return { checkedAt: gd.loadedAt, error: gd.error, restored: gd.restored, loading: Boolean(gd.loading) }; }
   });
 })();

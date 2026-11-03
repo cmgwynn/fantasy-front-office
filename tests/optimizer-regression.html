@@ -20,7 +20,7 @@
   <h1>Optimizer Regression Checks</h1>
   <p id="summary" role="status">Loading the app runtime...</p>
   <ol id="results"></ol>
-  <iframe id="appFrame" src="../index.html?v=20261101-seo-1&amp;resume=0" title="Optimizer test runtime"></iframe>
+  <iframe id="appFrame" src="../index.html?v=20261102-trust-1&amp;resume=0" title="Optimizer test runtime"></iframe>
   <script>
     async function runOptimizerFixtures() {
       const results = [];
@@ -358,6 +358,17 @@
           selectGmInboxActions(crowdedInbox, "waivers", false).visible.length === 1 &&
           selectGmInboxActions(crowdedInbox, "all", false).visible.length === 3 &&
           selectGmInboxActions(crowdedInbox, "all", true).visible.length === 15);
+        const prioritized = selectGmInboxActions([
+          { type: "Waiver", priority: 200 }, { type: "Start / sit", priority: 150 },
+          { type: "Roster risk", priority: 94 }, { type: "Bye week", priority: 78 }
+        ], "all", true).visible;
+        check("Inbox prioritizes unavailable starters before projection-only gains without mutating input",
+          prioritized[0].type === "Roster risk" && prioritized[1].type === "Bye week");
+        check("Inbox snoozes expire exactly at their deadline while dismissals remain closed",
+          isGmRecommendationClosed({ status: "snoozed", snoozedUntil: 1001 }, 1000) &&
+          !isGmRecommendationClosed({ status: "snoozed", snoozedUntil: 1000 }, 1000) &&
+          !isGmRecommendationClosed({ status: "open" }, 1000) &&
+          isGmRecommendationClosed({ status: "dismissed" }, 1000));
         check("Inbox puts the action queue ahead of collapsed secondary panels",
           document.getElementById("gmInboxList").compareDocumentPosition(document.getElementById("portfolioPressureList")) & Node.DOCUMENT_POSITION_FOLLOWING &&
           document.querySelectorAll("#tab-inbox > details.gm-secondary:not([open])").length === 4 &&
@@ -372,10 +383,12 @@
           movePreview.querySelector(".gm-action-value").textContent === "+1.2 pts projected gain" &&
           movePreview.querySelector("h3").textContent === "Start <Receiver> over Backup" &&
           !movePreview.querySelector("receiver"));
-        check("Inbox move explanations and feedback stay collapsed",
+        check("Inbox reasons and dismiss controls are visible while evidence stays collapsed",
           !movePreview.querySelector("details").open &&
-          movePreview.querySelector("details [data-gm-state='done']") &&
-          movePreview.querySelector("details [data-gm-state='dismissed']"));
+          movePreview.querySelector(".gm-action-reason").textContent === "Projected lineup improvement." &&
+          movePreview.querySelector("[data-gm-state='done']") &&
+          movePreview.querySelector("[data-gm-state='snoozed']") &&
+          !movePreview.querySelector("details [data-gm-state]"));
         const closedMove = { type: "Waiver", title: "Add receiver", value: "+2 pts", detail: "Roster improvement.", playerId: "add", comparisonPlayerId: "drop" };
         const closedKey = getGmRecommendationKey(closedMove);
         movePreview.innerHTML = renderGmInboxAction(closedMove, true, { [closedKey]: { status: "done" } }, "layout-fixture", []);
@@ -391,7 +404,7 @@
         check("Concise Inbox labels preserve recommendation identity and full explanations",
           movePreview.querySelector("h3").textContent === "Receiver · IR" &&
           movePreview.querySelector(".gm-action-value").textContent === "2 of 4 rosters" &&
-          movePreview.querySelector("details p").textContent === closedMove.detail &&
+          movePreview.querySelector(".gm-action-reason").textContent === closedMove.detail &&
           getGmRecommendationKey(compactMove) === closedKey);
         check("Recommended moves appear before the game-day checklist",
           document.getElementById("gmInboxList").compareDocumentPosition(document.getElementById("gmChecklist")) & Node.DOCUMENT_POSITION_FOLLOWING);
@@ -2791,11 +2804,28 @@
         else localStorage.setItem("fantasy-front-office:newsletter:v1", priorNewsletter);
 
         const classify = (rank, gap, playoffStart, week = 10) => FFOPlayoffPush.classifyLeague({ playoffStart, standing: { rank, teams: 12, playoffTeams: 6, gap } }, week);
-        check("Playoff push flags bubble teams as must-win and separates clinched/eliminated teams",
-          classify(6, -0.5, 15).status === "Must-win" && classify(7, 1, 15).status === "Must-win" &&
-          classify(2, -3, 15).status === "Comfortable" && classify(1, -6, 15).status === "Clinched" &&
-          classify(11, 6, 15).status === "Eliminated" && classify(9, 3, 15).status === "Need help" &&
-          classify(4, -1, 15, 15).status === "Playoffs");
+        check("Playoff push describes standings signals without claiming clinches or elimination",
+          classify(6, -0.5, 15).status === "Bubble team" && classify(7, 1, 15).status === "Bubble team" &&
+          classify(2, -3, 15).status === "Above the cut" && classify(1, -6, 15).status === "Above the cut" &&
+          classify(11, 6, 15).status === "Outside the field" && classify(9, 3, 15).status === "Chasing a spot" &&
+          classify(4, -1, 15, 15).status === "Regular season over");
+        const mobileCuff = document.createElement("article");
+        mobileCuff.className = "push-cuff";
+        const demoPortrait = renderComparisonPortrait({ id: "cuff-demo", name: "Fictional RB", isDemo: true });
+        check("Fictional demo portraits never request nonexistent provider headshots",
+          !demoPortrait.includes("<img") && avatarUrl({ id: "demo", isDemo: true }).startsWith("data:image/"));
+        mobileCuff.innerHTML = `<div class="push-cuff-pair">${demoPortrait}<span>→</span>${demoPortrait}</div><div class="push-cuff-text"><small>If a starting running back is unavailable</small><b>A Very Long Potential Backup Name</b><em>Potential stash — confirm availability and role</em></div>`;
+        document.body.append(mobileCuff);
+        let cuffsFit = true;
+        for (const width of [250, 280, 308, 390]) {
+          mobileCuff.style.width = `${width}px`;
+          const pair = mobileCuff.querySelector(".push-cuff-pair").getBoundingClientRect();
+          const text = mobileCuff.querySelector(".push-cuff-text").getBoundingClientRect();
+          cuffsFit = cuffsFit && mobileCuff.scrollWidth <= mobileCuff.clientWidth + 1 &&
+            (pair.right <= text.left + 1 || pair.bottom <= text.top + 1);
+        }
+        mobileCuff.remove();
+        check("Handcuff portraits and long descriptions never overlap at phone-card widths", cuffsFit);
 
         const wdIds = ["wd_fx_wr_free", "wd_fx_wr_start", "wd_fx_wr_other"];
         wdIds.forEach((id, index) => { state.players[id] = { id, name: `WD Fixture ${index}`, position: "WR", team: "KC", isCurrentNfl: true, injuryStatus: "Healthy", projectedPoints: [90, 10, 95][index], baseValue: 1 }; });
@@ -2898,7 +2928,11 @@
           };
           waitForReady();
         });
+        const coldWelcome = frame.contentWindow.eval(`Boolean(document.querySelector("[data-try-demo]")) &&
+          !performance.getEntriesByType("resource").some(entry => entry.name.includes("api.sleeper.app/v1/players/nfl"))`);
+        await frame.contentWindow.eval("initApp(true)");
         const results = await frame.contentWindow.eval(`(${runOptimizerFixtures.toString()})()`);
+        results.unshift({ name: "Cold welcome offers a demo without downloading the NFL player database", passed: coldWelcome });
         const failures = results.filter(result => !result.passed);
         resultList.innerHTML = results.map(result => `<li class="${result.passed ? "pass" : "fail"}"><strong>${result.passed ? "PASS" : "FAIL"}</strong> ${result.name}${result.detail ? `: ${result.detail}` : ""}</li>`).join("");
         summary.textContent = failures.length ? `${failures.length} of ${results.length} checks failed.` : `${results.length} checks passed.`;

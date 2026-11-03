@@ -2,8 +2,8 @@
 // Classic script loaded before app.js; reads app.js globals only at render time.
 (() => {
   const esc = value => draftEscapeHtml(String(value ?? ""));
-  const ORDER = { "Must-win": 0, "Need help": 1, "Comfortable": 2, "Clinched": 3, "Eliminated": 4, "Playoffs": 5 };
-  const TONE = { "Must-win": "bad", "Need help": "warn", "Comfortable": "good", "Clinched": "good", "Eliminated": "muted", "Playoffs": "accent" };
+  const ORDER = { "Bubble team": 0, "Chasing a spot": 1, "Above the cut": 2, "In the field": 3, "Outside the field": 4, "Regular season over": 5 };
+  const TONE = { "Bubble team": "warn", "Chasing a spot": "warn", "Above the cut": "good", "In the field": "good", "Outside the field": "muted", "Regular season over": "accent" };
 
   function normTeam(team) {
     const code = String(team || "").toUpperCase().trim();
@@ -16,18 +16,17 @@
     if (!standing) return null;
     const weeksLeft = entry.playoffStart ? Math.max(0, entry.playoffStart - currentWeek) : null;
     const inField = standing.rank <= standing.playoffTeams;
-    if (weeksLeft === 0) return { status: "Playoffs", weeksLeft, inField, note: inField ? "Regular season is over — you're in." : "Regular season is over." };
+    if (weeksLeft === 0) return { status: "Regular season over", weeksLeft, inField, note: "Check your provider for final seeds and tiebreakers." };
     const left = weeksLeft ?? 99;
-    if (standing.gap === null) return { status: "Clinched", weeksLeft, inField, note: "Every team makes the playoffs." };
+    if (standing.gap === null) return { status: "In the field", weeksLeft, inField, note: "No cut-line gap available; check your league's format." };
     if (inField) {
       const cushion = -standing.gap;
-      if (cushion > left) return { status: "Clinched", weeksLeft, inField, note: `${fmtGames(cushion)} clear with ${left} to play` };
-      if (cushion >= 2) return { status: "Comfortable", weeksLeft, inField, note: `${fmtGames(cushion)} over the cut` };
-      return { status: "Must-win", weeksLeft, inField, note: cushion > 0 ? `Only ${fmtGames(cushion)} over the cut` : "Tied at the cut line" };
+      if (cushion >= 2) return { status: "Above the cut", weeksLeft, inField, note: `${fmtGames(cushion)} over the cut; not a clinch calculation` };
+      return { status: "Bubble team", weeksLeft, inField, note: cushion > 0 ? `Only ${fmtGames(cushion)} over the cut` : "Tied at the cut line" };
     }
-    if (standing.gap > left) return { status: "Eliminated", weeksLeft, inField, note: `${fmtGames(standing.gap)} back with ${left} to play` };
-    if (standing.gap <= 1) return { status: "Must-win", weeksLeft, inField, note: standing.gap > 0 ? `${fmtGames(standing.gap)} back of the last spot` : "Tied at the cut line" };
-    return { status: "Need help", weeksLeft, inField, note: `${fmtGames(standing.gap)} back — win and watch the scoreboard` };
+    if (standing.gap > left) return { status: "Outside the field", weeksLeft, inField, note: `${fmtGames(standing.gap)} back; check provider rules before assuming elimination` };
+    if (standing.gap <= 1) return { status: "Bubble team", weeksLeft, inField, note: standing.gap > 0 ? `${fmtGames(standing.gap)} back of the last spot` : "Tied at the cut line" };
+    return { status: "Chasing a spot", weeksLeft, inField, note: `${fmtGames(standing.gap)} back — win and watch the scoreboard` };
   }
 
   function fmtGames(value) {
@@ -50,7 +49,7 @@
     const week = Number(gd.data.week) || Number(state.week) || 0;
     const rows = leagues.map(entry => ({ entry, info: classifyLeague(entry, week) })).filter(row => row.info)
       .sort((a, b) => ORDER[a.info.status] - ORDER[b.info.status] || (a.entry.standing.rank - b.entry.standing.rank));
-    const mustWin = rows.filter(row => row.info.status === "Must-win").length;
+    const mustWin = rows.filter(row => row.info.status === "Bubble team").length;
     const cards = rows.map(({ entry, info }) => {
       const st = entry.standing;
       const record = `${st.wins}-${st.losses}${st.ties ? `-${st.ties}` : ""}`;
@@ -64,7 +63,7 @@
         <button type="button" class="btn-builder-action" data-gameday-manage="${esc(entry.key)}" data-gameday-tab="tab-opt">Set lineup</button></div>
       </article>`;
     }).join("");
-    const sub = mustWin ? `${mustWin} must-win game${mustWin === 1 ? "" : "s"} this week` : "No must-win games this week";
+    const sub = `${mustWin} bubble league${mustWin === 1 ? "" : "s"} · Standings-based signals, not elimination or clinch odds`;
     return section("What's at stake this week", sub, `<div class="push-stakes">${cards}</div>`);
   }
 
@@ -112,7 +111,8 @@
 
   function findHandcuff(starter) {
     const team = starter.team;
-    const candidates = (PLAYER_INDEX_BY_TEAM.get(team) || []).filter(player => player.position === "RB" && player.id !== starter.id && player.isCurrentNfl && !["IR", "PUP", "Suspended"].includes(player.injuryStatus));
+    if (!starter.depthOrder) return null;
+    const candidates = (PLAYER_INDEX_BY_TEAM.get(team) || []).filter(player => player.position === "RB" && player.id !== starter.id && player.isCurrentNfl && player.depthOrder > starter.depthOrder && !["IR", "Out", "Doubtful", "PUP", "Suspended"].includes(player.injuryStatus));
     if (!candidates.length) return null;
     const ranked = candidates.sort((a, b) => {
       const da = a.depthOrder || 99, db = b.depthOrder || 99;
@@ -133,14 +133,14 @@
       const owner = ownerOf(cuff.id);
       const status = mine.has(String(cuff.id)) ? { tone: "good", text: "Already on your roster" }
         : owner ? { tone: "muted", text: `Rostered by ${splitTeamLabel(owner)[0]}` }
-        : { tone: "accent", text: "Available — stash before the playoffs" };
+        : { tone: "accent", text: "Potential stash — confirm availability and role" };
       return `<article class="push-cuff is-${status.tone}">
         <div class="push-cuff-pair">${renderComparisonPortrait(starter)}<span class="push-cuff-arrow" aria-hidden="true">→</span>${renderComparisonPortrait(cuff)}</div>
         <div class="push-cuff-text"><small>If ${esc(starter.name)} goes down</small><b>${esc(cuff.name)}</b><span>${esc(cuff.team)} RB${cuff.depthOrder ? ` · depth #${cuff.depthOrder}` : ""}</span><em>${esc(status.text)}</em></div>
       </article>`;
     }).filter(Boolean).join("");
     if (!cards) return "";
-    return section("Handcuffs to stash", "Backups for your top running backs", `<div class="push-cuffs">${cards}</div>`);
+    return section("Potential RB handcuffs", "Depth-chart candidates, not guaranteed injury replacements", `<div class="push-cuffs">${cards}</div>`);
   }
 
   function render() {

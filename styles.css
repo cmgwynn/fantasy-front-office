@@ -1668,17 +1668,24 @@ html.ffo-booting #mainContent > .tab-page.active { opacity:0; visibility:hidden;
 .push-grade.is-good { color:var(--good); }
 .push-grade.is-bad { color:var(--bad); }
 .push-notes { margin:8px 0 0; padding-left:18px; font-size:13px; color:var(--text-muted); }
-.push-cuffs { display:grid; grid-template-columns:repeat(auto-fill, minmax(260px, 1fr)); gap:10px; }
-.push-cuff { display:flex; align-items:center; gap:12px; padding:12px; border:1px solid var(--border); border-radius:12px; background:var(--bg-card); }
+.push-cuffs { display:grid; grid-template-columns:repeat(auto-fill, minmax(min(100%, 300px), 1fr)); gap:10px; }
+.push-cuff { display:flex; flex-wrap:wrap; align-items:center; gap:12px; padding:12px; border:1px solid var(--border); border-radius:12px; background:var(--bg-card); min-width:0; }
 .push-cuff.is-accent { border-color:var(--accent); }
 .push-cuff-pair { display:flex; align-items:center; gap:4px; flex:0 0 auto; }
-.push-cuff-pair .compare-portrait, .push-cuff-pair .compare-portrait-placeholder { width:40px; height:40px; }
+.push-cuff-pair .compare-portrait, .push-cuff-pair .compare-portrait-placeholder { width:40px; height:40px; flex:0 0 40px; }
 .push-cuff-arrow { color:var(--text-muted); font-weight:800; }
-.push-cuff-text { display:flex; flex-direction:column; min-width:0; font-size:13px; }
+.push-cuff-text { display:flex; flex:1 1 160px; flex-direction:column; min-width:0; font-size:13px; overflow-wrap:anywhere; }
 .push-cuff-text small { color:var(--text-muted); font-size:11px; }
 .push-cuff-text b { font-size:15px; }
 .push-cuff-text span { color:var(--text-muted); }
 .push-cuff-text em { font-style:normal; font-weight:700; margin-top:2px; }
+.release-update { display:flex; flex-wrap:wrap; align-items:center; gap:10px; }
+.release-update > span { flex:1 1 240px; }
+.onboard-trust { color:var(--accent); font-weight:700; }
+.onboard-demo { margin-top:12px; min-height:44px; }
+.gm-action-reason { grid-column:1 / -1; color:var(--text-muted); font-size:13px; overflow-wrap:anywhere; }
+.gm-action-card > .gm-action-controls { grid-column:1 / -1; display:flex; flex-wrap:wrap; gap:8px; }
+.gm-action-controls button { min-height:40px; }
 .push-cuff.is-accent em { color:var(--accent); }
 .push-cuff.is-good em { color:var(--good); }
 .push-cuff.is-muted em { color:var(--text-muted); }
