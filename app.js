@@ -728,20 +728,64 @@ function renderDecisionDataStatus() {
   status.classList.toggle("has-errors", result.warning);
 }
 
+let connectionSyncBusy = false;
+let preserveConnectionPanel = false;
+let connectionSyncMinHeight = "";
+function beginConnectionSync() {
+  if (connectionSyncBusy) return false;
+  connectionSyncBusy = true;
+  preserveConnectionPanel = document.getElementById("connectionSettings").open;
+  const main = document.getElementById("mainContent");
+  connectionSyncMinHeight = main.style.minHeight;
+  main.style.minHeight = `${Math.max(240, main.getBoundingClientRect().height)}px`;
+  main.setAttribute("aria-busy", "true");
+  let loading = document.getElementById("connectionSyncStatus");
+  if (!loading) {
+    loading = document.createElement("div");
+    loading.id = "connectionSyncStatus";
+    loading.setAttribute("role", "status");
+    loading.textContent = "Syncing your league. Loading rosters and matchups...";
+    main.append(loading);
+  }
+  document.documentElement.classList.add("connection-syncing");
+  document.getElementById("providerSelect").disabled = true;
+  document.getElementById("usernameInput").readOnly = true;
+  document.querySelectorAll("#syncBtn, #onboardForm button[type=submit], #yahooImportFile").forEach(button => {
+    button.dataset.syncBusy = "true";
+    button.disabled = true;
+  });
+  return true;
+}
+
+function endConnectionSync() {
+  connectionSyncBusy = false;
+  const main = document.getElementById("mainContent");
+  main.style.minHeight = connectionSyncMinHeight;
+  main.removeAttribute("aria-busy");
+  document.getElementById("connectionSyncStatus")?.remove();
+  document.documentElement.classList.remove("connection-syncing");
+  document.getElementById("providerSelect").disabled = false;
+  document.getElementById("usernameInput").readOnly = false;
+  document.querySelectorAll("[data-sync-busy]").forEach(button => { delete button.dataset.syncBusy; });
+  renderConnectionLayout();
+  window.FFOUsage?.mountConnectionChoices();
+}
+
 function renderConnectionLayout() {
   const connection = document.getElementById("connectionSettings");
   if (!connection) return;
   const connected = Boolean(state.activeLeague && state.managers.length);
+  if (connectionSyncBusy) return;
   const key = connected ? "connected" : "disconnected";
   if (!connected && document.documentElement.classList.contains("ffo-booting")) return;
   if (connection.dataset.connectionState !== key) {
     const focusInside = connection.contains(document.activeElement);
-    connection.open = !connected;
+    if (!preserveConnectionPanel || !connected) connection.open = !connected;
     if (connected && focusInside) document.getElementById("connectionSettingsLabel").focus({ preventScroll: true });
     connection.dataset.connectionState = key;
   }
-  document.querySelector(".workspace-controls").classList.toggle("is-connected", connected);
-  document.querySelector(".top-nav").classList.toggle("is-connected", connected);
+  document.querySelector(".workspace-controls").classList.toggle("is-connected", connected && !connection.open);
+  document.querySelector(".top-nav").classList.toggle("is-connected", connected && !connection.open);
   document.getElementById("connectionSettingsLabel").textContent = connected ? "Manage connection" : "Connect a league";
   renderContextBar();
 }
@@ -1046,10 +1090,10 @@ function generateTargetTradeOffers() {
   });
 }
 async function retryDataSync() {
-  if (!await requestConnectedBetaAccess()) return false;
   const usernameInput = document.getElementById("usernameInput");
   const username = usernameInput?.value.trim() || "";
   const view = captureLeagueView();
+  if (!await requestConnectedBetaAccess()) return false;
   setStatus("Retrying data sources...");
   try {
     await initApp(true, true);
@@ -1085,11 +1129,11 @@ async function refreshActiveLeagueData() {
     setStatus("The demo is a fixed fictional snapshot, not a live league.");
     return;
   }
-  if (!await requestConnectedBetaAccess()) return false;
   if (league.provider === "yahoo") {
     setStatus("Yahoo roster data is a file snapshot. Re-import the file to refresh it.");
     return;
   }
+  if (!await requestConnectedBetaAccess()) return false;
 
   const leagueIndex = state.leagues.indexOf(league);
   const view = captureLeagueView();
@@ -2074,7 +2118,7 @@ async function syncUserAccount({ leagueKey = "", season = state.season } = {}) {
   if (provider === "yahoo") { setStatus("Choose a Yahoo roster CSV or JSON file to import. Direct sign-in needs a secure OAuth backend."); return; }
   const u = document.getElementById("usernameInput")?.value.trim();
   if (!u) return;
-  if (!await requestConnectedBetaAccess(true)) return false;
+  if (!await requestConnectedBetaAccess(true) || !beginConnectionSync()) return false;
   window.FFOUsage?.track("connect_start", { provider: "sleeper" });
   setStatus("Connecting account...");
   try {
@@ -2112,6 +2156,7 @@ async function syncUserAccount({ leagueKey = "", season = state.season } = {}) {
     applyToolDeepLink();
     return true;
   } catch (error) { window.FFOUsage?.track("connect_failure", { provider: "sleeper" }); markDataSource("account", error); setStatus(`Could not connect to this provider: ${error.message}`); return false; }
+  finally { endConnectionSync(); }
 }
 
 function normalizeYahooPosition(position) {
@@ -2145,6 +2190,7 @@ function createYahooPlayer(source, league) {
 async function importYahooRosterFile(file, { demo = false } = {}) {
   if (!file) return;
   if (!demo && !await requestConnectedBetaAccess(true)) return false;
+  if (!beginConnectionSync()) return false;
   window.FFOUsage?.track(demo ? "demo_start" : "connect_start", { provider: demo ? "demo" : "yahoo" });
   try {
     const text = await file.text();
@@ -2280,7 +2326,7 @@ async function importYahooRosterFile(file, { demo = false } = {}) {
     if (!demo) window.FFOUsage?.track("connect_failure", { provider: "yahoo" });
     markDataSource("account", error);
     setStatus(error.message || "Could not import the Yahoo roster file.");
-  }
+  } finally { endConnectionSync(); }
 }
 
 function updateProviderControls() {
@@ -2312,6 +2358,7 @@ function updateProviderControls() {
       help.textContent = sleeper ? "Connect with your account username to load league settings and rosters." : (yahoo ? "CSV: manager, player, position, nfl_team; optional waiver_priority and actual_points. JSON teams may include waiverPriority; players may include actualPoints. Set FAAB remaining in the planner. Yahoo OAuth is not configured on this static site." : "");
     }
   }
+  window.FFOUsage?.mountConnectionChoices();
 }
 
 function normalizeEspnRosterPositions(slotCounts = {}) {
@@ -2351,7 +2398,7 @@ async function syncEspnAccount({ leagueKey = "", season = state.season } = {}) {
   const leagueIds = (input?.value || "").split(/[\s,;]+/).map(value => value.trim()).filter(Boolean);
   if (!leagueIds.length) { setStatus("Enter one or more ESPN league IDs."); return; }
   if (leagueIds.length > 20) { setStatus("Import up to 20 leagues at a time."); return; }
-  if (!await requestConnectedBetaAccess(true)) return false;
+  if (!await requestConnectedBetaAccess(true) || !beginConnectionSync()) return false;
   window.FFOUsage?.track("connect_start", { provider: "espn" });
   setStatus(`Connecting to ${leagueIds.length} ESPN league${leagueIds.length === 1 ? "" : "s"}...`);
   try {
@@ -2394,7 +2441,7 @@ async function syncEspnAccount({ leagueKey = "", season = state.season } = {}) {
     markDataSource("account", error);
     setStatus(error.message || "Could not connect to ESPN Fantasy.");
     return false;
-  }
+  } finally { endConnectionSync(); }
 }
 
 function getInternalPlayerIdFromEspn(playerData) {
@@ -9457,6 +9504,7 @@ function renderAllViews(teamIdx) {
 
 // 10. Form Control Bindings & Boot
 function bindControlEvents() {
+  document.getElementById("connectionSettings").addEventListener("toggle", renderConnectionLayout);
   document.querySelectorAll(".table-wrap").forEach(wrapper => {
     wrapper.tabIndex = 0;
     wrapper.setAttribute("role", "region");
@@ -9964,8 +10012,8 @@ function renderOnboardingCard(container) {
     <form class="onboard-form" id="onboardForm">
       <label class="sr-only" for="onboardUsername">Sleeper username</label>
       <input id="onboardUsername" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="Sleeper username" required />
-      <div class="usage-connect" data-usage-connect></div>
       <button type="submit" class="connect-button">Open my leagues</button>
+      <div class="usage-connect" data-usage-connect></div>
     </form>
     <button type="button" class="btn-builder-action onboard-demo" data-try-demo>Try a fictional demo league</button>
     <p class="comparison-note">Preview lineup swaps, waiver ideas and a league overview without connecting. Live multi-league scores and playoff simulations require a real league.</p>
@@ -10172,7 +10220,7 @@ function buildWorkspaceBackup() {
 
 function applyWorkspaceSnapshot(backup) {
   FFOWorkspace.validateBackup(backup);
-  if (!backup.snapshot.activeLeague.isDemo && !window.FFOUsage?.isAllowed()) throw new Error("Connected US beta agreement and eligibility are required to reopen a saved league. Local plans have not been deleted.");
+  if (!backup.snapshot.activeLeague.isDemo && !window.FFOUsage?.isAllowed()) throw new Error("Usage agreement and US eligibility are required to reopen a saved league. Local plans have not been deleted.");
   Object.assign(state, backup.snapshot);
   state.currentMatchupsKey = backup.snapshot.currentMatchupsKey || "";
   state.currentMatchupsCheckedAt = backup.snapshot.currentMatchupsCheckedAt || 0;
@@ -10257,8 +10305,8 @@ function showConnectedBetaGate() {
     gate = document.createElement("section");
     gate.id = "usageAccessGate";
     gate.className = "usage-access-gate";
-    gate.setAttribute("aria-label", "Connected US beta access");
-    gate.innerHTML = '<h2>Connected US beta access</h2><p>Connected tools require limited usage measurement for this US-only beta, ages 18+. Your saved leagues and plans remain on this device.</p><div class="usage-connect" data-usage-connect></div><button type="button" class="btn-builder-action" data-usage-continue>Agree and continue</button><a href="/?resume=0">Use the fictional demo instead</a>';
+    gate.setAttribute("aria-label", "Usage agreement required");
+    gate.innerHTML = '<h2>Accept the usage agreement to sync</h2><p>Real league syncing and connected tools require limited usage measurement for this US-only beta, ages 18+. Your saved leagues and plans remain on this device.</p><div class="usage-connect" data-usage-connect></div><button type="button" class="btn-builder-action" data-usage-continue disabled>Continue to league</button><a href="/?resume=0">Use the fictional demo instead</a>';
     gate.querySelector("[data-usage-continue]").addEventListener("click", async event => {
       const button = event.currentTarget;
       button.disabled = true;
@@ -10274,13 +10322,13 @@ function showConnectedBetaGate() {
           if (provider === "yahoo" && file) await importYahooRosterFile(file);
           else if (["sleeper", "espn"].includes(provider) && document.getElementById("usernameInput").value.trim()) await syncUserAccount();
         }
-      } finally { button.disabled = false; }
+      } finally { button.disabled = !window.FFOUsage.isAllowed(); }
     });
     document.getElementById("mainContent").prepend(gate);
   }
   window.FFOUsage?.mountConnectionChoices();
   updateConnectedBetaGate();
-  setStatus(window.FFOUsage?.accessMessage() || "Connected beta access is unavailable. Try reloading; local plans remain saved.");
+  setStatus(window.FFOUsage?.accessMessage() || "Connected access is unavailable. Try reloading; local plans remain saved.");
 }
 
 async function requestConnectedBetaAccess(allowAgreement = false) {

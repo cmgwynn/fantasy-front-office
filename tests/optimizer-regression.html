@@ -20,7 +20,7 @@
   <h1>Optimizer Regression Checks</h1>
   <p id="summary" role="status">Loading the app runtime...</p>
   <ol id="results"></ol>
-  <iframe id="appFrame" src="../index.html?v=20261102-beta-1&amp;resume=0" title="Optimizer test runtime"></iframe>
+  <iframe id="appFrame" src="../index.html?v=20261102-gameday-1&amp;resume=0" title="Optimizer test runtime"></iframe>
   <script>
     async function runOptimizerFixtures() {
       const results = [];
@@ -1753,6 +1753,45 @@
           gdApi.rememberSource({ type: "sleeper", username: "fixture", userId: "u1" });
           const gdHtml = gdApi.renderGamedayHtml({ scoreboard: gdBoard, leagues: [...gdLeagues, { key: "espn:9", provider: "espn", name: "Broken", url: "https://fantasy.espn.com/", error: "Private league" }, { key: "sleeper:h", hidden: true, name: "Hidden" }] });
           const gdView = document.createElement("div"); gdView.innerHTML = gdHtml;
+          check("Gameday progress separates live, pending, finished, inactive, bye, unknown and empty starters",
+            JSON.stringify(gdApi.lineupProgress([gdLive, gdOut, gdFinal, gdBye,
+              { team: "KC" }, { team: "FA" }, { empty: true }], gdBoard)) ===
+              JSON.stringify({ live: 1, upcoming: 1, finished: 1, inactive: 1, bye: 1, unknown: 1, empty: 1 }));
+          const previousGameday = gdApi.data;
+          gdApi.data = { season: 2026, week: 9, checkedAt: Date.now(), scoreboard: gdBoard, leagues: gdLeagues };
+          document.body.append(gdView);
+          gdView.querySelector('[data-gameday-lineup="sleeper:1"][data-lineup-side="opp"]').click();
+          const lineupDialog = document.querySelector(".gd-lineup-dialog");
+          check("Clicking an opponent team name opens both starting lineups and focuses the selected team",
+            lineupDialog.open && lineupDialog.querySelectorAll(".gd-lineup-team").length === 2 &&
+            lineupDialog.querySelectorAll(".gd-player").length === 4 &&
+            document.activeElement.dataset.lineupHeading === "opp" &&
+            lineupDialog.querySelector(".is-selected h4").textContent.includes("Theirs") &&
+            lineupDialog.textContent.includes("1 yet to play"));
+          const lineupNode = lineupDialog.querySelector(".gd-player");
+          gdLeagues[0].me.points = -1;
+          gdApi.renderGameday();
+          check("An open Gameday comparison refreshes in place without closing or rebuilding player rows",
+            lineupDialog.open && lineupDialog.querySelector(".gd-player") === lineupNode &&
+            lineupDialog.querySelector(".gd-lineup-total b").textContent === "-1.0");
+          lineupDialog.querySelector("[data-lineup-heading]").dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+          check("Escape closes the Gameday comparison", !lineupDialog.open);
+          gdView.querySelector('[data-gameday-lineup="sleeper:1"][data-lineup-side="me"]').click();
+          check("Clicking your own team opens its lineup with keyboard-focusable native team buttons",
+            lineupDialog.open && document.activeElement.dataset.lineupHeading === "me" &&
+            gdView.querySelector("[data-gameday-lineup]").tagName === "BUTTON");
+          lineupDialog.close();
+          const previousOpponent = gdLeagues[0].opp;
+          gdLeagues[0].opp = null;
+          gdView.querySelector('[data-gameday-lineup="sleeper:1"][data-lineup-side="me"]').click();
+          check("Gameday comparison explicitly handles a week with no opponent",
+            lineupDialog.open && lineupDialog.textContent.includes("No opponent this week") &&
+            lineupDialog.querySelectorAll(".gd-player").length === 3);
+          lineupDialog.close();
+          gdLeagues[0].opp = previousOpponent;
+          gdApi.data = previousGameday;
+          gdView.remove();
+          if (previousGameday) gdApi.renderGameday();
           check("Gameday shows the NFL strip, alerts, one card per visible league with photos and a rooting guide",
             gdView.querySelectorAll(".gd-strip-game").length === 3 && gdView.querySelectorAll(".gd-card").length === 3 && gdView.querySelectorAll(".gd-card.is-error").length === 1 &&
             gdView.querySelector('.gd-card[data-gd-key="sleeper:1"] .gd-open')?.getAttribute("href") === "https://sleeper.com/leagues/1/matchup" &&
@@ -2930,6 +2969,20 @@
         state.players[`espn_${espnId}`] && delete state.players[`espn_${espnId}`];
         ESPN_PLAYER_TO_INTERNAL_ID.delete(espnId);
       }
+      const syncMain = document.getElementById("mainContent");
+      const syncHeader = document.querySelector(".top-nav");
+      const beforeSyncHeader = syncHeader.getBoundingClientRect().height;
+      const previousMinHeight = syncMain.style.minHeight;
+      check("Connection loading prevents duplicate syncs and retains the header geometry",
+        beginConnectionSync() && !beginConnectionSync() && syncMain.getAttribute("aria-busy") === "true" &&
+        document.documentElement.classList.contains("connection-syncing") &&
+        syncHeader.getBoundingClientRect().height === beforeSyncHeader);
+      endConnectionSync();
+      check("Ending a connection clears the loading state and busy controls",
+        !document.getElementById("connectionSyncStatus") && !syncMain.hasAttribute("aria-busy") &&
+        !document.documentElement.classList.contains("connection-syncing") &&
+        !document.querySelector("[data-sync-busy]") && !document.getElementById("providerSelect").disabled &&
+        syncMain.style.minHeight === previousMinHeight);
       return results;
     }
     const frame = document.getElementById("appFrame");

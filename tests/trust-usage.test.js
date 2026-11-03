@@ -43,11 +43,18 @@ function usageContext(consent, previousWeek, { us = false, privacy = false, beta
   if (previousWeek) values.set("fantasy-front-office:usage-consent:v1:last-visit", String(previousWeek));
   const requests = [];
   const listeners = {};
-  const notice = { innerHTML: "", contains: () => false, querySelector: () => ({}) };
+  const choice = {};
+  const controls = [{ id: "syncBtn", dataset: {}, setAttribute() {} }, { dataset: {}, setAttribute() {} }];
+  const nodes = { "[data-usage-connect-choice]": choice, ".usage-connect-heading": {}, ".usage-connect-status": {} };
+  const notice = { innerHTML: "", classList: { toggle() {} }, querySelector: selector => selector === "[data-usage-connect-choice]" && !notice.innerHTML ? null : nodes[selector] };
   const context = {
     window: {}, navigator: { globalPrivacyControl: privacy }, console, URLSearchParams, Date, Set,
     CustomEvent: class { constructor(type, options) { this.type = type; this.detail = options.detail; } },
-    document: { dispatchEvent() {}, querySelectorAll: selector => selector === ".nav-btn" ? [{ dataset: { tab: "tab-opt" } }] : [notice], addEventListener(event, callback) { listeners[event] = callback; } },
+    document: {
+      dispatchEvent() {}, getElementById: () => null, querySelector: () => ({ value: "sleeper" }),
+      querySelectorAll: selector => selector === ".nav-btn" ? [{ dataset: { tab: "tab-opt" } }] : selector === "[data-usage-connect]" ? [notice] : controls,
+      addEventListener(event, callback) { listeners[event] = callback; }
+    },
     localStorage: { getItem: key => values.get(key) || null, setItem: (key, value) => { if (storageFails) throw new Error("Storage blocked"); values.set(key, value); }, removeItem: key => { if (storageFails) throw new Error("Storage blocked"); values.delete(key); } },
     fetch: async (url, options) => {
       if (options.method === "POST") requests.push({ url, options });
@@ -55,7 +62,7 @@ function usageContext(consent, previousWeek, { us = false, privacy = false, beta
     }
   };
   vm.runInNewContext(read("usage-metrics.js"), context);
-  return { ...context.window.FFOUsage, requests, values, notice, listeners };
+  return { ...context.window.FFOUsage, requests, values, notice, listeners, choice, controls };
 }
 
 test("usage tracking does not send events without beta agreement", async () => {
@@ -67,11 +74,14 @@ test("usage tracking does not send events without beta agreement", async () => {
 test("US beta agreement is unchecked and required before connecting", async () => {
   const usage = usageContext(false, undefined, { us: true });
   assert.equal(await usage.checkAccess(), false);
-  assert.doesNotMatch(usage.notice.innerHTML, / checked/);
+  assert.equal(usage.choice.checked, false);
+  assert.ok(usage.controls.every(control => control.disabled));
+  assert.match(usage.notice.innerHTML, /Required to sync a league/);
   await usage.track("connect_success", { provider: "sleeper" });
   assert.equal(usage.requests.length, 0);
   assert.equal(await usage.requireConnectionAccess(), false);
   usage.listeners.change({ target: { matches: () => true, checked: true } });
+  assert.ok(usage.controls.every(control => !control.disabled), "Explicit acceptance enables sync immediately.");
   assert.equal(await usage.requireConnectionAccess(), true);
   await usage.track("connect_start", { provider: "sleeper" });
   await usage.track("connect_success", { provider: "sleeper" });
@@ -95,6 +105,7 @@ test("withdrawing beta agreement immediately pauses access and stops future even
   const before = usage.requests.length;
   usage.listeners.change({ target: { matches: () => true, checked: false } });
   assert.equal(usage.isAllowed(), false);
+  assert.ok(usage.controls.every(control => control.disabled));
   await usage.track("connect_success", { provider: "sleeper" });
   assert.equal(usage.requests.length, before);
   assert.equal(usage.values.get("fantasy-front-office:usage-consent:v1"), "no");
@@ -119,6 +130,18 @@ test("withdrawal stops in-memory access even when browser storage fails", async 
   assert.equal(usage.isAllowed(), false);
   await usage.track("tool_open", { tool: "tab-opt" });
   assert.equal(usage.requests.length, before);
+});
+
+test("agreement updates preserve a busy sync button until its connection attempt ends", async () => {
+  const usage = usageContext(true, undefined, { us: true, beta: true });
+  await usage.checkAccess();
+  usage.controls[0].dataset.syncBusy = "true";
+  usage.mountConnectionChoices();
+  assert.equal(usage.controls[0].disabled, true);
+  assert.equal(usage.controls[1].disabled, false);
+  delete usage.controls[0].dataset.syncBusy;
+  usage.mountConnectionChoices();
+  assert.equal(usage.controls[0].disabled, false);
 });
 
 test("usage privacy has scoped spacing, disclosure sections and an associated consent label", () => {
@@ -239,7 +262,7 @@ test("release metadata matches the app assets and fresh welcome avoids eager dat
 });
 
 test("release prompts are dismissible and failed snapshot saves never trigger reload", async () => {
-  let version = "20261102-beta-1";
+  let version = "20261102-gameday-1";
   let clock = 60001;
   let banner = null;
   let reloads = 0;
@@ -255,7 +278,7 @@ test("release prompts are dismissible and failed snapshot saves never trigger re
     fetch: async () => ({ ok: true, json: async () => ({ version }) }),
     document: {
       hidden: false, addEventListener() {},
-      querySelector: selector => selector === "main" ? { prepend: node => { banner = node; } } : { src: "https://fantasyfo.com/app.js?v=20261102-beta-1" },
+      querySelector: selector => selector === "main" ? { prepend: node => { banner = node; } } : { src: "https://fantasyfo.com/app.js?v=20261102-gameday-1" },
       getElementById: () => banner,
       createElement: () => ({ setAttribute() {}, querySelector: selector => controls.get(selector), remove() { banner = null; } })
     }

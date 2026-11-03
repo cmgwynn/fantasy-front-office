@@ -53,6 +53,33 @@ a league to use roster-based features.
 
 ### Required measurement for the connected US beta
 
+The connection form explicitly labels the agreement "Required to sync a league."
+Sync, real Yahoo imports, Gameday Add and saved-workspace Continue stay disabled
+until an eligible user accepts. Checking the unchecked box saves agreement
+immediately and enables the relevant controls; unchecking disables them again.
+Checkbox DOM nodes are retained across status updates to preserve focus.
+The fictional demo is never disabled by this requirement.
+
+Connection attempts retain the current header/disclosure geometry while loading.
+A bounded loading state hides intermediate tool renders until the attempt ends;
+both success and failure release it in `finally`. Explicit syncing no longer
+auto-collapses the connection panel or switches its mobile header layout.
+Returning saved workspaces retain their compact connection header.
+
+### Gameday lineup comparison
+
+Both team names on every available Gameday matchup are native buttons opening
+a comparison dialog. It shows both starting lineups, actual scores, projected
+finals and live/yet-to-play/finished counts. Known inactive starters, byes, empty
+slots and unknown game statuses are separated rather than counted as players
+still to play. Counts describe NFL game status, not guaranteed participation.
+Imported Yahoo matchups are labeled as snapshots; absent opponents and empty
+provider lineups have explicit messages. The selected team receives focus and
+appears first on phones. Escape or Close returns to Gameday, and open comparisons
+update in place on the existing Gameday refresh without extra provider requests.
+
+### Measurement details
+
 This is separate from Cloudflare Web Analytics. Both the welcome form and
 provider connection settings disclose measurement with an inline checkbox.
 Connected use is a US-only beta requiring an unchecked, explicit

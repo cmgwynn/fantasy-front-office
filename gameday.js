@@ -151,7 +151,7 @@
     const actual = Number.isFinite(Number(points)) && points !== null ? Number(points) : live;
     const projected = actual + players.reduce((sum, player) => sum + (player.projFinal - player.points), 0);
     const variance = players.reduce((sum, player) => sum + Math.pow(0.45 * player.proj, 2) * player.remaining, 0);
-    return { points: actual, projected, variance, playing: players.filter(p => p.gameState === "in").length, toPlay: players.filter(p => p.gameState === "pre").length };
+    return { points: actual, projected, variance, playing: players.filter(p => p.gameState === "in").length, toPlay: players.filter(p => p.gameState === "pre" && !INACTIVE_STATUSES.includes(p.injury)).length };
   }
 
   function winProbability(me, opp) {
@@ -489,13 +489,84 @@
     return `<label class="gd-team-picker">My team<select data-gameday-team="${esc(league.key)}">${league.teams.map(team => `<option value="${esc(team.id)}"${team.id === league.me?.teamId ? " selected" : ""}>${esc(team.name)}</option>`).join("")}</select></label>`;
   }
 
+  function lineupProgress(players, scoreboard) {
+    const counts = { live: 0, upcoming: 0, finished: 0, inactive: 0, bye: 0, unknown: 0, empty: 0 };
+    players.forEach(player => {
+      if (player.empty) { counts.empty++; return; }
+      const game = scoreboard.byTeam[teamCode(player.team)];
+      if (!game) { counts.unknown++; return; }
+      if (game.state === "post") counts.finished++;
+      else if (game.state === "bye") counts.bye++;
+      else if (game.state === "pre" && INACTIVE_STATUSES.includes(player.injury)) counts.inactive++;
+      else if (game.state === "pre") counts.upcoming++;
+      else if (game.state === "in") counts.live++;
+      else counts.unknown++;
+    });
+    return counts;
+  }
+
+  let lineupDialog;
+  let lineupSelection;
+  function renderLineupComparison() {
+    if (!lineupDialog?.open || !lineupSelection) return;
+    const league = gd.data?.leagues.find(item => item.key === lineupSelection.key && !item.hidden && !item.error);
+    const body = lineupDialog.querySelector(".gd-lineup-body");
+    if (!league) {
+      morph(body, '<p role="status">This matchup is no longer available. Close this view and refresh Gameday.</p>');
+      return;
+    }
+    const panel = (side, key) => {
+      if (!side) return '<section class="gd-lineup-team"><h4>No opponent this week</h4></section>';
+      const counts = lineupProgress(side.players, gd.data.scoreboard);
+      const progress = [`${counts.live} live`, `${counts.upcoming} yet to play`, `${counts.finished} finished`,
+        ...[["inactive", "inactive"], ["bye", "on bye"], ["unknown", "status unknown"], ["empty", "empty slots"]]
+          .filter(([kind]) => counts[kind]).map(([kind, label]) => `${counts[kind]} ${label}`)].join(" · ");
+      const players = side.players.map(player => {
+        if (player.empty) return player;
+        const game = gd.data.scoreboard.byTeam[teamCode(player.team)];
+        return { ...player, gameLabel: !game ? "Game status unknown" : game.state === "post" ? `${player.gameLabel} · Finished` : game.state === "in" ? `${player.gameLabel} · Live` : player.gameLabel };
+      });
+      return `<section class="gd-lineup-team${key === lineupSelection.side ? " is-selected" : ""}" data-gd-key="${key}">
+        <h4 tabindex="-1" data-lineup-heading="${key}">${esc(side.name)} <small>${key === "me" ? "Your team" : "Opponent"}</small></h4>
+        <p class="gd-lineup-total"><b data-gd-score>${fmt(side.points)}</b> actual · ${fmt(side.projected)} projected final</p>
+        <p class="gd-lineup-progress">${esc(progress)}</p>
+        ${players.length ? `<ul class="gd-players">${players.map(renderPlayerRow).join("")}</ul>` : '<p>No starting lineup supplied by the provider.</p>'}
+      </section>`;
+    };
+    morph(body, `<p class="gd-lineup-context">Week ${esc(gd.data.week)} · ${esc(league.name)}${league.imported ? " · Imported snapshot, not live" : ""} · Updated ${esc(new Date(gd.data.checkedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }))}${gd.error ? ` · ${esc(gd.error)}` : ""}</p><p class="gd-lineup-note">Starters only. Yet to play excludes known inactive players; game status does not guarantee participation. Scores and statuses can be delayed.</p><div class="gd-lineup-grid">${panel(league.me, "me")}${panel(league.opp, "opp")}</div>`);
+  }
+
+  function openLineupComparison(key, side) {
+    if (!window.FFOUsage?.isAllowed()) { showConnectedBetaGate(); return; }
+    if (!gd.data?.leagues.some(league => league.key === key && !league.hidden && !league.error && league[side])) return;
+    if (!lineupDialog) {
+      lineupDialog = document.createElement("dialog");
+      lineupDialog.className = "share-dialog gd-lineup-dialog";
+      lineupDialog.setAttribute("aria-labelledby", "gamedayLineupTitle");
+      lineupDialog.innerHTML = '<div class="share-dialog-head"><h3 id="gamedayLineupTitle">Matchup lineups</h3><button type="button" class="share-dialog-close" aria-label="Close lineup comparison">×</button></div><div class="gd-lineup-body"></div>';
+      document.body.append(lineupDialog);
+      lineupDialog.querySelector(".share-dialog-close").addEventListener("click", () => lineupDialog.close());
+      lineupDialog.addEventListener("keydown", event => {
+        if (event.key === "Escape") { event.preventDefault(); lineupDialog.close(); }
+      });
+    }
+    lineupSelection = { key, side };
+    lineupDialog.showModal();
+    renderLineupComparison();
+    lineupDialog.querySelector(`[data-lineup-heading="${side}"]`)?.focus();
+  }
+
+  document.addEventListener("ffo:usage-access", event => {
+    if (!event.detail.allowed && lineupDialog?.open) lineupDialog.close();
+  });
+
   function renderLeagueCard(league) {
     const providerLabel = { sleeper: "Sleeper", espn: "ESPN", yahoo: "Yahoo" }[league.provider] || league.provider;
     const head = `<header class="gd-card-head"><span class="gd-provider is-${esc(league.provider)}">${esc(providerLabel)}</span><strong title="${esc(league.name)}">${esc(league.name)}</strong>${canManage(league.key) ? `<button type="button" class="gd-manage" data-gameday-manage="${esc(league.key)}">Set lineup</button>` : ""}${league.imported ? '<small class="gd-imported">From file</small>' : `<a class="gd-open" href="${esc(league.url)}" target="_blank" rel="noopener noreferrer" data-gameday-open="${esc(league.url)}">Open</a>`}</header>`;
     if (league.error) return `<article class="gd-card is-error" data-gd-key="${esc(league.key)}">${head}<p class="gd-error">${esc(league.error)}</p></article>`;
     const { me, opp } = league;
     const pct = league.winPct;
-    const sideBlock = (side, mine) => side ? `<div class="gd-side${mine ? " is-me" : ""}">${side.avatar ? `<span class="gd-photo gd-team-photo" style="width:34px;height:34px"><img src="${esc(side.avatar)}" alt="" width="34" height="34" loading="lazy" onerror="this.remove()"><b>${esc(side.name.slice(0, 1))}</b></span>` : `<span class="gd-photo gd-team-photo" style="width:34px;height:34px"><b>${esc(side.name.slice(0, 1))}</b></span>`}<div class="gd-side-name"><strong title="${esc(side.name)}">${esc(side.name)}</strong><small>${side.playing} live · ${side.toPlay} to play</small></div><div class="gd-side-score"><b data-gd-score>${fmt(side.points)}</b><small>proj ${fmt(side.projected)}</small></div></div>` : `<div class="gd-side is-empty"><small>No opponent this week</small></div>`;
+    const sideBlock = (side, mine) => side ? `<div class="gd-side${mine ? " is-me" : ""}">${side.avatar ? `<span class="gd-photo gd-team-photo" style="width:34px;height:34px"><img src="${esc(side.avatar)}" alt="" width="34" height="34" loading="lazy" onerror="this.remove()"><b>${esc(side.name.slice(0, 1))}</b></span>` : `<span class="gd-photo gd-team-photo" style="width:34px;height:34px"><b>${esc(side.name.slice(0, 1))}</b></span>`}<div class="gd-side-name"><button type="button" class="gd-team-lineup" data-gameday-lineup="${esc(league.key)}" data-lineup-side="${mine ? "me" : "opp"}" aria-haspopup="dialog" aria-label="${esc(`View ${side.name} lineup and compare matchup`)}" title="View lineup and compare"><strong>${esc(side.name)}</strong></button><small>${side.playing} live · ${side.toPlay} to play</small></div><div class="gd-side-score"><b data-gd-score>${fmt(side.points)}</b><small>proj ${fmt(side.projected)}</small></div></div>` : `<div class="gd-side is-empty"><small>No opponent this week</small></div>`;
     const winBar = pct === null ? "" : `<div class="gd-win" aria-label="Win chance ${Math.round(pct)}%"><div class="gd-win-bar"><span style="width:${pct.toFixed(1)}%"></span></div><small title="Fantasy Front Office's own live model (projections plus remaining game time). It can differ a few points from Sleeper's or ESPN's in-app odds."><b>${Math.round(pct)}%</b> to win <i class="gd-model">FFO model</i></small></div>`;
     const state = pct === null ? "" : pct >= 60 ? " is-winning" : pct <= 40 ? " is-losing" : " is-close";
     return `<article class="gd-card${state}" data-gd-key="${esc(league.key)}">${head}${renderStanding(league.standing)}${renderTeamPicker(league)}
@@ -597,6 +668,7 @@
     if (!root) return;
     if (!gd.data) { if (!root.childNodes.length || !gd.loading) morph(root, readStore().sources.length ? renderSkeleton() : renderGamedayHtml({ leagues: [], scoreboard: { games: [] } })); return; }
     morph(root, renderGamedayHtml(gd.data));
+    renderLineupComparison();
     if (meta) {
       const live = gd.data.scoreboard.games.filter(game => game.state === "in").length;
       const text = `Week ${gd.data.week} · ${gd.data.leagues.filter(l => !l.hidden).length} league${gd.data.leagues.filter(l => !l.hidden).length === 1 ? "" : "s"} · ${live ? `${live} game${live === 1 ? "" : "s"} live · ` : ""}updated ${new Date(gd.data.checkedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}${gd.error ? ` · ${gd.error}` : ""}`;
@@ -627,6 +699,7 @@
         <button type="submit" class="btn-builder-action">Add</button>
       </form>
       <p class="gd-saved-note">Saved only in this browser. Yahoo leagues are added when you import a Yahoo file.</p>`;
+    window.FFOUsage?.mountConnectionChoices();
   }
 
   async function refresh({ force = false } = {}) {
@@ -711,6 +784,8 @@
   }
 
   document.addEventListener("click", event => {
+    const lineup = event.target.closest("[data-gameday-lineup]");
+    if (lineup) { openLineupComparison(lineup.dataset.gamedayLineup, lineup.dataset.lineupSide); return; }
     const open = event.target.closest("[data-gameday-open]");
     if (open && typeof isExtensionPanel !== "undefined" && isExtensionPanel) { event.preventDefault(); openLeague(open.dataset.gamedayOpen); return; }
     const manage = event.target.closest("[data-gameday-manage]");
@@ -861,7 +936,7 @@
   window.FFOGameday = Object.freeze({
     STORE_KEY, readStore, rememberSource, removeSource, setLeagueHidden, sourceKey,
     normalizeScoreboard, remainingFraction, finishPlayer, sideTotals, winProbability, finalizeLeague,
-    buildAlerts, buildRooting, renderAlerts, renderGamedayHtml, morph, activate, refresh, renderGameday, scoreSleeperProjection,
+    buildAlerts, buildRooting, renderAlerts, renderGamedayHtml, morph, activate, refresh, renderGameday, scoreSleeperProjection, lineupProgress,
     loadYahooSource, notifyLineupAlerts, computeStanding, standingGapLabel, ordinal, ensureData, manageLeague, get data() { return gd.data; }, set data(value) { gd.data = value; gd.loadedAt = Date.now(); },
     get freshness() { return { checkedAt: gd.loadedAt, error: gd.error, restored: gd.restored, loading: Boolean(gd.loading) }; }
   });
