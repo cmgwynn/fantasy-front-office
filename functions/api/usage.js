@@ -1,6 +1,6 @@
 const EVENTS = new Set(["visit", "demo_start", "connect_start", "connect_success", "connect_failure", "tool_open", "recommendation_review", "return_week"]);
 const PROVIDERS = new Set(["none", "sleeper", "espn", "yahoo", "demo"]);
-const TOOLS = new Set(["none", "tab-inbox", "tab-intel", "tab-roster", "tab-opt", "tab-planner", "tab-waiver", "tab-trade", "tab-standings", "tab-matchup", "tab-bracket", "tab-analytics", "tab-weekly-matchups", "tab-compare", "tab-sos", "tab-draft", "tab-grades", "tab-power", "tab-records"]);
+const TOOLS = new Set(["none", "tab-inbox", "tab-intel", "tab-connect", "tab-roster", "tab-opt", "tab-planner", "tab-waiver", "tab-trade", "tab-standings", "tab-matchup", "tab-bracket", "tab-analytics", "tab-weekly-matchups", "tab-compare", "tab-sos", "tab-draft", "tab-grades", "tab-power", "tab-records"]);
 
 export async function onRequest({ request, env }) {
   const privacySignal = request.headers.get("Sec-GPC") === "1" || request.headers.get("DNT") === "1";

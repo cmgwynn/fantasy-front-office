@@ -585,7 +585,7 @@
   function renderGamedayHtml(data) {
     const visible = data.leagues.filter(league => !league.hidden);
     if (!readStore().sources.length) {
-      return `<div class="gd-empty"><strong>No saved leagues yet</strong><p>Connect a Sleeper account or ESPN league above (or import a Yahoo file) and it is saved on this device. Every league you connect shows up here together.</p></div>`;
+      return `<div class="gd-empty"><strong>No saved leagues yet</strong><p>Connect a Sleeper account, ESPN league or Yahoo file in Connect leagues. Every league you connect shows up here together, saved on this device.</p><button type="button" class="btn-builder-action" data-open-connections>Connect leagues</button></div>`;
     }
     const alerts = buildAlerts(visible);
     const rooting = buildRooting(visible);
@@ -693,12 +693,8 @@
       const leagues = leaguesBySource.get(key) || [];
       return `<li><div class="gd-saved-row"><strong>${esc(label(source))}</strong><button type="button" class="gd-link-btn" data-gameday-remove="${esc(key)}">Remove</button></div>${leagues.length ? `<div class="gd-saved-leagues">${leagues.map(league => `<label><input type="checkbox" data-gameday-show="${esc(league.key)}"${league.hidden ? "" : " checked"}> ${esc(league.name)}</label>`).join("")}</div>` : ""}</li>`;
     }).join("")}</ul>` : '<p class="gd-none">Nothing saved on this device yet.</p>'}
-      <form class="gd-add" data-gameday-add>
-        <select aria-label="Provider" name="provider"><option value="sleeper">Sleeper username</option><option value="espn">ESPN league ID</option></select>
-        <input name="value" aria-label="Username or league ID" placeholder="Username or league ID" autocomplete="off">
-        <button type="submit" class="btn-builder-action">Add</button>
-      </form>
-      <p class="gd-saved-note">Saved only in this browser. Yahoo leagues are added when you import a Yahoo file.</p>`;
+      <button type="button" class="btn-builder-action" data-open-connections>Add another league</button>
+      <p class="gd-saved-note">Saved only in this browser. Add accounts, league IDs or Yahoo files in Connect leagues.</p>`;
     window.FFOUsage?.mountConnectionChoices();
   }
 
@@ -804,33 +800,6 @@
       state.portfolioRosterSelections[team.dataset.gamedayTeam] = team.value;
       try { if (persist) localStorage.setItem("fantasy-front-office:portfolio-rosters", JSON.stringify(state.portfolioRosterSelections)); } catch {}
       refresh();
-    }
-  });
-
-  document.addEventListener("submit", async event => {
-    const form = event.target.closest("[data-gameday-add]");
-    if (!form) return;
-    event.preventDefault();
-    const provider = form.elements.provider.value;
-    const value = form.elements.value.value.trim();
-    if (!value) return;
-    if (!await requestConnectedBetaAccess()) return;
-    const button = form.querySelector("button");
-    button.disabled = true;
-    try {
-      if (provider === "sleeper") {
-        const user = await fetchJson(`https://api.sleeper.app/v1/user/${encodeURIComponent(value)}`);
-        if (!user?.user_id) throw new Error("Sleeper account not found.");
-        rememberSource({ type: "sleeper", username: user.username || value, userId: String(user.user_id) });
-      } else {
-        value.split(/[\s,;]+/).filter(Boolean).forEach(id => rememberSource({ type: "espn", leagueId: id }));
-      }
-      await refresh();
-    } catch (error) {
-      const note = form.parentElement?.querySelector(".gd-saved-note");
-      if (note) note.textContent = error.message || "Could not add that league.";
-    } finally {
-      button.disabled = false;
     }
   });
 

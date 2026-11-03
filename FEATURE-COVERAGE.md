@@ -54,17 +54,30 @@ a league to use roster-based features.
 ### Required measurement for the connected US beta
 
 The connection form explicitly labels the agreement "Required to sync a league."
-Sync, real Yahoo imports, Gameday Add and saved-workspace Continue stay disabled
+Sync, real Yahoo imports and saved-workspace Continue stay disabled
 until an eligible user accepts. Checking the unchecked box saves agreement
 immediately and enables the relevant controls; unchecking disables them again.
 Checkbox DOM nodes are retained across status updates to preserve focus.
 The fictional demo is never disabled by this requirement.
 
-Connection attempts retain the current header/disclosure geometry while loading.
+### Main-area league connections
+
+New visitors start on **Connect leagues**, a dedicated desktop/mobile navigation
+tab. One main-area form handles Sleeper usernames, ESPN league IDs and Yahoo
+files, with the required agreement before Sync. The fictional demo is available
+on the same page. Inbox welcome and Gameday Add links route here rather than
+duplicating forms. Adding accounts retains saved Gameday sources on the device;
+the page lists saved connections and links to the combined Gameday view.
+Successful connections open Inbox (or the requested deep-linked tool); failed
+attempts stay on setup with an explicit result. Saved workspaces still restore
+their selected tool. `?tool=connect` opens setup directly.
+
+Connection attempts retain the compact header geometry while loading.
 A bounded loading state hides intermediate tool renders until the attempt ends;
 both success and failure release it in `finally`. Explicit syncing no longer
-auto-collapses the connection panel or switches its mobile header layout.
-Returning saved workspaces retain their compact connection header.
+changes header layout. Neither initial nor returning visitors have a header
+connection form or dropdown. Connect leagues remains accessible after withdrawal
+so users can review/reaccept the agreement without exposing connected tools.
 
 ### Gameday lineup comparison
 
@@ -80,8 +93,8 @@ update in place on the existing Gameday refresh without extra provider requests.
 
 ### Measurement details
 
-This is separate from Cloudflare Web Analytics. Both the welcome form and
-provider connection settings disclose measurement with an inline checkbox.
+This is separate from Cloudflare Web Analytics. The main-area connection form
+discloses measurement with an inline checkbox.
 Connected use is a US-only beta requiring an unchecked, explicit
 measurement agreement. The availability endpoint uses Cloudflare's request
 country (not client locale) to return `X-FFO-Connected-Beta: eligible` only

@@ -23,7 +23,7 @@
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:image" content="https://fantasyfo.com/icons/og-image.jpg" />
   <script type="application/ld+json">{"@context":"https://schema.org","@type":"WebApplication","name":"Fantasy Front Office","url":"https://fantasyfo.com/","applicationCategory":"SportsApplication","operatingSystem":"Any","description":"Free fantasy football tools for Sleeper, ESPN and Yahoo leagues: Gameday across leagues, lineup optimizer, waiver planner, trade analyzer and playoff odds.","offers":{"@type":"Offer","price":"0","priceCurrency":"USD"}}</script>
-  <link rel="stylesheet" href="styles.css?v=20261102-gameday-1" />
+  <link rel="stylesheet" href="styles.css?v=20261102-connect-1" />
 </head>
 <body>
 
@@ -41,35 +41,8 @@
       <button type="button" class="share-button" data-feedback>Feedback</button>
     </div>
   </div>
-  <div class="workspace-controls">
-    <details id="connectionSettings" class="control-section connection-section" open>
-      <summary id="connectionSettingsLabel" class="control-section-heading">Connect a league</summary>
-      <div class="connection-panel">
-      <div class="connection-fields">
-        <label class="control-field provider-field" for="providerSelect">Provider
-          <select id="providerSelect" aria-label="League provider">
-            <option value="" selected>Choose provider</option>
-            <option value="espn">ESPN Fantasy</option>
-            <option value="sleeper">Sleeper</option>
-            <option value="yahoo">Yahoo Fantasy (import file)</option>
-          </select>
-        </label>
-        <div class="control-field account-field">
-          <label id="providerInputLabel" for="usernameInput">Account</label>
-          <input id="usernameInput" placeholder="Choose a provider first" />
-        </div>
-        <label id="yahooImportLabel" class="yahoo-import-label" hidden>Import Yahoo roster<input id="yahooImportFile" type="file" accept=".csv,.json,text/csv,application/json" /></label>
-        <button id="syncBtn" class="connect-button" type="button" disabled>Connect</button>
-      </div>
-      <div id="providerHelp" class="provider-help" aria-live="polite" hidden></div>
-      <p id="usageSyncRequirement" class="sr-only">Sync is disabled until you accept the usage agreement below.</p>
-      <div class="usage-connect" data-usage-connect></div>
-      </div>
-    </details>
-  </div>
 </div>
 
-<script>(function(){try{var q=new URLSearchParams(location.search);if(q.get("resume")==="0"||q.has("user")||q.has("league")||!localStorage.getItem("fantasy-front-office:reload-selection:v1"))return;var d=document.documentElement,c=document.getElementById("connectionSettings");c.open=false;c.dataset.connectionState="connected";document.querySelector(".workspace-controls").classList.add("is-connected");document.querySelector(".top-nav").classList.add("is-connected");document.getElementById("connectionSettingsLabel").textContent="Manage connection";d.classList.add("ffo-booting");setTimeout(function(){d.classList.remove("ffo-booting");if(window.renderConnectionLayout)window.renderConnectionLayout()},2500)}catch(e){}})();</script>
 <section id="companionBar" aria-label="Side panel" hidden>
   <button id="companionOpenLeague" type="button">Open league</button>
   <p id="companionStatus" role="status" aria-live="polite"></p>
@@ -80,8 +53,9 @@
     <div class="sidebar-heading"><span>Front Office</span><small>Your league, organized.</small></div>
     <label class="mobile-nav-label" for="mobileTabSelect">VIEW</label>
     <select id="mobileTabSelect" class="mobile-nav-select" aria-label="Navigate to section">
-      <option value="tab-inbox" selected>GM Inbox</option>
+      <option value="tab-inbox">GM Inbox</option>
       <option value="tab-intel">Gameday</option>
+      <option value="tab-connect" selected>Connect leagues</option>
       <optgroup label="My Team">
       <option value="tab-roster">My Roster</option>
       <option value="tab-opt">Lineup Optimizer</option>
@@ -108,8 +82,9 @@
       </optgroup>
     </select>
     <div class="sidebar-groups">
-      <button class="nav-btn active nav-direct" data-tab="tab-inbox" aria-current="page"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h16v16H4Z M4 13h5l2 3h2l2-3h5"/></svg><span>GM Inbox</span></button>
+      <button class="nav-btn nav-direct" data-tab="tab-inbox"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h16v16H4Z M4 13h5l2 3h2l2-3h5"/></svg><span>GM Inbox</span></button>
       <button class="nav-btn nav-direct" data-tab="tab-intel"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg><span>Gameday</span></button>
+      <button class="nav-btn active nav-direct" data-tab="tab-connect" aria-current="page"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14 M5 12h14"/></svg><span>Connect leagues</span></button>
       <details class="nav-group" name="sidebar-section">
         <summary><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5h14v16H5Z M9 3h6v4H9Z M9 11h6 M9 15h6"/></svg><span>My Team<small class="nav-current"></small></span><span class="nav-chevron" aria-hidden="true"></span></summary>
         <div class="nav-group-items">
@@ -166,6 +141,50 @@
     </div>
     <div id="workspaceSnapshotBanner" class="workspace-banner" role="status" hidden></div>
     <p id="decisionDataStatus" class="decision-data-status" role="status" hidden></p>
+    <div id="tab-connect" class="tab-page active">
+      <div class="tool-intro">
+        <h2>Connect leagues</h2>
+        <p>Every league you play in, one front office. Free, no sign-up.</p>
+      </div>
+      <section id="connectionSettings" class="connection-setup" aria-labelledby="connectionSettingsLabel">
+        <h3 id="connectionSettingsLabel">Connect your first league</h3>
+        <p class="comparison-note">Choose a provider below. Sleeper loads all leagues for your username; ESPN accepts one or more league IDs; Yahoo uses a roster file.</p>
+        <p class="onboard-trust">Read-only. No password. We cannot change your lineup or submit claims.</p>
+        <form id="connectionForm">
+          <div class="connection-fields">
+            <label class="control-field provider-field" for="providerSelect">Provider
+              <select id="providerSelect" aria-label="League provider">
+                <option value="" selected>Choose provider</option>
+                <option value="espn">ESPN Fantasy</option>
+                <option value="sleeper">Sleeper</option>
+                <option value="yahoo">Yahoo Fantasy (import file)</option>
+              </select>
+            </label>
+            <div class="control-field account-field">
+              <label id="providerInputLabel" for="usernameInput">Account</label>
+              <input id="usernameInput" placeholder="Choose a provider first" autocomplete="username" autocapitalize="none" spellcheck="false" />
+            </div>
+            <label id="yahooImportLabel" class="yahoo-import-label" hidden>Import Yahoo roster<input id="yahooImportFile" type="file" accept=".csv,.json,text/csv,application/json" /></label>
+          </div>
+          <div id="providerHelp" class="provider-help" aria-live="polite" hidden></div>
+          <p id="usageSyncRequirement" class="sr-only">Sync is disabled until you accept the usage agreement below.</p>
+          <div class="usage-connect" data-usage-connect></div>
+          <button id="syncBtn" class="connect-button" type="submit" disabled>Connect</button>
+        </form>
+        <p id="connectionResult" class="connection-result" role="status"></p>
+      </section>
+      <section class="connection-demo">
+        <h3>Want to look around first?</h3>
+        <p class="comparison-note">Preview the tools with fictional players. No connection or usage agreement required.</p>
+        <button type="button" class="btn-builder-action" data-try-demo>Try a fictional demo league</button>
+      </section>
+      <section id="connectedSources" class="connection-setup" aria-labelledby="connectedSourcesTitle" hidden>
+        <h3 id="connectedSourcesTitle">Saved connections on this device</h3>
+        <p class="comparison-note">Add another account or league above. Previous connections stay saved for Gameday; adding one switches the active workspace, not your provider's roster.</p>
+        <ul id="connectedSourcesList" class="connection-sources"></ul>
+        <button type="button" class="btn-builder-action" data-open-gameday>View all leagues in Gameday</button>
+      </section>
+    </div>
     <!-- TAB 1: ROSTER -->
     <div id="tab-roster" class="tab-page">
       <div class="tool-intro"><h2>My Roster</h2><p>Your starters, bench, and availability for the selected week.</p></div>
@@ -851,7 +870,7 @@
       </details>
     </div>
 
-    <div id="tab-inbox" class="tab-page active">
+    <div id="tab-inbox" class="tab-page">
       <div class="draft-heading">
         <div><h2>GM Inbox</h2><p id="gmInboxContext" class="comparison-note"></p></div>
       </div>
@@ -1120,22 +1139,22 @@
 </footer>
 
 <p id="appInstallStatus" class="app-install-status" role="status"></p>
-<script src="pwa.js?v=20261102-gameday-1"></script>
-<script src="monetization-config.js?v=20261102-gameday-1"></script>
-<script src="data-fetch.js?v=20261102-gameday-1"></script>
-<script src="demo-league.js?v=20261102-gameday-1"></script>
-<script src="league-records.js?v=20261102-gameday-1"></script>
-<script src="workspace-backup.js?v=20261102-gameday-1"></script>
-<script src="playoff-simulator.js?v=20261102-gameday-1"></script>
-<script src="weekly-matchups.js?v=20261102-gameday-1"></script>
-<script src="share-cards.js?v=20261102-gameday-1"></script>
-<script src="feedback.js?v=20261102-gameday-1"></script>
-<script src="playoff-push.js?v=20261102-gameday-1"></script>
-<script src="waiver-day.js?v=20261102-gameday-1"></script>
-<script src="league-schedule.js?v=20261102-gameday-1"></script>
-<script src="usage-metrics.js?v=20261102-gameday-1"></script>
-<script src="app.js?v=20261102-gameday-1"></script>
-<script src="release-updates.js?v=20261102-gameday-1"></script>
-<script src="gameday.js?v=20261102-gameday-1"></script>
+<script src="pwa.js?v=20261102-connect-1"></script>
+<script src="monetization-config.js?v=20261102-connect-1"></script>
+<script src="data-fetch.js?v=20261102-connect-1"></script>
+<script src="demo-league.js?v=20261102-connect-1"></script>
+<script src="league-records.js?v=20261102-connect-1"></script>
+<script src="workspace-backup.js?v=20261102-connect-1"></script>
+<script src="playoff-simulator.js?v=20261102-connect-1"></script>
+<script src="weekly-matchups.js?v=20261102-connect-1"></script>
+<script src="share-cards.js?v=20261102-connect-1"></script>
+<script src="feedback.js?v=20261102-connect-1"></script>
+<script src="playoff-push.js?v=20261102-connect-1"></script>
+<script src="waiver-day.js?v=20261102-connect-1"></script>
+<script src="league-schedule.js?v=20261102-connect-1"></script>
+<script src="usage-metrics.js?v=20261102-connect-1"></script>
+<script src="app.js?v=20261102-connect-1"></script>
+<script src="release-updates.js?v=20261102-connect-1"></script>
+<script src="gameday.js?v=20261102-connect-1"></script>
 </body>
 </html>

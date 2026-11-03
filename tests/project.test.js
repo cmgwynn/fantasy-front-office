@@ -41,7 +41,7 @@ test("HTML references existing local assets in the expected script order", () =>
   ].map(match => match[1]).filter(asset => !/^(?:[a-z]+:)?\/\//i.test(asset));
 
   assert.ok(assets.length > 0, "Expected local CSS or JavaScript assets.");
-  assert.ok(assets.filter(asset => /\.(?:css|js)\?/.test(asset)).every(asset => asset.endsWith("?v=20261102-gameday-1")), "CSS and JavaScript assets must use the current release version.");
+  assert.ok(assets.filter(asset => /\.(?:css|js)\?/.test(asset)).every(asset => asset.endsWith("?v=20261102-connect-1")), "CSS and JavaScript assets must use the current release version.");
   for (const asset of assets) {
     assert.ok(fs.existsSync(path.join(root, asset.split("?")[0])), `Missing local asset: ${asset}`);
   }
@@ -98,7 +98,7 @@ test("public information pages and footer expose working local links without loa
     assert.match(html, /Chavous Gwynn/);
     assert.match(html, /United States adults aged 18/);
     assert.doesNotMatch(html, /<script\b/, "Information pages must work without app initialization or provider requests.");
-    assert.match(html, /styles\.css\?v=20261102-gameday-1/);
+    assert.match(html, /styles\.css\?v=20261102-connect-1/);
   }
   const sandbox = { window: {} };
   vm.runInNewContext(read("monetization-config.js"), sandbox);
@@ -116,7 +116,7 @@ test("side panel extension is downloadable and limited to opening provider pages
     const target = local === "" ? "index.html" : path.extname(local) ? local : `${local}.html`;
     assert.ok(fs.existsSync(path.join(root, target)), `side-panel.html has a missing local link: ${href}`);
   }
-  assert.match(html, /styles\.css\?v=20261102-gameday-1/);
+  assert.match(html, /styles\.css\?v=20261102-connect-1/);
   assert.match(read("index.html"), /<a id="companionToggle"[^>]*href="\/side-panel"/);
   assert.doesNotMatch(read("app.js"), /window\.open\([^)]*"popup"/, "Provider pages must not open in pop-up windows.");
   const manifest = JSON.parse(read("extension/manifest.json"));
@@ -166,9 +166,9 @@ test("static interface IDs, labels, and tab navigation targets are consistent", 
   for (const label of ["My Roster", "Schedule &amp; Coverage", "Waiver Planner", "Trade Analyzer", "Team Grade", "Playoff Scenarios", "Compare Players", "Strength of Schedule"]) {
     assert.ok(html.includes(`>${label}</option>`) || html.includes(`>${label}</button>`), `Navigation should use a clear label for ${label}.`);
   }
-  assert.match(html, /<button class="nav-btn active nav-direct" data-tab="tab-inbox" aria-current="page">/, "GM Inbox must be a direct navigation item.");
-  assert.match(html, /<option value="tab-inbox" selected>/, "Initial mobile navigation must match the active section.");
-  assert.match(html, /<div id="tab-inbox" class="tab-page active">/, "Initial content panel must match the active navigation item.");
+  assert.match(html, /<button class="nav-btn nav-direct" data-tab="tab-inbox">/, "GM Inbox must be a direct navigation item.");
+  assert.match(html, /<option value="tab-connect" selected>/, "Initial mobile navigation must match the connection page.");
+  assert.match(html, /<div id="tab-connect" class="tab-page active">/, "New visitors start in main-area connection setup.");
   assert.match(html, /<div id="tab-roster" class="tab-page">/, "Roster Overview must not start active.");
   assert.doesNotMatch(html, /id="demoLeagueBtn"|>Explore demo</, "The demo entry point should not clutter the main app header.");
   assert.doesNotMatch(html, /tab-workspace|Workspace &amp; Backups|id="(?:saveWorkspaceBtn|exportWorkspaceBtn|restoreWorkspaceBtn)"/, "Manual backup tools must not appear in the app.");
@@ -205,10 +205,12 @@ test("connected layout and page hierarchy avoid redundant introductory cards", (
   const html = read("index.html");
   const app = read("app.js");
   const panels = [...html.matchAll(/<div id="(tab-[^"]+)" class="tab-page(?: active)?">([\s\S]*?)(?=<div id="tab-|<\/main>)/g)];
-  assert.equal(panels.length, 18);
+  assert.equal(panels.length, 19);
   for (const [, id, content] of panels) assert.match(content, /<h2\b/, `${id} must have a proper page heading.`);
-  assert.match(html, /<details id="connectionSettings"[^>]*open>/);
-  assert.match(app, /connection\.open = !connected/);
+  assert.match(html, /<section id="connectionSettings"[^>]*aria-labelledby="connectionSettingsLabel">/);
+  assert.doesNotMatch(html.slice(0, html.indexOf('<main id="mainContent"')), /id="(?:connectionSettings|providerSelect|usernameInput|syncBtn)"/, "Sync controls belong in the main area, not the header.");
+  assert.match(html, /id="connectionForm"/);
+  assert.match(app, /"tab-connect": null/, "Connection setup does not show team/week controls.");
   assert.doesNotMatch(app, /"Your next moves"/, "Inbox must not reintroduce a duplicate introductory banner.");
   assert.match(html, /id="gmInboxDataDetails"/, "Source caveats must remain accessible without the removed banner.");
   assert.match(read("styles.css"), /\.connection-fields \.account-field \{ grid-column:1; grid-row:2; \}/);
@@ -218,7 +220,7 @@ test("browser regression harness is wired to the app and includes saved-state co
   const html = read("tests/optimizer-regression.html");
   const appHtml = read("index.html");
 
-  assert.match(html, /src="\.\.\/index\.html\?v=20261102-gameday-1&amp;resume=0"/, "Regression harness must load the current app release without resuming personal snapshots.");
+  assert.match(html, /src="\.\.\/index\.html\?v=20261102-connect-1&amp;resume=0"/, "Regression harness must load the current app release without resuming personal snapshots.");
   assert.doesNotMatch(appHtml, /id="loadRecordsBtn"/, "Records must load automatically without a manual refresh button.");
   assert.match(html, /runOptimizerFixtures/, "Regression harness must execute its fixtures.");
   assert.match(html, /Cross-league queue saves to target budget/, "Saved FAAB state should remain covered.");
@@ -258,7 +260,7 @@ test("navigation provides an accessible content landmark and consistent destinat
 
 test("decision tools use existing destinations and disclose unverified provider data", () => {
   const html = read("index.html");
-  assert.equal([...html.matchAll(/class="tab-page(?: active)?"/g)].length, 18);
+  assert.equal([...html.matchAll(/class="tab-page(?: active)?"/g)].length, 19);
   assert.match(html, /id="decisionDataStatus"[^>]*role="status"/);
   assert.match(html, /id="gmChecklist"[^>]*aria-label="Game-day checklist"/);
   assert.match(html, /id="optimizerChecklist"[^>]*aria-label="Game-day checklist"/);

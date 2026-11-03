@@ -217,6 +217,17 @@ test("unconfigured measurement explicitly reports unavailable instead of accepti
   assert.equal((await onRequest({ request: new Request("https://fantasyfo.com/api/usage"), env: { FFO_USAGE: {} } })).status, 200);
 });
 
+test("the connection page event destination is allowlisted", async () => {
+  const { onRequest } = await endpoint();
+  const writes = [];
+  const response = await onRequest({
+    request: request({ event: "tool_open", provider: "none", tool: "tab-connect" }),
+    env: { FFO_USAGE: { writeDataPoint: point => writes.push(point) } }
+  });
+  assert.equal(response.status, 204);
+  assert.deepEqual(writes, [{ blobs: ["tool_open", "none", "tab-connect"], doubles: [1] }]);
+});
+
 test("usage writes reject non-US and unknown locations without touching the dataset", async () => {
   const { onRequest } = await endpoint();
   const writes = [];
@@ -262,7 +273,7 @@ test("release metadata matches the app assets and fresh welcome avoids eager dat
 });
 
 test("release prompts are dismissible and failed snapshot saves never trigger reload", async () => {
-  let version = "20261102-gameday-1";
+  let version = "20261102-connect-1";
   let clock = 60001;
   let banner = null;
   let reloads = 0;
@@ -278,7 +289,7 @@ test("release prompts are dismissible and failed snapshot saves never trigger re
     fetch: async () => ({ ok: true, json: async () => ({ version }) }),
     document: {
       hidden: false, addEventListener() {},
-      querySelector: selector => selector === "main" ? { prepend: node => { banner = node; } } : { src: "https://fantasyfo.com/app.js?v=20261102-gameday-1" },
+      querySelector: selector => selector === "main" ? { prepend: node => { banner = node; } } : { src: "https://fantasyfo.com/app.js?v=20261102-connect-1" },
       getElementById: () => banner,
       createElement: () => ({ setAttribute() {}, querySelector: selector => controls.get(selector), remove() { banner = null; } })
     }

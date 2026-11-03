@@ -20,7 +20,7 @@
   <h1>Optimizer Regression Checks</h1>
   <p id="summary" role="status">Loading the app runtime...</p>
   <ol id="results"></ol>
-  <iframe id="appFrame" src="../index.html?v=20261102-gameday-1&amp;resume=0" title="Optimizer test runtime"></iframe>
+  <iframe id="appFrame" src="../index.html?v=20261102-connect-1&amp;resume=0" title="Optimizer test runtime"></iframe>
   <script>
     async function runOptimizerFixtures() {
       const results = [];
@@ -83,19 +83,18 @@
       const check = (name, passed, detail) => results.push({ name, passed: Boolean(passed), detail: detail || "" });
       try {
         const connection = document.getElementById("connectionSettings");
-        const initialConnectionOpen = connection.open;
-        const initialConnectionState = connection.dataset.connectionState;
         try {
           state.activeLeague = null; state.managers = [];
           renderConnectionLayout();
-          check("Disconnected visits show expanded connection setup", connection.open &&
-            document.getElementById("connectionSettingsLabel").textContent === "Connect a league");
+          check("Disconnected visits keep connection setup in the main area, not the header",
+            connection.closest("#tab-connect") && !document.querySelector(".top-nav #providerSelect") &&
+            document.getElementById("connectionSettingsLabel").textContent === "Connect your first league");
           state.activeLeague = { provider: "sleeper", leagueId: "connection-layout" };
           state.managers = [{ rosterId: 1 }];
           renderConnectionLayout();
-          check("Connected visits collapse setup and expose league selectors", !connection.open &&
-            !document.getElementById("contextBar").hidden &&
-            document.querySelector(".workspace-controls").classList.contains("is-connected"));
+          check("Connected visits keep the header free of connection controls",
+            !document.querySelector(".top-nav #connectionSettings") &&
+            document.getElementById("connectionSettingsLabel").textContent === "Add or sync another league");
           const priorActiveTab = document.querySelector(".tab-page.active");
           const contextFor = tabId => {
             document.querySelectorAll(".tab-page").forEach(page => page.classList.toggle("active", page.id === tabId));
@@ -103,22 +102,28 @@
             const bar = document.getElementById("contextBar");
             return bar.hidden ? "hidden" : `${bar.dataset.team}/${bar.dataset.week}`;
           };
-          check("Context bar shows only the selectors each page uses and hides on Gameday",
+          check("Context bar shows only the selectors each page uses and hides on Gameday and Connect leagues",
             contextFor("tab-planner") === "on/off" && contextFor("tab-analytics") === "off/on" &&
-            contextFor("tab-standings") === "off/off" && contextFor("tab-opt") === "on/on" && contextFor("tab-intel") === "hidden");
+            contextFor("tab-standings") === "off/off" && contextFor("tab-opt") === "on/on" && contextFor("tab-intel") === "hidden" &&
+            contextFor("tab-connect") === "hidden");
           document.querySelectorAll(".tab-page").forEach(page => page.classList.toggle("active", page === priorActiveTab));
-          connection.open = true;
+          const connectionInput = document.getElementById("usernameInput");
+          const previousInput = connectionInput.value;
+          connectionInput.value = "preserved-connection";
           renderConnectionLayout();
-          check("Rerenders preserve manually opened connection settings", connection.open);
+          check("Connection rerenders preserve typed account fields", connectionInput.value === "preserved-connection");
+          connectionInput.value = previousInput;
+          check("There is exactly one provider setup form and its agreement precedes Sync",
+            document.querySelectorAll("#connectionForm").length === 1 &&
+            !document.querySelector("#onboardForm") &&
+            Boolean(document.querySelector("#connectionForm [data-usage-connect]").compareDocumentPosition(document.getElementById("syncBtn")) & Node.DOCUMENT_POSITION_FOLLOWING));
           state.activeLeague = null; state.managers = [];
           renderConnectionLayout();
-          check("Disconnecting reopens connection setup", connection.open &&
-            !document.querySelector(".workspace-controls").classList.contains("is-connected"));
+          check("Disconnecting keeps setup available in its dedicated tab", connection.closest("#tab-connect") &&
+            document.getElementById("connectionSettingsLabel").textContent === "Connect your first league");
         } finally {
           state.activeLeague = savedLeague; state.managers = savedManagers;
           renderConnectionLayout();
-          connection.open = initialConnectionOpen;
-          connection.dataset.connectionState = initialConnectionState || "disconnected";
         }
         for (const compact of [false, true]) {
           const plot = { l: 68, t: 28, w: compact ? 200 : 900, h: 284 };
@@ -147,10 +152,10 @@
             tableLogo && getComputedStyle(tableLogo).backgroundColor === "rgba(0, 0, 0, 0)" &&
             getComputedStyle(tableLogo).borderRadius === "0px");
         } finally { analyticsContext.fillRect = originalFillRect; }
-        check("Initial navigation and content open on GM Inbox",
-          document.querySelector(".nav-btn.active")?.dataset.tab === "tab-inbox" &&
-          document.querySelector(".tab-page.active")?.id === "tab-inbox" &&
-          document.getElementById("mobileTabSelect").value === "tab-inbox");
+        check("Initial navigation and content open on Connect leagues",
+          document.querySelector(".nav-btn.active")?.dataset.tab === "tab-connect" &&
+          document.querySelector(".tab-page.active")?.id === "tab-connect" &&
+          document.getElementById("mobileTabSelect").value === "tab-connect");
         const savedTabId = document.querySelector(".nav-btn.active")?.dataset.tab || "tab-roster";
         activateTab("tab-power");
         const powerNav = document.querySelector('.nav-btn[data-tab="tab-power"]');
@@ -161,6 +166,12 @@
         const groupBeforeInvalidTab = document.querySelector(".nav-group[open]");
         check("Unknown tab activation preserves the current section", activateTab("tab-missing") === null &&
           document.querySelector(".tab-page.active").id === "tab-power" && groupBeforeInvalidTab.open);
+        activateTab(savedTabId);
+        activateTab("tab-inbox");
+        const connectLink = document.querySelector("#gmBriefing [data-open-connections]");
+        if (connectLink) connectLink.click();
+        check("Inbox welcome links open the dedicated connection tab",
+          connectLink && document.querySelector(".tab-page.active").id === "tab-connect");
         activateTab(savedTabId);
         const navMain = document.getElementById("mainContent");
         check("All tool panels are inside the main content landmark",
@@ -2970,6 +2981,22 @@
         ESPN_PLAYER_TO_INTERNAL_ID.delete(espnId);
       }
       const syncMain = document.getElementById("mainContent");
+      const emptySyncProvider = document.getElementById("providerSelect").value;
+      const emptySyncStateProvider = state.provider;
+      const emptySyncUsername = document.getElementById("usernameInput").value;
+      const emptySyncStatus = document.getElementById("statusLabel").textContent;
+      const emptySyncTab = document.querySelector(".tab-page.active").id;
+      activateTab("tab-connect");
+      document.getElementById("providerSelect").value = "sleeper";
+      document.getElementById("usernameInput").value = " ";
+      const emptySyncResult = await syncUserAccount();
+      check("Empty connection attempts display a visible field-specific error",
+        emptySyncResult === false && document.getElementById("connectionResult").textContent.includes("Enter a Sleeper username"));
+      document.getElementById("providerSelect").value = emptySyncProvider;
+      document.getElementById("usernameInput").value = emptySyncUsername;
+      state.provider = emptySyncStateProvider;
+      setStatus(emptySyncStatus);
+      activateTab(emptySyncTab);
       const syncHeader = document.querySelector(".top-nav");
       const beforeSyncHeader = syncHeader.getBoundingClientRect().height;
       const previousMinHeight = syncMain.style.minHeight;

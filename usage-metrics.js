@@ -44,7 +44,7 @@
     });
     const requirement = document.getElementById("usageSyncRequirement");
     if (requirement) requirement.textContent = isAllowed() ? "Usage agreement accepted. Sync is available." : "Sync is disabled until you accept the usage agreement below.";
-    document.querySelectorAll("#syncBtn, #onboardForm button[type=submit], #yahooImportFile, [data-gameday-add] button, [data-usage-continue]").forEach(button => {
+    document.querySelectorAll("#syncBtn, #yahooImportFile, [data-usage-continue]").forEach(button => {
       const provider = document.querySelector("#providerSelect")?.value;
       const providerUnavailable = button.id === "syncBtn" && !["sleeper", "espn"].includes(provider);
       button.disabled = !isAllowed() || providerUnavailable || button.dataset.syncBusy === "true";
