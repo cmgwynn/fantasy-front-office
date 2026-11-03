@@ -20,7 +20,7 @@
   <h1>Optimizer Regression Checks</h1>
   <p id="summary" role="status">Loading the app runtime...</p>
   <ol id="results"></ol>
-  <iframe id="appFrame" src="../index.html?v=20261102-trust-1&amp;resume=0" title="Optimizer test runtime"></iframe>
+  <iframe id="appFrame" src="../index.html?v=20261102-privacy-1&amp;resume=0" title="Optimizer test runtime"></iframe>
   <script>
     async function runOptimizerFixtures() {
       const results = [];
@@ -1322,6 +1322,25 @@
             document.querySelector("#optCurTot b").textContent === "23.5" &&
             document.querySelector("#optBestTot b").textContent === "28.0" && document.querySelector("#optBestTot em").textContent === "+4.5" && document.querySelector("#optRows > details summary").textContent.includes("Keeping 1 starter") &&
             document.querySelector("#optRows").lastElementChild.tagName === "DETAILS");
+          const scoringPlayer = { ...state.players.fixture_judkins, projectedPoints: 10 };
+          const scoringMap = new Map([[String(scoringPlayer.id), 0]]);
+          check("Optimizer preserves actual zero and shows the exact negative projection difference",
+            renderOptimizerPlayerCard(scoringPlayer, "current", scoringMap, "FINAL").includes("Actual 0.0") &&
+            renderOptimizerLineupRow("RB", scoringPlayer, scoringMap, "FINAL").includes("-10.0 vs proj") &&
+            renderOptimizerTotal([scoringPlayer], scoringMap, "FINAL").includes("-10.0 vs proj"));
+          scoringMap.set(String(scoringPlayer.id), 14.25);
+          check("Optimizer shows a positive actual-minus-projected difference",
+            renderOptimizerTotal([scoringPlayer], scoringMap, "FINAL").includes("+4.3 vs proj"));
+          scoringMap.set(String(scoringPlayer.id), -2);
+          check("Optimizer preserves negative actual points and marks live differences as provisional",
+            renderOptimizerTotal([scoringPlayer], scoringMap, "FINAL").includes("Actual -2.0") &&
+            renderOptimizerDifference(-2, 10, true).includes("-12.0 vs proj · so far"));
+          check("Optimizer leaves future and missing-score differences unavailable rather than inventing zero",
+            renderOptimizerTotal([scoringPlayer], scoringMap, "UPCOMING").includes("Actual --") &&
+            renderOptimizerTotal([scoringPlayer], new Map(), "FINAL").includes("Diff --") &&
+            renderOptimizerTotal([scoringPlayer], new Map(), "FINAL").includes("0/1 player scores available"));
+          check("Optimizer totals disclose partial score coverage and do not compare it with a full projection",
+            renderOptimizerTotal([scoringPlayer, { ...scoringPlayer, id: "missing-score" }], scoringMap, "FINAL").includes("1/2 player scores available; difference pending"));
           state.activeLeague = { ...state.activeLeague, rosterPositions: ["RB", "RB", "FLEX"] };
           addPlayer("fixture_third_rb", "Third RB", "RB", 10);
           state.managers[0].players.push("fixture_third_rb");

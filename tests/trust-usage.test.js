@@ -57,6 +57,16 @@ test("usage tracking is opt-in and does not send anything by default", async () 
   assert.equal(requests.length, 0);
 });
 
+test("usage privacy has scoped spacing, disclosure sections and an associated consent label", () => {
+  const source = read("usage-metrics.js");
+  assert.match(source, /class="usage-dialog-body"/);
+  assert.match(source, /What gets shared/);
+  assert.match(source, /What stays private/);
+  assert.match(source, /class="usage-consent" for="usageConsent"/);
+  assert.match(source, /class="share-dialog-actions"/);
+  assert.match(read("styles.css"), /\.usage-dialog \{ overflow:auto; \}/);
+});
+
 test("regular opted-in visitors report a new reporting week without transmitting dates or IDs", () => {
   const week = Math.floor(Date.now() / (7 * 86400000));
   const returning = usageContext(true, week - 1);
@@ -127,7 +137,7 @@ test("release metadata matches the app assets and fresh welcome avoids eager dat
 });
 
 test("release prompts are dismissible and failed snapshot saves never trigger reload", async () => {
-  let version = "20261102-trust-1";
+  let version = "20261102-privacy-1";
   let clock = 60001;
   let banner = null;
   let reloads = 0;
@@ -143,7 +153,7 @@ test("release prompts are dismissible and failed snapshot saves never trigger re
     fetch: async () => ({ ok: true, json: async () => ({ version }) }),
     document: {
       hidden: false, addEventListener() {},
-      querySelector: selector => selector === "main" ? { prepend: node => { banner = node; } } : { src: "https://fantasyfo.com/app.js?v=20261102-trust-1" },
+      querySelector: selector => selector === "main" ? { prepend: node => { banner = node; } } : { src: "https://fantasyfo.com/app.js?v=20261102-privacy-1" },
       getElementById: () => banner,
       createElement: () => ({ setAttribute() {}, querySelector: selector => controls.get(selector), remove() { banner = null; } })
     }

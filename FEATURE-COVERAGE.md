@@ -28,6 +28,12 @@ a league to use roster-based features.
 
 ### Trust, onboarding and freshness
 
+- Optimizer totals, suggested swaps and unchanged starters show actual points
+  and actual-minus-projected differences. Current-week results are labeled
+  "so far"; future/missing scores stay unavailable. Partial lineup totals show
+  score coverage and withhold the full-lineup difference until coverage is complete.
+  The projected-best lineup is not presented as a hindsight actual-score optimum.
+
 - The welcome screen and connection form render without waiting for player,
   schedule or statistics downloads. Sleeper/ESPN connections initialize that
   data on demand and share a pending initialization request.
@@ -48,7 +54,10 @@ a league to use roster-based features.
 ### Optional aggregate usage measurement
 
 This is separate from Cloudflare Web Analytics. Usage privacy in the footer
-is opt-in and off by default. Fixed events measure visits, demo starts,
+is opt-in and off by default.
+The preference dialog separates shared/private information and uses a labeled
+consent card, padded actions and scrolling at small viewport heights.
+Fixed events measure visits, demo starts,
 connection starts/successes/failures, tool opens, recommendation reviews and
 returns in a later seven-day reporting bucket. A given event/provider/tool
 combination is counted at most once per page load. These are approximate
