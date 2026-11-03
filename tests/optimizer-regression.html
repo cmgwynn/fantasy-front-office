@@ -20,7 +20,7 @@
   <h1>Optimizer Regression Checks</h1>
   <p id="summary" role="status">Loading the app runtime...</p>
   <ol id="results"></ol>
-  <iframe id="appFrame" src="../index.html?v=20261102-connect-2&amp;resume=0" title="Optimizer test runtime"></iframe>
+  <iframe id="appFrame" src="../index.html?v=20261103-reliability-1&amp;resume=0" title="Optimizer test runtime"></iframe>
   <script>
     async function runOptimizerFixtures() {
       const results = [];
@@ -3010,6 +3010,177 @@
         !document.documentElement.classList.contains("connection-syncing") &&
         !document.querySelector("[data-sync-busy]") && !document.getElementById("providerSelect").disabled &&
         syncMain.style.minHeight === previousMinHeight);
+      const beforeSafetyState = structuredClone(state);
+      const beforeSafetyProvider = document.getElementById("providerSelect").value;
+      const beforeSafetyInput = document.getElementById("usernameInput").value;
+      const beforeSafetyFetch = window.fetch;
+      try {
+        await importYahooRosterFile(new File([JSON.stringify(FFODemo.createDemoLeague())], "safety.json"), { demo: true });
+        const safetyLeague = state.activeLeague.leagueId;
+        const safetyTeam = document.getElementById("teamSelect").value;
+        const safetyManagers = JSON.stringify(state.managers);
+        const safetyWeek = state.week;
+        document.getElementById("providerSelect").value = "sleeper";
+        document.getElementById("providerSelect").dispatchEvent(new Event("change"));
+        check("Choosing a new provider retains the loaded league, team and roster before submitting",
+          state.activeLeague.leagueId === safetyLeague && document.getElementById("teamSelect").value === safetyTeam &&
+          JSON.stringify(state.managers) === safetyManagers && state.provider === "yahoo");
+        activateTab("tab-connect");
+        document.getElementById("usernameInput").value = "missing-safety-account";
+        window.fetch = async (url, options) => String(url).includes("/v1/user/missing-safety-account")
+          ? new Response("{}", { status: 200 }) : beforeSafetyFetch(url, options);
+        await syncUserAccount();
+        check("Failed new connections preserve the previous workspace and display a failure",
+          state.activeLeague.leagueId === safetyLeague && JSON.stringify(state.managers) === safetyManagers &&
+          state.week === safetyWeek && document.getElementById("teamSelect").value === safetyTeam &&
+          document.getElementById("connectionResult").textContent.includes("Account not found"));
+        document.getElementById("usernameInput").value = "partial-safety-account";
+        const safetySources = JSON.stringify(FFOGameday.readStore().sources);
+        const safetyByes = JSON.stringify(CURRENT_BYE_WEEKS);
+        const safetySchedule = JSON.stringify(CURRENT_NFL_SCHEDULE);
+        window.fetch = async (url, options) => {
+          const path = String(url);
+          if (path.includes("/v1/user/partial-safety-account/leagues/")) return new Response(JSON.stringify([{ league_id: "partial-safety-league", name: "Incomplete league", season: state.season, roster_positions: ["QB"], scoring_settings: { rec: 1 } }]), { status: 200 });
+          if (path.includes("/v1/user/partial-safety-account")) return new Response(JSON.stringify({ user_id: "partial-safety-account" }), { status: 200 });
+          if (path.includes("/v1/league/partial-safety-league/rosters")) {
+            refreshSeasonDerivedState("2025");
+            throw new Error("Fixture roster request failed");
+          }
+          if (path.includes("/v1/league/partial-safety-league")) return new Response("{}", { status: 200 });
+          return beforeSafetyFetch(url, options);
+        };
+        await syncUserAccount();
+        check("Roster-load failures roll back partial league changes and do not save failed sources",
+          state.activeLeague.leagueId === safetyLeague && JSON.stringify(state.managers) === safetyManagers &&
+          state.provider === "yahoo" && JSON.stringify(FFOGameday.readStore().sources) === safetySources &&
+          !connectionSyncBusy && !document.getElementById("providerSelect").disabled);
+        check("Failed cross-season sync restores bye and schedule context",
+          JSON.stringify(CURRENT_BYE_WEEKS) === safetyByes && JSON.stringify(CURRENT_NFL_SCHEDULE) === safetySchedule);
+        check("Trade model units are not mislabeled as fantasy points",
+          document.getElementById("sideATitle").textContent.includes("Model trade value") &&
+          !document.getElementById("sideATitle").textContent.includes(" pts"));
+      } finally {
+        window.fetch = beforeSafetyFetch;
+        Object.assign(state, beforeSafetyState);
+        document.getElementById("providerSelect").value = beforeSafetyProvider;
+        document.getElementById("usernameInput").value = beforeSafetyInput;
+        activateTab("tab-connect");
+        updateProviderControls();
+      }
+      const scoringBefore = {
+        activeLeague: state.activeLeague, managers: state.managers, rawStats: state.rawStats,
+        rawProj: state.rawProj, projections: state.dataFreshness.projections, error: state.dataErrors.projections
+      };
+      const scoringId = "fixture_custom_scoring";
+      const scoringPlayer = { ...Object.values(state.players).find(player => player.isDemo && player.position === "QB"),
+        id: scoringId, name: "Scoring fixture", position: "QB", team: "KC", isCurrentNfl: true, isDemo: false,
+        injuryStatus: "Healthy", byeWeek: 0 };
+      try {
+        state.players[scoringId] = scoringPlayer;
+        state.activeLeague = { provider: "sleeper", leagueId: "scoring-fixture", season: state.season,
+          name: "Custom scoring fixture", rosterPositions: ["QB"], scoringSettings: { pass_yd: 0.04, pass_td: 6, pass_int: -2 } };
+        state.managers = [{ rosterId: "scoring", teamName: "Scoring fixture", players: [scoringId], starters: [scoringId] }];
+        state.dataFreshness.projections = Date.now();
+        state.dataErrors.projections = "";
+        check("App and schedule use six-point passing TDs and custom interception penalties",
+          computeLeagueProj(scoringPlayer, { pass_yd: 100, pass_td: 3, pass_int: 2 }, state.activeLeague.scoringSettings) === 18 &&
+          scoreLeagueProjectionStats({ pass_yd: 100, pass_td: 3, pass_int: 2 }, state.activeLeague.scoringSettings, "QB") === 18);
+        check("Custom scoring preserves negative weekly projections",
+          computeLeagueProj(scoringPlayer, { pass_yd: 0, pass_td: 0, pass_int: 2 }, state.activeLeague.scoringSettings) === -4);
+        check("Gameday shares custom scoring and preserves negative projections",
+          FFOGameday.scoreSleeperProjection({ pass_yd: 0, pass_td: 0, pass_int: 2 }, state.activeLeague.scoringSettings, "QB") === -4);
+        check("Nonstandard receptions and position premiums use primary positions",
+          scoreLeagueStatLine({ rec: 4, rec_yd: 100 }, { rec: 0.75, rec_yd: 0.1 }, "WR") === 13 &&
+          scoreLeagueStatLine({ rec: 4 }, { rec: 1, bonus_rec_te: 0.5 }, "TE") === 6 &&
+          scoreLeagueStatLine({ rec: 4 }, { rec: 1, bonus_rec_te: 0.5 }, "WR") === 4);
+        state.rawProj = { [scoringId]: { pass_yd: 100, pass_td: 3, pass_int: 2 } };
+        state.rawStats = { [scoringId]: { gp: 2, pass_yd: 400, pass_td: 4, pass_int: 2 } };
+        recalcAllPlayers();
+        check("Season PPG is recomputed using custom rules rather than PPR buckets", scoringPlayer.seasonPpg === 18);
+        state.activeLeague.scoringSettings.bonus_pass_yd_300 = 2;
+        computeLeagueProj(scoringPlayer, state.rawProj[scoringId], state.activeLeague.scoringSettings);
+        check("Missing bonus counters withhold recommendations rather than becoming verified zeroes",
+          scoringPlayer.projectionScoringIssue.includes("bonus_pass_yd_300") &&
+          Boolean(getScoringDecisionIssue()) && buildWeeklyRecommendations().length === 0);
+        renderOptimizerTab(0);
+        check("Incomplete scoring keeps actual-lineup review available but withholds optimizer advice",
+          document.getElementById("optRows").textContent.includes("incomplete scoring inputs") &&
+          document.getElementById("optBestTot").textContent === "Projected best unavailable");
+        const missingSide = FFOGameday.sideTotals([FFOGameday.finishPlayer({
+          name: "Missing scoring", team: "KC", proj: null, points: 2
+        }, { byTeam: { KC: { state: "pre", remaining: 1 } } })], 2);
+        check("Gameday preserves actual scores without fabricating projections or win probabilities",
+          missingSide.points === 2 && missingSide.projected === null &&
+          FFOGameday.winProbability(missingSide, { projected: 20, variance: 10 }) === null);
+        const nativeRules = normalizeEspnScoring({ scoringItems: [{ statId: 53, points: 0.5, pointsOverrides: { 4: 1.5 } }] });
+        state.activeLeague = { ...state.activeLeague, provider: "espn", scoringSettings: nativeRules };
+        check("ESPN custom scoring retains native rules and applies TE overrides",
+          nativeRules.scoringItems[0].pointsOverrides[4] === 1.5 &&
+          scoreLeagueStatLine({ 53: 4 }, nativeRules, "TE") === 6 &&
+          scoreLeagueStatLine({ rec: 4 }, nativeRules, "WR") === 2);
+        const nativeProjection = { ffoAppliedTotal: -2, ffoContext: `${getLeagueRecordsKey()}:${state.week}` };
+        check("ESPN provider-scored totals preserve negatives and reject another week's context",
+          computeLeagueProj(scoringPlayer, nativeProjection, nativeRules) === -2 &&
+          scoreLeagueStatLine({ ...nativeProjection, ffoContext: "wrong-context" }, nativeRules, "QB") === null);
+        check("Provider-scored totals cannot leak into another league's scoring",
+          scoreConfiguredStats(nativeProjection, { ...nativeRules }, "QB", "espn").points === null &&
+          scoreConfiguredStats({ ...nativeProjection, rec: 4, ffoEspnStats: { 53: 20 } }, { rec: 0.75 }, "WR", "sleeper").points === 3);
+        state.activeLeague = { ...state.activeLeague, provider: "yahoo" };
+        check("Yahoo imported scores remain league-scored snapshots, including negative values",
+          computeLeagueProj(scoringPlayer, { pts_ppr: -1 }, { rec: 0 }) === -1 &&
+          scoringPlayer.projectionSource === "imported total");
+      } finally {
+        delete state.players[scoringId];
+        Object.assign(state, { activeLeague: scoringBefore.activeLeague, managers: scoringBefore.managers, rawStats: scoringBefore.rawStats, rawProj: scoringBefore.rawProj });
+        state.dataFreshness.projections = scoringBefore.projections;
+        state.dataErrors.projections = scoringBefore.error;
+        recalcAllPlayers();
+      }
+      const more = document.querySelector(".header-more");
+      more.click();
+      check("Header utilities open through the More disclosure", more.getAttribute("aria-expanded") === "true");
+      document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+      check("Escape closes header utilities and returns focus", more.getAttribute("aria-expanded") === "false" && document.activeElement === more);
+      more.click();
+      document.getElementById("connectionSettings").click();
+      check("An outside click closes header utilities", more.getAttribute("aria-expanded") === "false");
+      const managerDataBefore = FFOGameday.data;
+      const managerSource = { type: "sleeper", userId: "fixture-management", username: "Fixture account" };
+      const managerSourceKey = FFOGameday.sourceKey(managerSource);
+      const managerLeagueKey = "sleeper:fixture-management-league";
+      const oldConfirm = window.confirm;
+      try {
+        FFOGameday.rememberSource(managerSource);
+        FFOGameday.rememberSource(managerSource);
+        check("Saved connections update rather than duplicating an account",
+          FFOGameday.readStore().sources.filter(source => FFOGameday.sourceKey(source) === managerSourceKey).length === 1);
+        FFOGameday.data = { leagues: [{ key: managerLeagueKey, sourceKey: managerSourceKey, name: "Managed fixture league", provider: "sleeper" }] };
+        FFOGameday.renderSavedManager();
+        const sourceRow = document.querySelector(`[data-connection-sync="${managerSourceKey}"]`).closest("li");
+        check("Connect leagues centralizes saved source timestamps, sync and visibility controls",
+          sourceRow.textContent.includes("Last connected:") &&
+          sourceRow.textContent.includes("Managed fixture league") &&
+          Boolean(sourceRow.querySelector("[data-gameday-show]")));
+        FFOGameday.setLeagueHidden(managerLeagueKey, true);
+        check("League visibility can be hidden and restored independently of its connection",
+          FFOGameday.readStore().hidden.includes(managerLeagueKey));
+        FFOGameday.setLeagueHidden(managerLeagueKey, false);
+        check("Restoring a league removes its hidden marker", !FFOGameday.readStore().hidden.includes(managerLeagueKey));
+        window.confirm = () => false;
+        sourceRow.querySelector("[data-gameday-remove]").click();
+        check("Cancelling connection removal leaves the account saved",
+          FFOGameday.readStore().sources.some(source => FFOGameday.sourceKey(source) === managerSourceKey));
+        const selectedLeague = state.activeLeague;
+        FFOGameday.removeSource(managerSourceKey);
+        check("Removing a saved connection does not delete the active workspace",
+          state.activeLeague === selectedLeague &&
+          !FFOGameday.readStore().sources.some(source => FFOGameday.sourceKey(source) === managerSourceKey));
+      } finally {
+        window.confirm = oldConfirm;
+        FFOGameday.removeSource(managerSourceKey);
+        FFOGameday.data = managerDataBefore;
+        FFOGameday.renderSavedManager();
+      }
       return results;
     }
     const frame = document.getElementById("appFrame");

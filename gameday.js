@@ -10,7 +10,7 @@
   const gd = { data: null, loading: null, pending: null, loadedAt: 0, timer: null, error: "" };
 
   const esc = value => String(value ?? "").replace(/[&<>"']/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]));
-  const fmt = value => (Math.round((Number(value) || 0) * 10) / 10).toFixed(1);
+  const fmt = value => value === null || value === undefined ? "--" : (Math.round((Number(value) || 0) * 10) / 10).toFixed(1);
   const teamCode = team => {
     let code = String(team || "").toUpperCase().trim();
     if (code === "JAC") code = "JAX"; if (code === "WSH") code = "WAS"; if (code === "LA") code = "LAR";
@@ -34,11 +34,19 @@
   }
 
   function writeStore(store) {
-    if (!persist) { memoryStore = store; return; }
-    try { localStorage.setItem(STORE_KEY, JSON.stringify(store)); }
-    catch {
+    if (!persist) { memoryStore = store; return true; }
+    try { localStorage.setItem(STORE_KEY, JSON.stringify(store)); return true; }
+    catch (error) {
       // Yahoo payloads are the only large entries; keep the rest if storage is full.
-      try { localStorage.setItem(STORE_KEY, JSON.stringify({ ...store, sources: store.sources.map(source => source.type === "yahoo" ? { ...source, payload: null } : source) })); } catch {}
+      try {
+        localStorage.setItem(STORE_KEY, JSON.stringify({ ...store, sources: store.sources.map(source => source.type === "yahoo" ? { ...source, payload: null } : source) }));
+        reportReloadWorkspaceError("Storage is nearly full. Connection names were saved, but Yahoo files must be re-imported to reopen them.");
+        return true;
+      } catch (fallbackError) {
+        console.error("Saved connections could not be updated:", error, fallbackError);
+        reportReloadWorkspaceError("Saved connections could not be updated. Check browser storage; your previous saved connections were retained.");
+        return false;
+      }
     }
   }
 
@@ -57,7 +65,7 @@
     const index = store.sources.findIndex(item => sourceKey(item) === key);
     if (index >= 0) store.sources[index] = { ...store.sources[index], ...clean };
     else store.sources.push(clean);
-    writeStore(store);
+    if (!writeStore(store)) throw new Error("The connection loaded but could not be saved on this browser.");
     gd.loadedAt = 0;
     renderSavedManager();
   }
@@ -65,15 +73,18 @@
   function removeSource(key) {
     const store = readStore();
     store.sources = store.sources.filter(source => sourceKey(source) !== key);
-    writeStore(store);
+    if (!writeStore(store)) return false;
     gd.data = null; gd.loadedAt = 0;
+    document.dispatchEvent(new CustomEvent("ffo:gameday-data"));
+    return true;
   }
 
   function setLeagueHidden(leagueKey, hidden) {
     const store = readStore();
     store.hidden = store.hidden.filter(key => key !== leagueKey);
     if (hidden) store.hidden.push(leagueKey);
-    writeStore(store);
+    if (!writeStore(store)) return false;
+    return true;
   }
 
   async function cached(key, ttl, loader) {
@@ -130,7 +141,8 @@
   function finishPlayer(player, scoreboard) {
     const game = playerGame(player.team, scoreboard);
     const inactive = INACTIVE_STATUSES.includes(player.injury);
-    const proj = Math.max(0, Number(player.proj) || 0);
+    const projectionMissing = player.proj === null || player.proj === undefined;
+    const proj = Number(player.proj) || 0;
     const points = Number(player.points) || 0;
     const remaining = inactive && game.state === "pre" ? 0 : game.remaining;
     const projFinal = game.state === "post" || game.state === "bye" || game.state === "none" ? points
@@ -143,19 +155,19 @@
         ? `${isHome ? "vs" : "@"} ${opp} · ${new Date(game.kickoff).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" })}`
         : `${isHome ? "vs" : "@"} ${opp} · ${game.detail}`;
     }
-    return { ...player, proj, points, projFinal, remaining, gameState: game.state, gameLabel, onField: game.possession === teamCode(player.team), redZone: Boolean(game.redZone && game.possession === teamCode(player.team)) };
+    return { ...player, proj: projectionMissing ? null : proj, points, projFinal: projectionMissing && remaining > 0 && !inactive ? null : projFinal, remaining, gameState: game.state, gameLabel, onField: game.possession === teamCode(player.team), redZone: Boolean(game.redZone && game.possession === teamCode(player.team)) };
   }
 
   function sideTotals(players, points) {
     const live = players.reduce((sum, player) => sum + player.points, 0);
     const actual = Number.isFinite(Number(points)) && points !== null ? Number(points) : live;
-    const projected = actual + players.reduce((sum, player) => sum + (player.projFinal - player.points), 0);
+    const projected = players.some(player => player.projFinal === null) ? null : actual + players.reduce((sum, player) => sum + (player.projFinal - player.points), 0);
     const variance = players.reduce((sum, player) => sum + Math.pow(0.45 * player.proj, 2) * player.remaining, 0);
     return { points: actual, projected, variance, playing: players.filter(p => p.gameState === "in").length, toPlay: players.filter(p => p.gameState === "pre" && !INACTIVE_STATUSES.includes(p.injury)).length };
   }
 
   function winProbability(me, opp) {
-    if (!opp) return null;
+    if (!opp || me.projected === null || opp.projected === null) return null;
     const diff = me.projected - opp.projected;
     const sd = Math.sqrt(me.variance + opp.variance);
     if (sd < 0.5) return diff > 0 ? 100 : diff < 0 ? 0 : 50;
@@ -165,17 +177,8 @@
     return Math.min(99.5, Math.max(0.5, 50 * (1 + Math.sign(z) * y)));
   }
 
-  function scoreSleeperProjection(stats, rules) {
-    if (!stats) return 0;
-    let total = 0, hit = false;
-    if (rules && Object.keys(rules).length) {
-      for (const key in stats) {
-        if (!key.startsWith("pts_") && rules[key] !== undefined && Number.isFinite(Number(stats[key]))) { total += Number(stats[key]) * Number(rules[key]); hit = true; }
-      }
-    }
-    if (hit) return Math.max(0, total);
-    const rec = Number(rules?.rec ?? 1);
-    return Math.max(0, Number(rec >= 0.9 ? stats.pts_ppr : rec >= 0.4 ? stats.pts_half_ppr : stats.pts_std) || Number(stats.pts_ppr) || 0);
+  function scoreSleeperProjection(stats, rules, position) {
+    return scoreConfiguredStats(stats, rules, position, "sleeper").points;
   }
 
   function sleeperPlayer(id, slot, points, projections, rules) {
@@ -188,7 +191,7 @@
       key: nameKey(name, team), id: String(id), slot, name, position: player.position || (isDef ? "DEF" : ""), team,
       photo: typeof avatarUrl === "function" ? avatarUrl({ ...player, id: String(id), position: player.position || (isDef ? "DEF" : ""), team }) : "",
       injury: normalizeInjury(player.injuryStatus) || (player.injuryStatus && player.injuryStatus !== "Healthy" ? player.injuryStatus : ""),
-      points: Number(points?.[id]) || 0, proj: scoreSleeperProjection(projections?.[id], rules)
+      points: Number(points?.[id]) || 0, proj: scoreSleeperProjection(projections?.[id], rules, player.position || (isDef ? "DEF" : ""))
     };
   }
 
@@ -263,7 +266,7 @@
 
   function espnStat(player, week, sourceId) {
     const row = (player.stats || []).find(stat => Number(stat.scoringPeriodId) === Number(week) && Number(stat.statSourceId) === sourceId && Number(stat.statSplitTypeId ?? 1) === 1);
-    return Number(row?.appliedTotal) || 0;
+    return row?.appliedTotal === null || row?.appliedTotal === undefined || !Number.isFinite(Number(row.appliedTotal)) ? null : Number(row.appliedTotal);
   }
 
   function espnPlayer(entry, week) {
@@ -571,6 +574,7 @@
     const state = pct === null ? "" : pct >= 60 ? " is-winning" : pct <= 40 ? " is-losing" : " is-close";
     return `<article class="gd-card${state}" data-gd-key="${esc(league.key)}">${head}${renderStanding(league.standing)}${renderTeamPicker(league)}
       <div class="gd-score">${sideBlock(me, true)}${sideBlock(opp, false)}</div>${winBar}
+      ${me.projected === null || opp?.projected === null ? '<p class="gd-none">Scoring inputs incomplete: projected totals and win probability are unavailable. Actual scores and players remaining are still shown.</p>' : ""}
       <ul class="gd-players">${me.players.map(renderPlayerRow).join("")}</ul>
       ${opp ? `<details class="gd-opp" data-gd-key="o${esc(league.key)}"><summary>${esc(opp.name)} lineup</summary><ul class="gd-players">${opp.players.map(renderPlayerRow).join("")}</ul></details>` : ""}
     </article>`;
@@ -677,7 +681,8 @@
   }
 
   function renderSavedManager() {
-    const host = document.getElementById("gamedaySaved");
+    const host = document.getElementById("connectedSourcesList");
+    const gamedayHost = document.getElementById("gamedaySaved");
     const count = document.getElementById("gamedaySavedCount");
     if (!host) return;
     const store = readStore();
@@ -688,13 +693,16 @@
       leaguesBySource.get(league.sourceKey).push(league);
     });
     const label = source => source.type === "sleeper" ? `Sleeper · ${source.username || source.userId}` : `${source.type === "espn" ? "ESPN" : "Yahoo"} · ${source.name || source.leagueId}`;
-    host.innerHTML = `${store.sources.length ? `<ul class="gd-saved-list">${store.sources.map(source => {
+    host.innerHTML = `${store.sources.length ? store.sources.map(source => {
       const key = sourceKey(source);
       const leagues = leaguesBySource.get(key) || [];
-      return `<li><div class="gd-saved-row"><strong>${esc(label(source))}</strong><button type="button" class="gd-link-btn" data-gameday-remove="${esc(key)}">Remove</button></div>${leagues.length ? `<div class="gd-saved-leagues">${leagues.map(league => `<label><input type="checkbox" data-gameday-show="${esc(league.key)}"${league.hidden ? "" : " checked"}> ${esc(league.name)}</label>`).join("")}</div>` : ""}</li>`;
-    }).join("")}</ul>` : '<p class="gd-none">Nothing saved on this device yet.</p>'}
-      <button type="button" class="btn-builder-action" data-open-connections>Add another league</button>
-      <p class="gd-saved-note">Saved only in this browser. Add accounts, league IDs or Yahoo files in Connect leagues.</p>`;
+      return `<li><div class="gd-saved-row"><strong>${esc(label(source))}</strong><button type="button" class="gd-link-btn" data-connection-sync="${esc(key)}">${source.type === "yahoo" ? "Open saved import" : "Sync connection"}</button><button type="button" class="gd-link-btn" data-gameday-remove="${esc(key)}">Remove connection</button></div>
+        <small>Last connected: ${source.savedAt ? esc(new Date(source.savedAt).toLocaleString()) : "unknown"} · ${source.type === "yahoo" ? "File snapshot; re-import to update" : "Read-only connection"}</small>
+        ${leagues.length ? `<div class="gd-saved-leagues">${leagues.map(league => `<div class="connection-source-league"><label><input type="checkbox" data-gameday-show="${esc(league.key)}"${league.hidden ? "" : " checked"}> ${esc(league.name)}</label>
+          <span>${esc(league.error || (league.provider === "yahoo" ? "Imported snapshot" : "Loaded league"))}</span>
+          ${canManage(league.key) && !league.error ? `<button type="button" data-gameday-manage="${esc(league.key)}" data-gameday-tab="tab-inbox">Open league</button>` : ""}</div>`).join("")}</div>` : '<small>Refresh league details to load leagues and visibility controls.</small>'}</li>`;
+    }).join("") : ""}`;
+    if (gamedayHost) gamedayHost.innerHTML = '<button type="button" class="btn-builder-action" data-open-connections>Manage connections and league visibility</button><p class="gd-saved-note">Saved only in this browser. Add, remove and manage accounts in Connect leagues.</p>';
     window.FFOUsage?.mountConnectionChoices();
   }
 
@@ -787,14 +795,25 @@
     const manage = event.target.closest("[data-gameday-manage]");
     if (manage) { manageLeague(manage.dataset.gamedayManage, manage.dataset.gamedayTab || "tab-opt", manage); return; }
     const remove = event.target.closest("[data-gameday-remove]");
-    if (remove) { removeSource(remove.dataset.gamedayRemove); renderSavedManager(); refresh(); return; }
+    if (remove) {
+      if (!confirm("Remove this saved connection from this browser? Your provider roster, active workspace and local plans are not deleted. You can reconnect later.")) return;
+      if (!removeSource(remove.dataset.gamedayRemove)) { setStatus("The connection could not be removed from browser storage. Nothing was deleted."); return; }
+      renderSavedManager();
+      setStatus("Connection removed from this browser. Your provider roster and local plans were not deleted.");
+      if (window.FFOUsage?.isAllowed()) refresh();
+      return;
+    }
     if (event.target.closest("#gamedayRefreshBtn")) refresh({ force: true });
     if (event.target.closest("#gamedayAlertsBtn")) toggleAlerts();
   });
 
   document.addEventListener("change", event => {
     const show = event.target.closest("[data-gameday-show]");
-    if (show) { setLeagueHidden(show.dataset.gamedayShow, !show.checked); refresh(); return; }
+    if (show) {
+      if (!window.FFOUsage?.isAllowed()) { show.checked = !show.checked; showConnectedBetaGate(); return; }
+      if (!setLeagueHidden(show.dataset.gamedayShow, !show.checked)) { show.checked = !show.checked; setStatus("League visibility could not be saved. Check browser storage and retry."); return; }
+      refresh(); return;
+    }
     const team = event.target.closest("[data-gameday-team]");
     if (team && typeof state !== "undefined") {
       state.portfolioRosterSelections[team.dataset.gamedayTeam] = team.value;
@@ -903,7 +922,7 @@
   document.addEventListener("visibilitychange", () => { if (isActive() && Date.now() - gd.loadedAt > REFRESH_MS) refresh(); });
 
   window.FFOGameday = Object.freeze({
-    STORE_KEY, readStore, rememberSource, removeSource, setLeagueHidden, sourceKey,
+    STORE_KEY, readStore, rememberSource, removeSource, setLeagueHidden, sourceKey, renderSavedManager,
     normalizeScoreboard, remainingFraction, finishPlayer, sideTotals, winProbability, finalizeLeague,
     buildAlerts, buildRooting, renderAlerts, renderGamedayHtml, morph, activate, refresh, renderGameday, scoreSleeperProjection, lineupProgress,
     loadYahooSource, notifyLineupAlerts, computeStanding, standingGapLabel, ordinal, ensureData, manageLeague, get data() { return gd.data; }, set data(value) { gd.data = value; gd.loadedAt = Date.now(); },

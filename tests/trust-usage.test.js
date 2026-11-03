@@ -165,7 +165,7 @@ test("returning beta participants report a new week without transmitting dates o
   assert.equal(returning.values.get("fantasy-front-office:usage-consent:v1:last-visit"), String(week));
 });
 
-test("usage tracking strictly limits payloads and deduplicates per page load", async () => {
+test("usage tracking strictly limits payloads and counts repeated tool opens", async () => {
   const { track, requests, checkAccess } = usageContext(true, undefined, { us: true, beta: true });
   await checkAccess();
   await track("tool_open", { provider: "sleeper", tool: "tab-opt", username: "do-not-send" });
@@ -173,11 +173,25 @@ test("usage tracking strictly limits payloads and deduplicates per page load", a
   await track("unrecognized_event");
   await track("connect_failure", { provider: "private-user-value" });
   await track("tool_open", { tool: "https://example.test/?user=secret" });
-  assert.equal(requests.length, 2, "One visit and one tool event only.");
+  assert.equal(requests.length, 3, "One visit and two tool opens; not unique users.");
   assert.deepEqual(JSON.parse(requests[1].options.body), { event: "tool_open", provider: "sleeper", tool: "tab-opt" });
   assert.equal(requests[1].options.referrerPolicy, "no-referrer");
   assert.equal(requests[1].options.credentials, "omit");
   assert.ok(requests.every(request => request.url === "/api/usage"));
+});
+
+test("connection attempts count each outcome; first recommendation review is once per page", async () => {
+  const usage = usageContext(true, undefined, { us: true, beta: true });
+  await usage.checkAccess();
+  for (const event of ["connect_start", "connect_failure", "connect_start", "connect_success", "recommendation_review", "recommendation_review"]) {
+    await usage.track(event, { provider: "sleeper", tool: "tab-opt" });
+  }
+  const events = usage.requests.map(entry => JSON.parse(entry.options.body).event);
+  assert.equal(events.filter(event => event === "connect_start").length, 2);
+  assert.equal(events.filter(event => event === "first_recommendation_review").length, 1);
+  assert.equal(events.filter(event => event === "recommendation_review").length, 2);
+  await usage.track("visit");
+  assert.equal(usage.requests.filter(entry => JSON.parse(entry.options.body).event === "visit").length, 1);
 });
 
 const endpoint = () => import(`data:text/javascript;base64,${Buffer.from(read("functions/api/usage.js")).toString("base64")}`);
@@ -273,7 +287,7 @@ test("release metadata matches the app assets and fresh welcome avoids eager dat
 });
 
 test("release prompts are dismissible and failed snapshot saves never trigger reload", async () => {
-  let version = "20261102-connect-2";
+  let version = "20261103-reliability-1";
   let clock = 60001;
   let banner = null;
   let reloads = 0;
@@ -289,7 +303,7 @@ test("release prompts are dismissible and failed snapshot saves never trigger re
     fetch: async () => ({ ok: true, json: async () => ({ version }) }),
     document: {
       hidden: false, addEventListener() {},
-      querySelector: selector => selector === "main" ? { prepend: node => { banner = node; } } : { src: "https://fantasyfo.com/app.js?v=20261102-connect-2" },
+      querySelector: selector => selector === "main" ? { prepend: node => { banner = node; } } : { src: "https://fantasyfo.com/app.js?v=20261103-reliability-1" },
       getElementById: () => banner,
       createElement: () => ({ setAttribute() {}, querySelector: selector => controls.get(selector), remove() { banner = null; } })
     }

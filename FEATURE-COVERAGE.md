@@ -16,7 +16,7 @@ Bump those versions together whenever publishing changed assets to avoid a new
 HTML page reusing older cached scripts or styles.
 Update `release.json` to the same version. Open tabs check it without caching
 and offer a user-controlled reload; they never interrupt a plan with an automatic reload.
-Fresh visits start on GM Inbox unless a previous league or manually saved workspace resumes.
+Fresh visits start on Connect leagues unless a previous league workspace resumes.
 GM Inbox and Draft Room are direct destinations. Multi-tool groups organize
 My Team, League, Players, and Extras. Labels describe the job each view performs; in-view notes explain
 where outputs are estimates, local plans, or dependent on provider data.
@@ -25,6 +25,78 @@ authorization failure does not mean the release is missing. Connect or import
 a league to use roster-based features.
 
 ## Current release
+
+### Connection safety, focused onboarding and scoring
+
+- Provider selection edits a connection draft, not the active workspace. A sync
+  transaction retains league/team/week, rosters and local planning controls until
+  loading succeeds. Failed attempts roll back in-memory state and do not replace
+  the durable reload snapshot. Saved sources are added only after success.
+- All disconnected tool links, including Gameday, open the same setup form and
+  retain their destination. Successful connections show the selected team and a
+  Review lineup action. Connect leagues remains the final navigation item.
+- Mobile header utilities use a keyboard-accessible More disclosure. Shorter
+  setup copy reduces scrolling without hiding required agreement disclosures.
+- Connection management lists accounts and the leagues loaded under each, with
+  last-connected times, visibility controls, opening a league and confirmed
+  removal. Refresh league details fetches current source results; Gameday links
+  back to this single management surface. Removal does not delete provider
+  rosters, the active workspace or local plans.
+- Provider labels distinguish Sleeper usernames, ESPN public leagues and Yahoo
+  manual imports. Yahoo CSV and JSON examples include editable fields; imported
+  point totals must already reflect the league scoring. Re-imports update the
+  snapshot, not an automatic Yahoo login or live feed.
+- Public guides match navigation and disclose provider/access limits. The
+  product illustration is labeled illustrative, not an actual live result or
+  an interactive demo. The public demo option remains removed.
+- Trade package totals say Model trade value, not fantasy points.
+
+### Shared custom-scoring coverage
+
+`scoring.js` applies supported Sleeper coefficients and ESPN native scoring
+items, including nonstandard receptions, primary-position overrides, position
+premiums, kicking/defense/IDP counters and explicit bonus counters. Negative
+totals and supplied zeroes are preserved. ESPN settings retain all scoring
+items rather than reducing a league to reception scoring. Weekly projections,
+season PPG, schedule estimates, portfolio PPG and Gameday share this scorer.
+Available ESPN league-applied projections and season averages are retained
+with their league/week context; they are not rescored as standard PPR.
+
+Supporting a rule does not create missing input data. Unknown rules and
+missing applicable counters are reported, not silently treated as zero.
+Sleeper projections are undocumented; there is no verified contract that every
+omitted stat means zero. A missing bonus event cannot be inferred from aggregate
+yardage or a per-game average. Sparse inputs can therefore withhold even an
+otherwise supported league's recommendations. Older snapshots that retained
+only a reception preset can still use the exactly matching supplied point bucket.
+
+The expandable scoring/source notice exposes the rules and incomplete coverage.
+Optimizer, Inbox advice, start/sit, trade verdicts, team grades, waiver candidates
+and matchup estimates withhold affected projection-based advice. Gameday still
+shows provider actual points and players remaining, but does not invent a
+projected final or win probability. Unsupported cross-league estimates show
+unavailable; claim suggestions rescore candidates for the target league instead
+of reusing active-league points. Model trade values remain relative indices.
+Yahoo totals remain user-imported, already-scored snapshots, not independently
+verified custom-scoring calculations.
+
+### Usage-event interpretation
+
+Connection starts and outcomes, tool opens and recommendation reviews count
+repeated actions rather than one action per provider/tool per page. Visits and
+the first recommendation review are once per page; return_week is a browser-local
+signal that the last enrolled reporting week changed, not a user-retention cohort.
+Only fixed event/provider/tool names are sent, with no attempt/user IDs or URLs.
+Before-and-after event counts across this release are not directly comparable.
+
+Connected events begin only after agreement and confirmed eligibility. They
+cannot measure everyone who abandoned setup. Use separate page-visit analytics
+for broad acquisition signals, not an exact join to connected events. Connection
+outcome/start ratios describe received action counts, not unique visitors or an
+exact attributable funnel; blocked requests, closing a tab and automatic
+workspace refreshes affect those counts. The first recommendation review is an
+activation proxy per page, not proof someone followed the advice. No claim,
+lineup or trade submission is inferred from a local review or plan.
 
 ### Trust, onboarding and freshness
 

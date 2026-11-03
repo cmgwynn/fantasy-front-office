@@ -23,7 +23,7 @@
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:image" content="https://fantasyfo.com/icons/og-image.jpg" />
   <script type="application/ld+json">{"@context":"https://schema.org","@type":"WebApplication","name":"Fantasy Front Office","url":"https://fantasyfo.com/","applicationCategory":"SportsApplication","operatingSystem":"Any","description":"Free fantasy football tools for Sleeper, ESPN and Yahoo leagues: Gameday across leagues, lineup optimizer, waiver planner, trade analyzer and playoff odds.","offers":{"@type":"Offer","price":"0","priceCurrency":"USD"}}</script>
-  <link rel="stylesheet" href="styles.css?v=20261102-connect-2" />
+  <link rel="stylesheet" href="styles.css?v=20261103-reliability-1" />
 </head>
 <body>
 
@@ -32,13 +32,18 @@
     <div class="title-label">FANTASY FRONT OFFICE</div>
     <div class="header-status-group">
       <div id="statusLabel" class="status-pill">Choose ESPN or Sleeper, then connect a league.</div>
-      <details class="data-health">
-        <summary>Data status</summary>
-        <span id="dataFreshnessLabel" class="data-freshness">Data sources waiting</span>
-      </details>
-      <button id="shareBtn" class="share-button" type="button">Copy share link</button>
-      <a id="companionToggle" class="share-button" href="/side-panel">Side panel</a>
-      <button type="button" class="share-button" data-feedback>Feedback</button>
+      <div class="header-utilities">
+        <button type="button" class="header-more" aria-expanded="false" aria-controls="headerUtilityItems">More</button>
+        <div id="headerUtilityItems" class="header-utility-items">
+          <details class="data-health">
+            <summary>Data status</summary>
+            <span id="dataFreshnessLabel" class="data-freshness">Data sources waiting</span>
+          </details>
+          <button id="shareBtn" class="share-button" type="button">Copy share link</button>
+          <a id="companionToggle" class="share-button" href="/side-panel">Side panel</a>
+          <button type="button" class="share-button" data-feedback>Feedback</button>
+        </div>
+      </div>
     </div>
   </div>
 </div>
@@ -141,23 +146,31 @@
     </div>
     <div id="workspaceSnapshotBanner" class="workspace-banner" role="status" hidden></div>
     <p id="decisionDataStatus" class="decision-data-status" role="status" hidden></p>
+    <details id="scoringCoverage" class="tool-disclosure" hidden>
+      <summary id="scoringCoverageSummary">Scoring coverage</summary>
+      <p class="comparison-note" id="scoringCoverageDetail"></p>
+    </details>
+    <aside id="connectionWelcome" class="workspace-banner" hidden aria-label="Connection complete">
+      <span data-connection-welcome></span>
+      <button type="button" class="btn-builder-action" data-review-first-lineup>Review lineup</button>
+      <button type="button" class="btn-builder-action" data-dismiss-welcome>Dismiss</button>
+    </aside>
     <div id="tab-connect" class="tab-page active">
       <div class="tool-intro">
         <h2>Connect leagues</h2>
-        <p>Every league you play in, one front office. Free, no sign-up.</p>
+        <p>Catch lineup problems. Compare your options. Follow every matchup.</p>
       </div>
       <section id="connectionSettings" class="connection-setup" aria-labelledby="connectionSettingsLabel">
         <h3 id="connectionSettingsLabel">Connect your first league</h3>
-        <p class="comparison-note">Choose a provider below. Sleeper loads all leagues for your username; ESPN accepts one or more league IDs; Yahoo uses a roster file.</p>
-        <p class="onboard-trust">Read-only. No password. We cannot change your lineup or submit claims.</p>
+        <p class="onboard-trust">Free. Read-only. No password. Make changes in your provider.</p>
         <form id="connectionForm">
           <div class="connection-fields">
             <label class="control-field provider-field" for="providerSelect">Provider
               <select id="providerSelect" aria-label="League provider">
                 <option value="" selected>Choose provider</option>
-                <option value="espn">ESPN Fantasy</option>
-                <option value="sleeper">Sleeper</option>
-                <option value="yahoo">Yahoo Fantasy (import file)</option>
+                <option value="espn">ESPN — public leagues</option>
+                <option value="sleeper">Sleeper — username</option>
+                <option value="yahoo">Yahoo — manual file import</option>
               </select>
             </label>
             <div class="control-field account-field">
@@ -173,10 +186,16 @@
         </form>
         <p id="connectionResult" class="connection-result" role="status"></p>
       </section>
+      <details class="connection-preview">
+        <summary>See what you get</summary>
+        <p class="comparison-note">Track matchups across leagues, catch starter alerts and review projected lineup upgrades. Example interface below; not live scores or player advice.</p>
+        <img src="/icons/product-preview.svg" alt="Illustrative Gameday view showing two league matchups, players left to play and a starter alert" width="800" height="360" loading="lazy" />
+      </details>
       <section id="connectedSources" class="connection-setup" aria-labelledby="connectedSourcesTitle" hidden>
         <h3 id="connectedSourcesTitle">Saved connections on this device</h3>
-        <p class="comparison-note">Add another account or league above. Previous connections stay saved for Gameday; adding one switches the active workspace, not your provider's roster.</p>
+        <p class="comparison-note">Accounts contain leagues. Adding a connection keeps previous sources saved; your active workspace changes only after success. Removal forgets a connection here, not your provider roster or local plans.</p>
         <ul id="connectedSourcesList" class="connection-sources"></ul>
+        <button type="button" class="btn-builder-action" data-refresh-connections>Refresh league details</button>
         <button type="button" class="btn-builder-action" data-open-gameday>View all leagues in Gameday</button>
       </section>
     </div>
@@ -357,13 +376,13 @@
             • <b>Consolidation Tax:</b> Multi-asset packages (e.g., 2-for-1) apply a 6%–18% roster-spot tax to the side sending more assets.<br>
             • <b>Draft Picks (Keeper/Dynasty):</b> <code>Round Base (1st=6200, 2nd=2900, 3rd=1350, 4th=550) × Slot Mult (0.76–1.34) × Year Discount (0.88^yr)</code>.
           </div>
-          <div id="sideATitle" style="font-size:12px; font-weight:800; color:var(--bad);">Manager 1 Sends (0 pts)</div>
+          <div id="sideATitle" style="font-size:12px; font-weight:800; color:var(--bad);">Manager 1 sends · Model trade value 0</div>
           <div id="pkgListA" class="scroll-list" style="max-height:135px; min-height:70px; background:#10121A; padding:8px; border-radius:8px; border:1px solid var(--border);"></div>
-          <div id="sideBTitle" style="font-size:12px; font-weight:800; color:var(--good);">Manager 2 Sends (0 pts)</div>
+          <div id="sideBTitle" style="font-size:12px; font-weight:800; color:var(--good);">Manager 2 sends · Model trade value 0</div>
           <div id="pkgListB" class="scroll-list" style="max-height:135px; min-height:70px; background:#10121A; padding:8px; border-radius:8px; border:1px solid var(--border);"></div>
           <div id="tradeFairness" style="text-align:center; font-weight:800; color:var(--accent); font-size:13px; padding:4px;">Select assets on both sides to analyze.</div>
           <div id="tradeConsole" style="background:#10121A; border:1px solid var(--border); padding:10px; border-radius:10px; font-size:12px; line-height:1.5; color:var(--text-muted);">
-            Trade Builder calculates Asset Value Points, ROS Lineup PPG Delta, and Playoff PPG Delta.
+            Model trade value is a relative index, not fantasy points. Lineup changes are separate estimates in fantasy points per game.
           </div>
           <button id="clearTradeBtn" style="background:#232834;">Clear Trade Package</button>
         </div>
@@ -1134,22 +1153,23 @@
 </footer>
 
 <p id="appInstallStatus" class="app-install-status" role="status"></p>
-<script src="pwa.js?v=20261102-connect-2"></script>
-<script src="monetization-config.js?v=20261102-connect-2"></script>
-<script src="data-fetch.js?v=20261102-connect-2"></script>
-<script src="demo-league.js?v=20261102-connect-2"></script>
-<script src="league-records.js?v=20261102-connect-2"></script>
-<script src="workspace-backup.js?v=20261102-connect-2"></script>
-<script src="playoff-simulator.js?v=20261102-connect-2"></script>
-<script src="weekly-matchups.js?v=20261102-connect-2"></script>
-<script src="share-cards.js?v=20261102-connect-2"></script>
-<script src="feedback.js?v=20261102-connect-2"></script>
-<script src="playoff-push.js?v=20261102-connect-2"></script>
-<script src="waiver-day.js?v=20261102-connect-2"></script>
-<script src="league-schedule.js?v=20261102-connect-2"></script>
-<script src="usage-metrics.js?v=20261102-connect-2"></script>
-<script src="app.js?v=20261102-connect-2"></script>
-<script src="release-updates.js?v=20261102-connect-2"></script>
-<script src="gameday.js?v=20261102-connect-2"></script>
+<script src="pwa.js?v=20261103-reliability-1"></script>
+<script src="monetization-config.js?v=20261103-reliability-1"></script>
+<script src="data-fetch.js?v=20261103-reliability-1"></script>
+<script src="scoring.js?v=20261103-reliability-1"></script>
+<script src="demo-league.js?v=20261103-reliability-1"></script>
+<script src="league-records.js?v=20261103-reliability-1"></script>
+<script src="workspace-backup.js?v=20261103-reliability-1"></script>
+<script src="playoff-simulator.js?v=20261103-reliability-1"></script>
+<script src="weekly-matchups.js?v=20261103-reliability-1"></script>
+<script src="share-cards.js?v=20261103-reliability-1"></script>
+<script src="feedback.js?v=20261103-reliability-1"></script>
+<script src="playoff-push.js?v=20261103-reliability-1"></script>
+<script src="waiver-day.js?v=20261103-reliability-1"></script>
+<script src="league-schedule.js?v=20261103-reliability-1"></script>
+<script src="usage-metrics.js?v=20261103-reliability-1"></script>
+<script src="app.js?v=20261103-reliability-1"></script>
+<script src="release-updates.js?v=20261103-reliability-1"></script>
+<script src="gameday.js?v=20261103-reliability-1"></script>
 </body>
 </html>

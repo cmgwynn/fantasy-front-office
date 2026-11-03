@@ -8,8 +8,21 @@ const vm = require("node:vm");
 const root = path.resolve(__dirname, "..");
 const read = file => fs.readFileSync(path.join(root, file), "utf8");
 
+test("Yahoo import downloads are editable examples linked from provider guidance", () => {
+  const json = JSON.parse(read("downloads/yahoo-roster-example.json"));
+  assert.ok(json.teams.length > 0 && json.teams[0].players.length > 0);
+  assert.equal(json.teams[0].players[0].projectedPoints, 0);
+  assert.ok(json.rosterPositions.includes("FLEX"));
+  const csv = read("downloads/yahoo-roster-template.csv").trim().split(/\r?\n/);
+  assert.ok(csv[0].includes("projected_points") && csv[0].includes("season_ppg"));
+  assert.equal(csv[0].split(",").length, csv[1].split(",").length);
+  const guide = read("app.js");
+  assert.ok(guide.includes("/downloads/yahoo-roster-template.csv"));
+  assert.ok(guide.includes("/downloads/yahoo-roster-example.json"));
+});
+
 test("browser JavaScript entry points parse", () => {
-  for (const file of ["app.js", "pwa.js", "service-worker.js", "data-fetch.js", "demo-league.js", "league-records.js", "workspace-backup.js", "playoff-simulator.js", "monetization-config.js", "gameday.js", "league-schedule.js", "share-cards.js", "feedback.js", "playoff-push.js", "waiver-day.js", "usage-metrics.js", "release-updates.js"]) {
+  for (const file of ["app.js", "scoring.js", "pwa.js", "service-worker.js", "data-fetch.js", "demo-league.js", "league-records.js", "workspace-backup.js", "playoff-simulator.js", "monetization-config.js", "gameday.js", "league-schedule.js", "share-cards.js", "feedback.js", "playoff-push.js", "waiver-day.js", "usage-metrics.js", "release-updates.js"]) {
     const result = spawnSync(process.execPath, ["--check", file], {
       cwd: root,
       encoding: "utf8"
@@ -41,7 +54,7 @@ test("HTML references existing local assets in the expected script order", () =>
   ].map(match => match[1]).filter(asset => !/^(?:[a-z]+:)?\/\//i.test(asset));
 
   assert.ok(assets.length > 0, "Expected local CSS or JavaScript assets.");
-  assert.ok(assets.filter(asset => /\.(?:css|js)\?/.test(asset)).every(asset => asset.endsWith("?v=20261102-connect-2")), "CSS and JavaScript assets must use the current release version.");
+  assert.ok(assets.filter(asset => /\.(?:css|js)\?/.test(asset)).every(asset => asset.endsWith("?v=20261103-reliability-1")), "CSS and JavaScript assets must use the current release version.");
   for (const asset of assets) {
     assert.ok(fs.existsSync(path.join(root, asset.split("?")[0])), `Missing local asset: ${asset}`);
   }
@@ -52,6 +65,8 @@ test("HTML references existing local assets in the expected script order", () =>
   const recordsIndex = html.indexOf('<script src="league-records.js?');
   const workspaceIndex = html.indexOf('<script src="workspace-backup.js?');
   const appIndex = html.indexOf('<script src="app.js?');
+  const scoringIndex = html.indexOf('<script src="scoring.js?');
+  assert.ok(scoringIndex > dataFetchIndex && scoringIndex < appIndex, "Shared scoring must load before app and Gameday.");
   const playoffIndex = html.indexOf('<script src="playoff-simulator.js?');
   assert.ok(configIndex >= 0, "Monetization configuration script is missing.");
   assert.ok(dataFetchIndex > configIndex, "Data-fetch module must load after configuration.");
@@ -98,7 +113,7 @@ test("public information pages and footer expose working local links without loa
     assert.match(html, /Chavous Gwynn/);
     assert.match(html, /United States adults aged 18/);
     assert.doesNotMatch(html, /<script\b/, "Information pages must work without app initialization or provider requests.");
-    assert.match(html, /styles\.css\?v=20261102-connect-2/);
+    assert.match(html, /styles\.css\?v=20261103-reliability-1/);
   }
   const sandbox = { window: {} };
   vm.runInNewContext(read("monetization-config.js"), sandbox);
@@ -116,7 +131,7 @@ test("side panel extension is downloadable and limited to opening provider pages
     const target = local === "" ? "index.html" : path.extname(local) ? local : `${local}.html`;
     assert.ok(fs.existsSync(path.join(root, target)), `side-panel.html has a missing local link: ${href}`);
   }
-  assert.match(html, /styles\.css\?v=20261102-connect-2/);
+  assert.match(html, /styles\.css\?v=20261103-reliability-1/);
   assert.match(read("index.html"), /<a id="companionToggle"[^>]*href="\/side-panel"/);
   assert.doesNotMatch(read("app.js"), /window\.open\([^)]*"popup"/, "Provider pages must not open in pop-up windows.");
   const manifest = JSON.parse(read("extension/manifest.json"));
@@ -222,7 +237,7 @@ test("browser regression harness is wired to the app and includes saved-state co
   const html = read("tests/optimizer-regression.html");
   const appHtml = read("index.html");
 
-  assert.match(html, /src="\.\.\/index\.html\?v=20261102-connect-2&amp;resume=0"/, "Regression harness must load the current app release without resuming personal snapshots.");
+  assert.match(html, /src="\.\.\/index\.html\?v=20261103-reliability-1&amp;resume=0"/, "Regression harness must load the current app release without resuming personal snapshots.");
   assert.doesNotMatch(appHtml, /id="loadRecordsBtn"/, "Records must load automatically without a manual refresh button.");
   assert.match(html, /runOptimizerFixtures/, "Regression harness must execute its fixtures.");
   assert.match(html, /Cross-league queue saves to target budget/, "Saved FAAB state should remain covered.");

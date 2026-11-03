@@ -1,11 +1,12 @@
 (() => {
   const KEY = "fantasy-front-office:usage-consent:v1";
   const BETA_KEY = "fantasy-front-office:usage-beta-agreement:v1";
-  const EVENTS = new Set(["visit", "demo_start", "connect_start", "connect_success", "connect_failure", "tool_open", "recommendation_review", "return_week"]);
+  const EVENTS = new Set(["visit", "demo_start", "connect_start", "connect_success", "connect_failure", "tool_open", "recommendation_review", "first_recommendation_review", "return_week"]);
   const PROVIDERS = new Set(["none", "sleeper", "espn", "yahoo", "demo"]);
   const TOOLS = new Set(["none", ...[...document.querySelectorAll(".nav-btn")].map(button => button.dataset.tab)]);
   const privacySignal = navigator.globalPrivacyControl === true || navigator.doNotTrack === "1";
   const seen = new Set();
+  const ONCE_PER_PAGE = new Set(["visit", "return_week", "first_recommendation_review"]);
   let preference = null;
   let agreement = false;
   let available = false;
@@ -33,7 +34,7 @@
   function renderConnectionChoices() {
     document.querySelectorAll("[data-usage-connect]").forEach(container => {
       if (!container.querySelector("[data-usage-connect-choice]")) {
-        container.innerHTML = '<p class="usage-connect-heading">Required to sync a league</p><label class="usage-connect-choice"><input type="checkbox" data-usage-connect-choice><span><strong>I agree to limited usage measurement (18+)</strong><small>Event, provider and tool names only; no usernames, league IDs or rosters. US-only connected access. Withdrawal pauses tools but keeps local plans.</small></span></label><p class="usage-connect-status" role="status"></p><button type="button" class="link-button" data-usage-settings>Read usage privacy and terms</button>';
+        container.innerHTML = '<p class="usage-connect-heading">Required to sync a league</p><label class="usage-connect-choice"><input type="checkbox" data-usage-connect-choice><span><strong>I agree to limited usage measurement (18+)</strong><small>Event, provider and tool names only. No usernames, league IDs or rosters. US-only. Withdrawing pauses tools, not saved plans.</small></span></label><p class="usage-connect-status" role="status"></p><button type="button" class="link-button" data-usage-settings>Read usage privacy and terms</button>';
       }
       const input = container.querySelector("[data-usage-connect-choice]");
       input.checked = isAllowed();
@@ -109,9 +110,9 @@
   }
   async function track(event, { provider = "none", tool = "none" } = {}) {
     if (!enabled || !EVENTS.has(event) || !PROVIDERS.has(provider) || !TOOLS.has(tool)) return;
-    const key = `${event}:${provider}:${tool}`;
-    if (seen.has(key)) return;
-    seen.add(key);
+    const key = ONCE_PER_PAGE.has(event) ? event : `${event}:${provider}:${tool}`;
+    if (ONCE_PER_PAGE.has(event) && seen.has(key)) return;
+    if (ONCE_PER_PAGE.has(event)) seen.add(key);
     try {
       const response = await fetch("/api/usage", {
         method: "POST", credentials: "omit", referrerPolicy: "no-referrer",
@@ -120,6 +121,7 @@
       });
       if (!response.ok) throw new Error(`server returned ${response.status}`);
       lastError = "";
+      if (event === "recommendation_review") await track("first_recommendation_review", { provider, tool });
     } catch (error) { seen.delete(key); report(error); }
   }
   function startVisit() {

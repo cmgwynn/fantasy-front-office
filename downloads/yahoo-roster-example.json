@@ -1,0 +1,16 @@
+{
+  "leagueName": "Replace with your Yahoo league",
+  "season": "2026",
+  "currentWeek": 8,
+  "rosterPositions": ["QB", "RB", "RB", "WR", "WR", "TE", "FLEX", "K", "DEF"],
+  "scoringSettings": { "rec": 0.5, "pass_yd": 0.04, "pass_td": 4, "pass_int": -2, "rush_yd": 0.1, "rush_td": 6, "rec_yd": 0.1, "rec_td": 6 },
+  "teams": [
+    {
+      "teamName": "Your team",
+      "manager": "Your manager name",
+      "players": [
+        { "playerId": "replace-with-yahoo-id", "name": "Replace with player name", "position": "QB", "nflTeam": "KC", "starter": true, "projectedPoints": 0, "seasonPpg": 0 }
+      ]
+    }
+  ]
+}

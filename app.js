@@ -22,7 +22,7 @@ function activateTab(tabId, { navigate = false, focus = false } = {}) {
   }
   renderDecisionDataStatus();
   const changed = !targetPage.classList.contains("active");
-  if (changed) window.FFOUsage?.track("tool_open", { tool: tabId });
+  if (changed) window.FFOUsage?.track("tool_open", { provider: state.activeLeague?.isDemo ? "demo" : state.provider || "none", tool: tabId });
   document.querySelectorAll(".nav-btn").forEach(button => {
     const active = button.dataset.tab === tabId;
     button.classList.toggle("active", active);
@@ -76,7 +76,52 @@ function activateTab(tabId, { navigate = false, focus = false } = {}) {
   return targetPage;
 }
 
+document.addEventListener("keydown", event => {
+  const more = document.querySelector(".header-more");
+  if (event.key === "Escape" && more?.getAttribute("aria-expanded") === "true") {
+    more.setAttribute("aria-expanded", "false");
+    more.closest(".header-utilities").classList.remove("is-open");
+    more.focus();
+  }
+});
+
 document.addEventListener("click", e => {
+  const more = document.querySelector(".header-more");
+  if (e.target.closest(".header-more")) {
+    const expanded = more.getAttribute("aria-expanded") !== "true";
+    more.setAttribute("aria-expanded", String(expanded));
+    more.closest(".header-utilities").classList.toggle("is-open", expanded);
+    return;
+  }
+  if (more && !e.target.closest(".header-utilities")) {
+    more.setAttribute("aria-expanded", "false");
+    more.closest(".header-utilities").classList.remove("is-open");
+  }
+  if (e.target.closest("[data-review-first-lineup]")) {
+    document.getElementById("connectionWelcome").hidden = true;
+    document.querySelector('.nav-btn[data-tab="tab-opt"]').click();
+    return;
+  }
+  if (e.target.closest("[data-dismiss-welcome]")) {
+    document.getElementById("connectionWelcome").hidden = true;
+    return;
+  }
+  if (e.target.closest("[data-refresh-connections]")) {
+    window.FFOGameday?.refresh({ force: true });
+    return;
+  }
+  const savedConnection = e.target.closest("[data-connection-sync]");
+  if (savedConnection) {
+    const source = window.FFOGameday.readStore().sources.find(item => FFOGameday.sourceKey(item) === savedConnection.dataset.connectionSync);
+    if (!source) { setStatus("This saved connection is no longer available. Add it again."); return; }
+    if (source.type === "yahoo" && !source.payload) { setStatus("The Yahoo file was not retained in browser storage. Re-import the file to open this league."); return; }
+    document.getElementById("providerSelect").value = source.type;
+    document.getElementById("usernameInput").value = source.type === "sleeper" ? source.username || source.userId : source.leagueId;
+    updateProviderControls();
+    if (source.type === "yahoo") importYahooRosterFile(new File([JSON.stringify(source.payload)], "saved-roster.json", { type: "application/json" }));
+    else syncUserAccount({ season: source.season || state.season });
+    return;
+  }
   if (e.target.closest("[data-open-connections]")) {
     activateTab("tab-connect", { navigate: true, focus: true });
     return;
@@ -120,6 +165,7 @@ document.addEventListener("click", e => {
         refreshGameDaySchedule().then(() => {
           if (document.getElementById("tab-compare")?.classList.contains("active")) renderPlayerComparison(false);
         });
+
         break;
       case "tab-sos": renderSosTab(); break;
       case "tab-bracket": renderPlayoffBracketTab(); break;
@@ -743,12 +789,33 @@ function renderDecisionDataStatus() {
   status.hidden = !result.text || document.getElementById("tab-connect")?.classList.contains("active");
   status.textContent = result.text;
   status.classList.toggle("has-errors", result.warning);
+  const scoring = document.getElementById("scoringCoverage");
+  scoring.hidden = !state.activeLeague || document.getElementById("tab-connect").classList.contains("active");
+  if (!scoring.hidden) {
+    const report = state.activeLeague.provider === "yahoo" ? { summary: "Imported point totals must already reflect your league scoring. Re-import to update; these totals are not independently verified." } :
+      FFOScoring.describe(state.activeLeague.scoringSettings || {}, state.activeLeague.provider);
+    const issue = getScoringDecisionIssue();
+    document.getElementById("scoringCoverageSummary").textContent = issue ? "Scoring coverage incomplete — review before acting" : "Scoring and projection sources";
+    document.getElementById("scoringCoverageDetail").textContent = `${issue} ${report.summary} ${getProjectionSourceNote()}`.trim();
+  }
 }
 
 let connectionSyncBusy = false;
 let connectionSyncMinHeight = "";
+let connectionTransaction = null;
 function beginConnectionSync() {
   if (connectionSyncBusy) return false;
+  connectionTransaction = {
+    state: structuredClone(state),
+    controls: ["leagueSelect", "teamSelect", "tradeTeamA", "tradeTeamB", "simTeamA", "simTeamB", "weekSelect", "plannerWeeks", "plannerSearch", "plannerAdd", "plannerDrop", "plannerHoldInjuries"].map(id => {
+      const element = document.getElementById(id);
+      return { id, html: element.innerHTML, value: element.value, checked: element.checked };
+    }),
+    faab: structuredClone(faabState), draft: structuredClone(draftState),
+    schedule: structuredClone(CURRENT_NFL_SCHEDULE), byes: { ...CURRENT_BYE_WEEKS }, dvp: structuredClone(CURRENT_DVP_RANKS),
+    rosters: structuredClone(portfolioState.rostersByLeague),
+    records: structuredClone(leagueRecordsCache), committed: false
+  };
   connectionSyncBusy = true;
   const main = document.getElementById("mainContent");
   connectionSyncMinHeight = main.style.minHeight;
@@ -773,6 +840,37 @@ function beginConnectionSync() {
 }
 
 function endConnectionSync() {
+  const transaction = connectionTransaction;
+  if (transaction && !transaction.committed) {
+    Object.assign(state, transaction.state);
+    Object.assign(faabState, transaction.faab);
+    Object.assign(draftState, transaction.draft);
+    for (const [target, saved] of [[CURRENT_NFL_SCHEDULE, transaction.schedule], [CURRENT_BYE_WEEKS, transaction.byes]]) {
+      Object.keys(target).forEach(key => { delete target[key]; });
+      Object.assign(target, saved);
+    }
+    CURRENT_DVP_RANKS = transaction.dvp;
+    portfolioState.rostersByLeague = transaction.rosters;
+    leagueRecordsCache.clear();
+    transaction.records.forEach((value, key) => leagueRecordsCache.set(key, value));
+    transaction.controls.forEach(({ id, html, value, checked }) => {
+      const element = document.getElementById(id);
+      element.innerHTML = html;
+      element.value = value;
+      if (checked !== undefined) element.checked = checked;
+    });
+    rebuildPlayerTeamIndex();
+    ESPN_PLAYER_TO_INTERNAL_ID.clear();
+    Object.values(state.players).forEach(player => { if (player.espnId) ESPN_PLAYER_TO_INTERNAL_ID.set(String(player.espnId), player.id); });
+    if (state.activeLeague && state.managers.length) renderAllViews(Number(document.getElementById("teamSelect").value) || 0);
+    transaction.controls.filter(control => control.id.startsWith("planner")).forEach(({ id, value, checked }) => {
+      const element = document.getElementById(id);
+      element.value = value;
+      if (checked !== undefined) element.checked = checked;
+    });
+    if (state.activeLeague && state.managers.length) renderRosterPlanner(false);
+  }
+  connectionTransaction = null;
   connectionSyncBusy = false;
   const main = document.getElementById("mainContent");
   main.style.minHeight = connectionSyncMinHeight;
@@ -783,7 +881,22 @@ function endConnectionSync() {
   document.getElementById("usernameInput").readOnly = false;
   document.querySelectorAll("[data-sync-busy]").forEach(button => { delete button.dataset.syncBusy; });
   renderConnectionLayout();
+  renderDataFreshness();
   window.FFOUsage?.mountConnectionChoices();
+  if (transaction?.committed) saveReloadWorkspace();
+}
+
+function finishConnection() {
+  connectionTransaction.committed = true;
+  const linked = new URLSearchParams(location.search).get("tool");
+  if (document.getElementById("tab-connect").classList.contains("active") && (!linked || linked === "connect")) {
+    activateTab("tab-inbox");
+    renderGMInbox();
+  } else applyToolDeepLink();
+  const welcome = document.getElementById("connectionWelcome");
+  const manager = state.managers[Number(document.getElementById("teamSelect").value) || 0];
+  welcome.hidden = false;
+  welcome.querySelector("[data-connection-welcome]").textContent = `Connected ${state.activeLeague.name}. Selected team: ${manager?.teamName || "choose your team"}. Confirm the Team selector, then review your lineup. Changes are made in your provider, not here.`;
 }
 
 function renderConnectionLayout() {
@@ -792,11 +905,7 @@ function renderConnectionLayout() {
   document.getElementById("connectionSettingsLabel").textContent = connected ? "Add or sync another league" : "Connect your first league";
   const saved = document.getElementById("connectedSources");
   saved.hidden = !sources.length;
-  document.getElementById("connectedSourcesList").innerHTML = sources.map(source => {
-    const label = source.type === "sleeper" ? `Sleeper · ${source.username || source.userId}` :
-      `${source.type === "espn" ? "ESPN" : "Yahoo"} · ${source.name || source.leagueId}`;
-    return `<li>${draftEscapeHtml(label)}</li>`;
-  }).join("");
+  window.FFOGameday?.renderSavedManager();
   renderContextBar();
 }
 
@@ -909,7 +1018,7 @@ function renderInboxAllLeagues() {
   const alerts = gameday.buildAlerts(leagues);
   const alertCount = key => alerts.filter(alert => alert.leagueKey === key).length;
   const providerLabel = { sleeper: "Sleeper", espn: "ESPN", yahoo: "Yahoo" };
-  const fmt = value => Number(value || 0).toFixed(1);
+  const fmt = value => value == null ? "--" : Number(value || 0).toFixed(1);
   const card = league => {
     const label = providerLabel[league.provider] || league.provider;
     const openButton = /^(sleeper|espn):/.test(league.key) ? `<button type="button" class="gm-all-open" data-ctx-league="${draftEscapeHtml(league.key)}">Open inbox</button>` : "";
@@ -1062,6 +1171,8 @@ function buildTargetTradeOffers(myIndex, targetId, size = "all") {
   const owners = state.managers.map((team, index) => ({ team, index })).filter(({ team, index }) => index !== myIndex && team.players?.includes(targetId));
   if (!mine || !target || target.isPick || owners.length !== 1 || mine.players?.includes(targetId)) return { reason: "Choose a player uniquely owned by another team." };
   const { team: partner, index: partnerIndex } = owners[0];
+  const scoringIssue = getScoringDecisionIssue([...(mine.players || []), ...(partner.players || [])]);
+  if (scoringIssue) return { reason: scoringIssue };
   const candidates = getPlannerRosterIds(mine).map(id => state.players[id]).filter(player => player && !player.isPick &&
     Number.isFinite(player.baseValue) && player.baseValue > 0).sort((a, b) => b.baseValue - a.baseValue);
   if (!Number.isFinite(target.baseValue) || target.baseValue <= 0) return { reason: "Target value is unavailable. Refresh player data." };
@@ -1452,33 +1563,57 @@ function defaultRealisticProj(m) {
 }
 
 function computeLeagueProj(m, st, rules) {
+  m.projectionScoringIssue = "";
+  m.projectionSource = "stat projection";
   if (m.isDemo) return ["Out", "IR", "Suspended", "PUP"].includes(m.injuryStatus) ? 0 : Math.max(0, st?.pts_ppr || 0);
   const sleeperProjectionFeedIsAuthoritative = state.activeLeague?.provider === "sleeper"
     && Boolean(state.dataFreshness.projections)
     && !state.dataErrors.projections;
   if (m.position !== "DEF" && (!m.team || m.team === "FA" || !m.isCurrentNfl || ["Out","IR","Suspended","PUP"].includes(m.injuryStatus))) return 0;
   if (m.byeWeek > 0 && m.byeWeek === state.week) return 0;
-  if (!st) return sleeperProjectionFeedIsAuthoritative ? 0 : defaultRealisticProj(m);
-  const scored = scoreLeagueStatLine(st, rules);
-  if (scored !== null) return scored;
+  if (state.activeLeague?.provider === "yahoo") {
+    m.projectionSource = "imported total";
+    return Number.isFinite(st?.pts_ppr) ? st.pts_ppr : m.projectedPoints;
+  }
+  const coverage = scoreConfiguredStats(st, rules, m.position);
+  const scored = coverage.points;
+  if (scored !== null) {
+    if (st?.ffoContext === `${getLeagueRecordsKey()}:${state.week}`) m.projectionSource = "ESPN league-scored projection";
+    return scored;
+  }
+  m.projectionScoringIssue = [...coverage.unsupported, ...coverage.missing].join(", ");
+  m.projectionSource = sleeperProjectionFeedIsAuthoritative ? "unavailable" : "model fallback";
   if (sleeperProjectionFeedIsAuthoritative) return 0;
   return defaultRealisticProj(m);
 }
 
-function scoreLeagueStatLine(st, rules) {
-  if (!st || typeof st !== "object") return null;
-  if (rules && Object.keys(rules).length && state.activeLeague?.provider !== "espn") {
-    let tot = 0, hit = false;
-    for (const k in st) {
-      if (!k.startsWith("pts_") && rules[k] !== undefined && Number.isFinite(Number(st[k]))) { tot += Number(st[k]) * rules[k]; hit = true; }
-    }
-    if (hit) return Math.max(0, tot);
+function scoreConfiguredStats(stats, rules, position, provider = state.activeLeague?.provider || "sleeper") {
+  if (provider === "yahoo") return { points: Number.isFinite(stats?.pts_ppr) ? stats.pts_ppr : null, unsupported: [], missing: ["Imported totals are not independently verified"] };
+  if (provider === "espn" && rules === state.activeLeague?.scoringSettings && stats?.ffoContext === `${getLeagueRecordsKey()}:${state.week}` && Number.isFinite(stats.ffoAppliedTotal)) {
+    return { points: stats.ffoAppliedTotal, unsupported: [], missing: [] };
   }
-  const recM = rules?.rec ?? 1.0;
-  if (recM >= 0.9 && st.pts_ppr !== undefined) return Math.max(0, st.pts_ppr);
-  if (recM >= 0.4 && st.pts_half_ppr !== undefined) return Math.max(0, st.pts_half_ppr);
-  if (st.pts_std !== undefined) return Math.max(0, st.pts_std);
-  return null;
+  // Older snapshots only retained the reception preset, not a full rule set.
+  if (provider !== "espn" && Object.keys(rules || {}).every(key => key === "rec")) {
+    const rec = rules?.rec ?? 1;
+    const key = rec === 1 ? "pts_ppr" : rec === 0.5 ? "pts_half_ppr" : rec === 0 ? "pts_std" : "";
+    if (key && Number.isFinite(stats?.[key])) return { points: stats[key], unsupported: [], missing: [] };
+  }
+  const nativeStats = provider === "espn" && rules === state.activeLeague?.scoringSettings &&
+    stats?.ffoContext === `${getLeagueRecordsKey()}:${state.week}` ? stats.ffoEspnStats : null;
+  return FFOScoring.scoreStatLine(nativeStats || stats, rules, { provider, position });
+}
+
+function scoreLeagueStatLine(stats, rules, position) {
+  return scoreConfiguredStats(stats, rules, position).points;
+}
+
+function getScoringDecisionIssue(playerIds = state.managers.flatMap(manager => manager.players || [])) {
+  if (!state.activeLeague || state.activeLeague.isDemo || state.activeLeague.provider === "yahoo") return "";
+  const report = FFOScoring.describe(state.activeLeague.scoringSettings || {}, state.activeLeague.provider);
+  const providerTotals = playerIds.length && playerIds.every(id => state.players[id]?.projectionSource === "ESPN league-scored projection");
+  if (report.unsupported.length && !providerTotals) return `Unsupported scoring rules: ${report.unsupported.join(", ")}. Projection-based recommendations are unavailable; provider actual scores remain usable.`;
+  const missing = [...new Set(playerIds)].filter(id => state.players[id]?.projectionScoringIssue);
+  return missing.length ? `${missing.length} player projection${missing.length === 1 ? " has" : "s have"} incomplete scoring inputs. Refresh projections; no verified lineup or trade recommendation is available for this roster.` : "";
 }
 
 function getResolvedPlayoffTeamCount() {
@@ -1598,7 +1733,7 @@ function renderTradeAssetStackHTML(pids) {
             <div style="font-weight:700; font-size:13px; color:var(--text-main);">${p.name}</div>
             <div style="font-size:11px; color:var(--text-muted);">Original Owner: ${p.originalOwnerName}</div>
           </div>
-          <span class="badge badge-blue" style="font-size:11px;">VAL ${p.baseValue}</span>
+          <span class="badge badge-blue" style="font-size:11px;">Model value ${p.baseValue}</span>
         </div>`;
     }
     const po = getPlayerPlayoffSosProfile(p);
@@ -1617,7 +1752,7 @@ function renderTradeAssetStackHTML(pids) {
           </div>
           <div style="font-size:10px; color:var(--text-muted); margin-top:1px;">${wkRangeLbl}: ${po.oppsStr}</div>
         </div>
-        <span class="badge badge-blue" style="font-size:11px;">VAL ${p.baseValue}</span>
+        <span class="badge badge-blue" style="font-size:11px;">Model value ${p.baseValue}</span>
       </div>`;
   }).join("") + `</div>`;
 }
@@ -1700,12 +1835,12 @@ function calcTradeValue(m, lg) {
 
 function recalcAllPlayers() {
   const rules = state.activeLeague?.scoringSettings || {};
-  const recM = rules.rec ?? 1.0;
   const ids = Object.keys(state.players);
 
   for (const pid of ids) {
     const m = state.players[pid];
     if (m.isPick) continue;
+    m.seasonScoringIssue = "";
     m.byeWeek = m.isDemo ? 0 : CURRENT_BYE_WEEKS[m.team] || 0;
     m.projectedPoints = computeLeagueProj(m, state.rawProj[pid], rules);
     const s = state.rawStats[pid];
@@ -1713,12 +1848,12 @@ function recalcAllPlayers() {
     m.adp = Number.isFinite(adpValue) && adpValue > 0 && adpValue < 500 ? adpValue : null;
     const seed = ((m.team || "NFL").charCodeAt(0) * 11 + (m.name || "P").charCodeAt(0) * 5) % 19;
 
-    if (s && (s.gp > 0 || s.gms_active > 0 || s.pts_ppr > 0 || s.pts_std > 0 || s.sack > 0)) {
+    const nativeSeason = state.activeLeague?.provider === "espn" && s?.ffoContext === `${getLeagueRecordsKey()}:${state.week}`;
+    if (s && (s.gp > 0 || s.gms_active > 0 || s.pts_ppr > 0 || s.pts_std > 0 || s.sack > 0 || nativeSeason)) {
       const gp = Math.max(1, s.gp || s.gms_active || 1);
-      const pts = (recM >= 0.9 && s.pts_ppr !== undefined) ? s.pts_ppr
-                : ((recM >= 0.4 && s.pts_half_ppr !== undefined) ? s.pts_half_ppr
-                : (s.pts_std !== undefined ? s.pts_std : m.projectedPoints * gp));
-      m.seasonPpg = pts / gp;
+      const points = scoreLeagueStatLine(s, rules, m.position);
+      m.seasonScoringIssue = points === null ? "Season stat coverage is incomplete; PPG is a projection-derived estimate." : "";
+      m.seasonPpg = nativeSeason && Number.isFinite(s.ffoAppliedAverage) ? s.ffoAppliedAverage : points === null ? m.projectedPoints : points / gp;
       m.targetsPerGame = (s.rec_tgt || 0) / gp;
       m.receptionsPerGame = (s.rec || 0) / gp;
       const recYdsPg = s.rec_yd !== undefined ? (s.rec_yd / gp) : (m.receptionsPerGame * 11.2);
@@ -2122,7 +2257,6 @@ async function loadSyncedAccountLeague(leagueKey = "") {
 async function syncUserAccount({ leagueKey = "", season = state.season } = {}) {
   rememberConnectionFields();
   const provider = document.getElementById("providerSelect")?.value || "";
-  state.provider = provider;
   if (!provider) { setStatus("Choose a provider first."); return; }
   if (provider === "espn") return syncEspnAccount({ leagueKey, season });
   if (provider === "yahoo") { setStatus("Choose a Yahoo roster CSV or JSON file to import. Direct sign-in needs a secure OAuth backend."); return; }
@@ -2140,11 +2274,11 @@ async function syncUserAccount({ leagueKey = "", season = state.season } = {}) {
     setStatus("Connecting account...");
     const uObj = await fetchJson(`https://api.sleeper.app/v1/user/${encodeURIComponent(u)}`);
     if (!uObj || !uObj.user_id) { markDataSource("account", new Error("Account not found.")); setStatus("Account not found."); window.FFOUsage?.track("connect_failure", { provider: "sleeper" }); return; }
-    state.userId = uObj.user_id;
-    const lgs = await fetchJson(`https://api.sleeper.app/v1/user/${state.userId}/leagues/nfl/${season}`);
+    const lgs = await fetchJson(`https://api.sleeper.app/v1/user/${uObj.user_id}/leagues/nfl/${season}`);
     if (!Array.isArray(lgs)) throw new Error("The provider returned an invalid league list.");
+    state.provider = "sleeper";
+    state.userId = uObj.user_id;
     markDataSource("account");
-    window.FFOGameday?.rememberSource({ type: "sleeper", username: uObj.username || u, userId: String(state.userId) });
     state.leagues = (lgs || []).map(o => {
       const st = o.settings || {};
       const totTeams = o.total_rosters || 12;
@@ -2166,12 +2300,10 @@ async function syncUserAccount({ leagueKey = "", season = state.season } = {}) {
     });
     if (!state.leagues.length) throw new Error(`No ${season} leagues found for ${u}.`);
     await loadSyncedAccountLeague(leagueKey);
+    if (!state.managers.length) throw new Error("The league returned no teams. Your previous workspace has been retained.");
+    window.FFOGameday?.rememberSource({ type: "sleeper", username: uObj.username || u, userId: String(state.userId) });
     window.FFOUsage?.track("connect_success", { provider: "sleeper" });
-    if (document.getElementById("tab-connect").classList.contains("active")) {
-      activateTab("tab-inbox");
-      renderGMInbox();
-    }
-    applyToolDeepLink();
+    finishConnection();
     return true;
   } catch (error) { window.FFOUsage?.track("connect_failure", { provider: "sleeper" }); markDataSource("account", error); setStatus(`Could not connect to this provider: ${error.message}`); return false; }
   finally { endConnectionSync(); }
@@ -2187,8 +2319,9 @@ function createYahooPlayer(source, league) {
   const id = `yahoo_${source.playerId || normalizeDraftPlayerName(source.name).replace(/ /g, "_")}`;
   const position = normalizeYahooPosition(source.position);
   const team = normalizeTeamCode(source.nflTeam || source.team || "FA");
-  const seasonPpg = Math.max(0, Number(source.seasonPpg || source.pointsPerGame || 0));
-  const projectedPoints = Math.max(0, Number(source.projectedPoints || source.projection || seasonPpg));
+  const seasonPpg = Number(source.seasonPpg ?? source.pointsPerGame ?? 0);
+  const projection = source.projectedPoints ?? source.projection;
+  const projectedPoints = projection === "" || projection == null ? seasonPpg : Number(projection);
   state.players[id] = {
     id, name: source.name || "Unknown player", position, team, status: source.status || "Active",
     injuryStatus: source.injuryStatus || "Healthy", age: Math.max(0, Number(source.age) || 0), exp: Math.max(0, Number(source.experience) || 0),
@@ -2226,10 +2359,10 @@ async function importYahooRosterFile(file, { demo = false } = {}) {
       if ([teamIndex, nameIndex, positionIndex].some(value => value < 0)) throw new Error("CSV headers must include Manager (or Fantasy Team), Player, and Position.");
       const get = (row, names) => { const column = index(names); return column < 0 ? "" : row[column] || ""; };
       const teams = new Map();
-      rows.slice(1).forEach(row => {
+      rows.slice(1).forEach((row, rowIndex) => {
         const teamName = row[teamIndex]?.trim();
         const name = row[nameIndex]?.trim();
-        if (!teamName || !name) return;
+        if (!teamName || !name) throw new Error(`CSV row ${rowIndex + 2} needs both a manager/team and player name.`);
         if (!teams.has(teamName)) teams.set(teamName, {
           teamName, manager: get(row, ["manager", "owner"]), wins: Number(get(row, ["wins"])) || 0,
           losses: Number(get(row, ["losses"])) || 0, pointsFor: Number(get(row, ["pointsfor", "pf"])) || 0,
@@ -2249,6 +2382,11 @@ async function importYahooRosterFile(file, { demo = false } = {}) {
     }
     if (!Array.isArray(payload.teams) || !payload.teams.length) throw new Error("No teams found. JSON imports need a teams array; CSV imports need team and player rows.");
     for (const player of [...payload.teams.flatMap(team => team.players || []), ...(payload.freeAgents || [])]) {
+      for (const field of ["projectedPoints", "projection", "seasonPpg", "pointsPerGame", "actualPoints"]) {
+        if (player[field] !== undefined && player[field] !== null && player[field] !== "" && !Number.isFinite(Number(player[field]))) {
+          throw new Error(`${player.name || "A player"} has an invalid ${field}; use a number or leave it blank.`);
+        }
+      }
       if (player.planningByeWeek !== undefined && parseNflWeek(player.planningByeWeek) === null) {
         throw new Error("planningByeWeek must be an integer from 1 through 18 when supplied.");
       }
@@ -2335,14 +2473,13 @@ async function importYahooRosterFile(file, { demo = false } = {}) {
     await reloadWorkspaceWrite;
     if (!demo) window.FFOGameday?.rememberSource({ type: "yahoo", leagueId: league.leagueId, name: league.name, season: league.season, payload });
     setStatus(demo ? "Demo league loaded. All sample players and results are fictional." : `Imported ${league.name} from Yahoo file • ${state.managers.length} teams`);
-    if (demo) activateTab("tab-opt", { navigate: true });
+    if (demo) {
+      connectionTransaction.committed = true;
+      activateTab("tab-opt", { navigate: true });
+    }
     else {
       window.FFOUsage?.track("connect_success", { provider: "yahoo" });
-      if (document.getElementById("tab-connect").classList.contains("active")) {
-        activateTab("tab-inbox");
-        renderGMInbox();
-      }
-      applyToolDeepLink();
+      finishConnection();
     }
   } catch (error) {
     if (!demo) window.FFOUsage?.track("connect_failure", { provider: "yahoo" });
@@ -2354,7 +2491,6 @@ async function importYahooRosterFile(file, { demo = false } = {}) {
 function updateProviderControls() {
   renderConnectionLayout();
   const provider = document.getElementById("providerSelect")?.value || "";
-  state.provider = provider;
   const espn = provider === "espn";
   const sleeper = provider === "sleeper";
   const yahoo = provider === "yahoo";
@@ -2377,7 +2513,7 @@ function updateProviderControls() {
         <li>If you are the league manager, you can flip that setting yourself, then press <i>Import League(s)</i> again.</li>
       </ol><p>Never paste your ESPN password or cookies (espn_s2 / SWID) into this or any site.</p></details>`;
     } else {
-      help.textContent = sleeper ? "Connect with your account username to load league settings and rosters." : (yahoo ? "CSV: manager, player, position, nfl_team; optional waiver_priority and actual_points. JSON teams may include waiverPriority; players may include actualPoints. Set FAAB remaining in the planner. Yahoo OAuth is not configured on this static site." : "");
+      help.innerHTML = sleeper ? "Use your Sleeper username, not email. Loads all your leagues." : (yahoo ? 'Manual snapshot, not Yahoo sign-in or live sync. <a href="/downloads/yahoo-roster-template.csv" download>Download CSV template</a> · <a href="/downloads/yahoo-roster-example.json" download>JSON example with scoring</a>. Replace the example rows with your roster. Required CSV columns: manager, player, position. Use nfl_team, starter, projected_points, season_ppg and actual_points when available. Imported point totals must already use your league scoring. Re-import to update; scores, injuries and FAAB are not automatically refreshed.' : "");
     }
   }
   window.FFOUsage?.mountConnectionChoices();
@@ -2389,8 +2525,7 @@ function normalizeEspnRosterPositions(slotCounts = {}) {
 }
 
 function normalizeEspnScoring(scoringSettings = {}) {
-  const reception = (scoringSettings.scoringItems || []).find(item => Number(item.statId) === 53);
-  return { rec: Number(reception?.points) || 0 };
+  return FFOScoring.normalizeEspnScoring(scoringSettings);
 }
 
 function getEspnMatchupWeeks(league, game) {
@@ -2443,6 +2578,7 @@ async function syncEspnAccount({ leagueKey = "", season = state.season } = {}) {
         scoringSettings: normalizeEspnScoring(settings.scoringSettings), espnData: data
       };
     }));
+    state.provider = "espn";
     state.leagues = leagues;
     state.userId = "";
     const select = document.getElementById("leagueSelect");
@@ -2453,14 +2589,11 @@ async function syncEspnAccount({ leagueKey = "", season = state.season } = {}) {
       select.appendChild(option);
     });
     markDataSource("account");
-    leagues.forEach(league => window.FFOGameday?.rememberSource({ type: "espn", leagueId: league.leagueId, season: league.season, name: league.name }));
     await loadSyncedAccountLeague(leagueKey);
+    if (!state.managers.length) throw new Error("The league returned no teams. Your previous workspace has been retained.");
+    leagues.forEach(league => window.FFOGameday?.rememberSource({ type: "espn", leagueId: league.leagueId, season: league.season, name: league.name }));
     window.FFOUsage?.track("connect_success", { provider: "espn" });
-    if (document.getElementById("tab-connect").classList.contains("active")) {
-      activateTab("tab-inbox");
-      renderGMInbox();
-    }
-    applyToolDeepLink();
+    finishConnection();
     return true;
   } catch (error) {
     window.FFOUsage?.track("connect_failure", { provider: "espn" });
@@ -2552,7 +2685,7 @@ function extractEspnCurrentPoints(data, week) {
     const player = entry.playerPoolEntry?.player || entry.player || {};
     if (player.id === undefined) return;
     const playerId = getInternalPlayerIdFromEspn(player);
-    const weeklyStats = Array.isArray(player.stats) ? player.stats.find(stat => Number(stat.scoringPeriodId) === Number(week)) : null;
+    const weeklyStats = Array.isArray(player.stats) ? player.stats.find(stat => Number(stat.scoringPeriodId) === Number(week) && Number(stat.statSourceId) === 0 && Number(stat.statSplitTypeId ?? 1) === 1) : null;
     const points = entry.playerPoolEntry?.appliedStatTotal ?? entry.appliedStatTotal ?? weeklyStats?.appliedTotal;
     if (points !== undefined && Number.isFinite(Number(points))) scores[playerId] = Number(points);
   }));
@@ -2569,6 +2702,32 @@ async function loadEspnLeague(idx) {
   await fetchWeeklyProjections();
 
   const data = league.espnData;
+  (data.teams || []).forEach(team => (team.roster?.entries || []).forEach(entry => {
+    const player = entry.playerPoolEntry?.player || entry.player || {};
+    if (player.id === undefined) return;
+    const id = getInternalPlayerIdFromEspn(player);
+    for (const key of ["ffoEspnStats", "ffoAppliedTotal", "ffoAppliedAverage", "ffoContext"]) {
+      if (state.rawProj[id]) delete state.rawProj[id][key];
+      if (state.rawStats[id]) delete state.rawStats[id][key];
+    }
+    const projected = (player.stats || []).find(row => Number(row.scoringPeriodId) === Number(state.week) &&
+      Number(row.statSourceId) === 1 && Number(row.statSplitTypeId ?? 1) === 1);
+    if (projected?.stats) state.rawProj[id] = { ...state.rawProj[id], ffoEspnStats: projected.stats, ffoContext: `${getLeagueRecordsKey()}:${state.week}` };
+    if (projected?.appliedTotal !== null && projected?.appliedTotal !== undefined && Number.isFinite(Number(projected.appliedTotal))) {
+      state.rawProj[id] = { ...state.rawProj[id], ffoAppliedTotal: Number(projected.appliedTotal), ffoContext: `${getLeagueRecordsKey()}:${state.week}` };
+    }
+    const season = (player.stats || []).find(row => Number(row.scoringPeriodId) === 0 && Number(row.statSourceId) === 0);
+    if (season?.stats) {
+      state.rawStats[id] = { ...state.rawStats[id], ffoEspnStats: season.stats, ffoContext: `${getLeagueRecordsKey()}:${state.week}` };
+      if (season.appliedTotal !== null && season.appliedTotal !== undefined && Number.isFinite(Number(season.appliedTotal))) {
+        Object.assign(state.rawStats[id], { ffoAppliedTotal: Number(season.appliedTotal), ffoContext: `${getLeagueRecordsKey()}:${state.week}` });
+      }
+      if (season.appliedAverage !== null && season.appliedAverage !== undefined && Number.isFinite(Number(season.appliedAverage))) {
+        state.rawStats[id].ffoAppliedAverage = Number(season.appliedAverage);
+      }
+    }
+  }));
+  recalcAllPlayers();
   state.currentNflWeek = Number(data.status?.currentScoringPeriod) || state.currentNflWeek;
   document.getElementById("weekSelect").value = String(state.week);
   state.livePlayerPoints = extractEspnCurrentPoints(data, state.week);
@@ -3221,7 +3380,7 @@ function renderTradeBuilderSide(isSideA) {
     div.innerHTML = `
       <img class="avatar" src="${avatarUrl(p)}" onerror="this.style.display='none'" />
       <div style="flex:1;"><div style="font-weight:700;font-size:13px;color:#F2F4F8;"><img class="team-logo-sm" src="${teamLogoUrl(p.team)}" onerror="this.style.display='none'"/>${p.name}${isExt ? ' <span class="badge badge-yellow" style="font-size:9px;padding:2px 6px;">COMP</span>' : ''}</div><div style="font-size:11px;color:#8E96AA;">${p.position} #${p.posRank} - ${p.team} • ${p.seasonPpg.toFixed(1)} PPG • <span class="sos-mini-pill ${po.pillCls}">Playoff SOS: ${po.letter}</span></div></div>
-      <div style="text-align:right;"><span class="badge badge-green">VAL ${p.baseValue}</span></div>`;
+      <div style="text-align:right;"><span class="badge badge-green">Model value ${p.baseValue}</span></div>`;
     div.onclick = () => {
       const idx = activeArr.indexOf(p.id);
       if (idx >= 0) activeArr.splice(idx, 1); else activeArr.push(p.id);
@@ -3239,7 +3398,7 @@ function renderTradeBuilderSide(isSideA) {
       pDiv.innerHTML = `
         <span class="pos-pill" style="background:rgba(10,132,255,0.18);color:#64D2FF;">PICK</span>
         <div style="flex:1;"><div style="font-weight:700;font-size:12px;color:#F2F4F8;">${pk.name}</div><div style="font-size:10px;color:#8E96AA;">Original Owner: ${pk.originalOwnerName}</div></div>
-        <span class="badge badge-blue">VAL ${pk.baseValue}</span>`;
+        <span class="badge badge-blue">Model value ${pk.baseValue}</span>`;
       pDiv.onclick = () => {
         const idx = activeArr.indexOf(pk.id);
         if (idx >= 0) activeArr.splice(idx, 1); else activeArr.push(pk.id);
@@ -3254,6 +3413,8 @@ function renderTradeBuilderSide(isSideA) {
 function buildTradeLineupImpact(teamA, teamB, sideA, sideB) {
   if (!teamA || !teamB || teamA === teamB || String(teamA.rosterId) === String(teamB.rosterId)) return { reason: "Choose two different teams." };
   if (!sideA.length || !sideB.length) return { reason: "Select at least one asset on each side." };
+  const scoringIssue = getScoringDecisionIssue([...(teamA.players || []), ...(teamB.players || [])]);
+  if (scoringIssue) return { reason: scoringIssue };
   const all = [...sideA, ...sideB];
   if (new Set(all).size !== all.length) return { reason: "An asset appears more than once." };
   for (const [team, ids] of [[teamA, sideA], [teamB, sideB]]) {
@@ -3292,8 +3453,8 @@ function updateTradeEvaluation() {
     if (cA > cB) adjA = Math.round(valA * tax); else adjB = Math.round(valB * tax);
   }
 
-  document.getElementById("sideATitle").textContent = `${nameA} Sends (${adjA} pts)`;
-  document.getElementById("sideBTitle").textContent = `${nameB} Sends (${adjB} pts)`;
+  document.getElementById("sideATitle").textContent = `${nameA} sends · Model trade value ${adjA}`;
+  document.getElementById("sideBTitle").textContent = `${nameB} sends · Model trade value ${adjB}`;
 
   const renderPkg = (elId, arr, isSideA) => {
     const el = document.getElementById(elId);
@@ -3309,8 +3470,8 @@ function updateTradeEvaluation() {
       const chip = document.createElement("div");
       chip.className = "pkg-chip"; chip.style.cursor = "pointer";
       chip.innerHTML = p.isPick
-        ? `<div style="display:flex;align-items:center;gap:8px;"><span class="pos-pill" style="background:rgba(10,132,255,0.18);color:#64D2FF;width:38px;height:20px;line-height:20px;">PICK</span><b style="font-size:12px;">${p.name}</b><span style="font-size:11px;color:var(--text-muted);">(${p.team})</span></div><span class="badge badge-blue" style="font-size:10px;">VAL ${p.baseValue} ✕</span>`
-        : `<div style="display:flex;align-items:center;gap:8px;"><img class="avatar" style="width:28px;height:28px;" src="${avatarUrl(p)}" onerror="this.style.display='none'" /><span class="pos-pill" style="${posBadgeStyle(p.position)}width:38px;height:20px;line-height:20px;">${p.position}</span><b style="font-size:12px;">${p.name}</b><span style="font-size:11px;color:var(--text-muted);">(${p.team})</span></div><span class="badge badge-blue" style="font-size:10px;">VAL ${p.baseValue} ✕</span>`;
+        ? `<div style="display:flex;align-items:center;gap:8px;"><span class="pos-pill" style="background:rgba(10,132,255,0.18);color:#64D2FF;width:38px;height:20px;line-height:20px;">PICK</span><b style="font-size:12px;">${p.name}</b><span style="font-size:11px;color:var(--text-muted);">(${p.team})</span></div><span class="badge badge-blue" style="font-size:10px;">Model value ${p.baseValue} ✕</span>`
+        : `<div style="display:flex;align-items:center;gap:8px;"><img class="avatar" style="width:28px;height:28px;" src="${avatarUrl(p)}" onerror="this.style.display='none'" /><span class="pos-pill" style="${posBadgeStyle(p.position)}width:38px;height:20px;line-height:20px;">${p.position}</span><b style="font-size:12px;">${p.name}</b><span style="font-size:11px;color:var(--text-muted);">(${p.team})</span></div><span class="badge badge-blue" style="font-size:10px;">Model value ${p.baseValue} ✕</span>`;
       chip.onclick = () => {
         const idx = arr.indexOf(id);
         if (idx >= 0) arr.splice(idx, 1);
@@ -3340,6 +3501,15 @@ function updateTradeEvaluation() {
   else { fairEl.textContent = `Favors ${nameA} (+${diff} net value)`; fairEl.style.color = "var(--warn)"; }
 
   if (!tmA || !tmB) return;
+  const scoringIssue = getScoringDecisionIssue([...(tmA.players || []), ...(tmB.players || [])]);
+  if (scoringIssue) {
+    document.getElementById("simRows").innerHTML = `<p class="draft-empty">${draftEscapeHtml(scoringIssue)}</p>`;
+    for (const side of ["A", "B"]) {
+      document.getElementById(`simBanner${side}`).textContent = "Win probability unavailable";
+      document.getElementById(`simScore${side}`).textContent = "Scoring inputs incomplete";
+    }
+    return;
+  }
   const beforeA = calcOptimalLineup(impact.beforeA, true).total;
   const beforeB = calcOptimalLineup(impact.beforeB, true).total;
   const afterAIds = impact.afterA;
@@ -3673,6 +3843,11 @@ function renderTradeDatabase() {
   });
 
   const tbody = tbl.querySelector("tbody");
+  const scoringIssue = getScoringDecisionIssue();
+  if (scoringIssue) {
+    tbody.innerHTML = `<tr><td colspan="5" class="draft-empty">${draftEscapeHtml(scoringIssue)}</td></tr>`;
+    return;
+  }
   const filtered = [];
 
   state.dbTrades.forEach(t => {
@@ -3755,6 +3930,11 @@ function renderTradeFinder() {
   });
 
   const tbody = tbl.querySelector("tbody");
+  const scoringIssue = getScoringDecisionIssue();
+  if (scoringIssue) {
+    tbody.innerHTML = `<tr><td colspan="6" class="draft-empty">${draftEscapeHtml(scoringIssue)}</td></tr>`;
+    return;
+  }
   if (!myTm || state.managers.length < 2) {
     if (document.getElementById("posGradesGrid")) document.getElementById("posGradesGrid").innerHTML = "";
     tbody.innerHTML = `<tr><td colspan="6" style="padding:24px;color:var(--text-muted);">Connect a league above to analyze positional grades, Contender vs. Rebuilder tags, and archetype-matched trades.</td></tr>`;
@@ -4110,17 +4290,17 @@ function renderOptimizerLineupRow(slot, player, scores, scorePhase) {
   const status = !kickoff.locked && kickoff.kickoff
     ? new Date(kickoff.kickoff).toLocaleString(undefined, { weekday: "short", hour: "numeric", minute: "2-digit" })
     : kickoff.label;
-  const projected = Number(player.projectedPoints || 0);
+  const projected = player.projectionScoringIssue ? null : Number(player.projectedPoints || 0);
   const notStarted = scorePhase === "UPCOMING" || actualPoints === undefined || (scorePhase === "THIS WEEK" && !kickoff.locked && kickoff.status !== "unknown");
   const actual = notStarted ? "--" : actualPoints.toFixed(1);
-  const beat = actual !== "--" && scorePhase === "FINAL" ? (actualPoints >= projected ? "is-up" : "is-down") : "";
+  const beat = actual !== "--" && projected !== null && scorePhase === "FINAL" ? (actualPoints >= projected ? "is-up" : "is-down") : "";
   return `<div class="opt-sheet-row">
     <span class="opt-sheet-slot" style="${posBadgeStyle(slot === "FLEX" || slot === "SUPER_FLEX" ? "" : player.position)}">${draftEscapeHtml(slot === "SUPER_FLEX" ? "SF" : slot)}</span>
     <span class="opt-sheet-photo"><img src="${draftEscapeHtml(avatarUrl(player))}" alt="" loading="lazy" onerror="this.remove()" /></span>
     <span class="opt-sheet-name"><strong>${draftEscapeHtml(player.name)}</strong><small><img class="team-logo-sm" src="${teamLogoUrl(player.team)}" alt="" onerror="this.remove()" />${draftEscapeHtml(player.position)} · ${draftEscapeHtml(player.team || "FA")}${kickoff.status === "unknown" ? "" : `<span class="optimizer-kickoff-status ${kickoff.status}">${draftEscapeHtml(status)}</span>`}</small></span>
-    <span class="opt-sheet-num"><b>${projected.toFixed(1)}</b><small>Proj</small></span>
+    <span class="opt-sheet-num"><b>${projected === null ? "--" : projected.toFixed(1)}</b><small>Proj</small></span>
     <span class="opt-sheet-num ${beat}"><b>${actual}</b><small>${scorePhase === "THIS WEEK" ? "So far" : "Actual"}</small></span>
-    <span class="opt-sheet-difference">${renderOptimizerDifference(actualPoints, player.projectedPoints, scorePhase === "THIS WEEK")}</span>
+    <span class="opt-sheet-difference">${renderOptimizerDifference(actualPoints, projected, scorePhase === "THIS WEEK")}</span>
   </div>`;
 }
 
@@ -4134,6 +4314,19 @@ function renderOptimizerTab(idx) {
   const rowsEl = document.getElementById("optRows");
   if (!rowsEl) return;
   rowsEl.innerHTML = "";
+  const scoringIssue = getScoringDecisionIssue(tm.players);
+  if (scoringIssue) {
+    const scores = getOptimizerActualPoints();
+    const phase = state.week < state.currentNflWeek ? "FINAL" : state.week === state.currentNflWeek ? "THIS WEEK" : "UPCOMING";
+    rowsEl.innerHTML = `<p class="draft-empty">${draftEscapeHtml(scoringIssue)}</p>${(tm.starters || []).map((id, index) => {
+      const player = state.players[id];
+      return player ? renderOptimizerLineupRow((state.activeLeague.rosterPositions || [])[index] || player.position, player, scores, phase) : "";
+    }).join("")}`;
+    document.getElementById("optCurTot").textContent = "Current lineup shown below; scoring estimate unavailable.";
+    document.getElementById("optBestTot").textContent = "Projected best unavailable";
+    document.getElementById("optSubAlert").textContent = scoringIssue;
+    return;
+  }
   const emptyPlayer = (name, position) => ({ id: "0", name, position, team: "FA", projectedPoints: 0 });
   const currentPlayers = [...new Set((tm.starters || []).filter(id => id && id !== "0").map(String))].map(id => state.players[id]).filter(Boolean);
   const currentIds = new Set(currentPlayers.map(player => String(player.id)));
@@ -4489,11 +4682,13 @@ function getWaiverRankMetric(player, mode, pf = "ALL") {
 }
 
 function getWaiverCandidates(manager, pf = "ALL", reviewPlayerId = "", mode = 0) {
+  if (getScoringDecisionIssue(manager?.players || [])) return [];
   const rostered = new Set(state.managers.flatMap(roster => roster.players || []).map(String));
   const rosterNeeds = getWaiverRosterNeeds(manager);
   const pool = Object.values(state.players).filter(p => {
     if (Boolean(p.isDemo) !== Boolean(state.activeLeague?.isDemo)) return false;
-    if (p.isPick || rostered.has(String(p.id))) return false;
+    if (p.importedLeagueKey && p.importedLeagueKey !== getNewsletterLeagueKey()) return false;
+    if (p.isPick || p.projectionScoringIssue || rostered.has(String(p.id))) return false;
     if (p.position !== "DEF" && !p.isCurrentNfl) return false;
     if (pf === "ALL" && !["QB","RB","WR","TE","DEF","K"].includes(p.position)) return false;
     if (pf === "FLEX" && !["RB","WR","TE"].includes(p.position)) return false;
@@ -4531,7 +4726,7 @@ function renderWaiversTab() {
   const formatMetric = fa => mode === 1 ? `${fa.waiverRankMetric.toFixed(1)}` : mode === 2 ? `${fa.waiverRankMetric >= 0 ? "+" : ""}${fa.waiverRankMetric.toFixed(1)}` : `+${fa.vorpScore.toFixed(1)}`;
   tbl.innerHTML = `<thead><tr><th>Pos</th><th style="text-align:left;">Player</th><th>NFL Team</th><th>Health Status</th><th>${state.season} Bye</th><th>Season PPG</th><th>Week ${state.week} Proj</th><th class="waiver-rank-col">${metricHeader}</th><th>Roster fit</th><th>Bid</th><th></th></tr></thead><tbody></tbody>`;
   const tbody = tbl.querySelector("tbody");
-  if (!state.waiverRankedTargets.length) tbody.innerHTML = `<tr><td colspan="11" class="draft-empty">${mode ? "No available players with games played match this view." : "No available players match this filter."}</td></tr>`;
+  if (!state.waiverRankedTargets.length) tbody.innerHTML = `<tr><td colspan="11" class="draft-empty">${draftEscapeHtml(getScoringDecisionIssue(selectedManager?.players || []) || (mode ? "No available players with complete scoring and games played match this view." : "No available players with complete projection scoring match this filter."))}</td></tr>`;
 
   state.waiverRankedTargets.forEach(fa => {
     const queuedIndex = faabState.claims.findIndex(claim => claim.playerId === fa.id);
@@ -4544,7 +4739,7 @@ function renderWaiversTab() {
     tr.tabIndex = -1;
     tr.innerHTML = `
       <td><span class="pos-pill" style="${posBadgeStyle(fa.position)}">${fa.position}</span></td>
-      <td>${renderPlayerProfile(fa, `${fa.position} #${fa.posRank} · Snap: ${fa.snapSharePct.toFixed(0)}%`)}</td>
+      <td>${renderPlayerProfile(fa, `${fa.position} #${fa.posRank} · Snap: ${Number.isFinite(fa.snapSharePct) ? `${fa.snapSharePct.toFixed(0)}%` : "not provided"}`)}</td>
       <td style="font-weight:700;">${fa.team}</td>
       <td style="font-weight:700;color:${hCol};">${fa.injuryStatus}</td>
       <td style="color:${isBye ? 'var(--bad)' : 'var(--text-muted)'};font-weight:${isBye ? '700' : '400'};">${fa.byeWeek > 0 ? (isBye ? `Wk ${fa.byeWeek} (BYE)` : `Wk ${fa.byeWeek}`) : "--"}</td>
@@ -4743,7 +4938,7 @@ function drawSingleAnalyticsChart() {
         <td style="color:var(--good);font-weight:700;">${Number(p[cfg.yKey] || 0).toFixed(2)}</td>
         <td style="font-weight:700;">${p.seasonPpg.toFixed(2)} pts</td>
         <td style="color:var(--good);font-weight:700;">${p.projectedPoints.toFixed(2)} pts</td>
-        <td style="color:var(--accent);font-weight:700;">VAL ${p.baseValue}</td>`;
+        <td style="color:var(--accent);font-weight:700;">Model value ${p.baseValue}</td>`;
       tbody.appendChild(tr);
     });
   }
@@ -5022,7 +5217,7 @@ function renderSosTab() {
     const envMeta = isPlayoffs ? `${r.sos.domeCount} Dome Game(s) • ${r.sos.smashCount} Smash Matchup(s)` : `${state.season} Bye: Week ${CURRENT_BYE_WEEKS[r.team] || '--'} • ${r.sos.smashCount} Smash Matchup(s)`;
     const subjectHTML = r.isTeamRow
       ? `<div class="player-cell"><img class="avatar" src="${teamLogoUrl(r.team)}" onerror="this.style.display='none'" /><div><div style="font-weight:800;font-size:14px;">${r.name} (${r.team})</div><div style="font-size:11px;color:var(--text-muted);">${envMeta}</div></div></div>`
-      : `<div class="player-cell"><img class="avatar" src="${avatarUrl(r.player)}" onerror="this.style.display='none'" /><div><div style="font-weight:700;font-size:14px;"><img class="team-logo-sm" src="${teamLogoUrl(r.team)}" onerror="this.style.display='none'"/>${r.player.name}</div><div style="font-size:11px;color:var(--text-muted);">${r.player.position} #${r.player.posRank} (${r.team}) • ${r.player.seasonPpg.toFixed(1)} PPG • VAL ${r.player.baseValue}</div></div></div>`;
+      : `<div class="player-cell"><img class="avatar" src="${avatarUrl(r.player)}" onerror="this.style.display='none'" /><div><div style="font-weight:700;font-size:14px;"><img class="team-logo-sm" src="${teamLogoUrl(r.team)}" onerror="this.style.display='none'"/>${r.player.name}</div><div style="font-size:11px;color:var(--text-muted);">${r.player.position} #${r.player.posRank} (${r.team}) • ${r.player.seasonPpg.toFixed(1)} PPG • Model value ${r.player.baseValue}</div></div></div>`;
 
     const weekProjections = projectionInfo ? weeks.map(w => CURRENT_BYE_WEEKS[r.team] === w ? 0 : getSosPlayerWeekProjection(r.player, w, projectionInfo)) : [];
     const cellsHTML = weeks.map((w, index) => `<td>${renderSosCellHTML(r.team, w, pos, isPlayoffs, projectionInfo ? weekProjections[index] : false)}</td>`).join("");
@@ -5107,18 +5302,23 @@ function readFaabStateForLeague(league) {
   } catch { return defaults; }
 }
 
-function getPortfolioClaimDrop(roster, addPlayer) {
+function getPortfolioClaimDrop(roster, addPlayer, league = state.activeLeague) {
   const starters = new Set((roster.starters || []).map(String));
   const inactive = new Set([...(roster.reserve || []), ...(roster.taxi || [])].map(String));
   return (roster.players || []).map(id => state.players[id]).filter(player => {
     return player && !player.isPick && String(player.id) !== String(addPlayer.id) && !starters.has(String(player.id)) && !inactive.has(String(player.id)) && !getPlayerGameDayStatus(player).locked;
-  }).sort((a, b) => Number(a.projectedPoints || 0) - Number(b.projectedPoints || 0) || Number(a.baseValue || 0) - Number(b.baseValue || 0))[0] || null;
+  }).flatMap(player => {
+    const points = league?.isDemo || (league === state.activeLeague && !player.projectionScoringIssue) ? player.projectedPoints :
+      scoreConfiguredStats(state.rawProj[player.id], league?.scoringSettings || {}, player.position, league?.provider).points;
+    return points === null ? [] : [{ ...player, projectedPoints: points }];
+  }).sort((a, b) => a.projectedPoints - b.projectedPoints || Number(a.baseValue || 0) - Number(b.baseValue || 0))[0] || null;
 }
 
 function buildPortfolioClaimSuggestions(entries) {
   const playerPool = Object.values(state.players).filter(player => player && !player.isPick && player.isCurrentNfl && ["QB", "RB", "WR", "TE", "K", "DEF"].includes(player.position));
   const suggestions = [];
   entries.forEach(({ league, roster, rosters }) => {
+    if (!league.isDemo && league === state.activeLeague && getScoringDecisionIssue(roster.players)) return;
     const saved = readFaabStateForLeague(league);
     const queued = saved.claims.reduce((sum, claim) => sum + Math.max(0, Number(claim.bid) || 0), 0);
     const requirements = getBasePositionSlotCounts(roster.rosterPositions || league.rosterPositions || []);
@@ -5148,13 +5348,19 @@ function buildPortfolioClaimSuggestions(entries) {
         if (counts[position] < (requirements[position] || 0) + 1) needs.push({ position, score: 25, gap: 0, label: `${position} depth` });
       });
     }
-    const available = playerPool.filter(player => !owned.has(player.id) && Boolean(player.isDemo) === Boolean(league.isDemo));
+    const available = playerPool.filter(player => !owned.has(player.id) && Boolean(player.isDemo) === Boolean(league.isDemo) &&
+      (!player.importedLeagueKey || player.importedLeagueKey === getNewsletterLeagueKey(league))).flatMap(player => {
+      const points = league.isDemo || (league === state.activeLeague && !player.projectionScoringIssue) ? player.projectedPoints :
+        scoreConfiguredStats(state.rawProj[player.id], league.scoringSettings || {}, player.position, league.provider).points;
+      return points === null ? [] : [{ ...player, projectedPoints: points,
+        vorpScore: league.isDemo || league === state.activeLeague ? player.vorpScore : points - replacementPpg(player.position) }];
+    });
     needs.forEach(need => {
       const candidates = available.filter(player => need.position === "FLEX" ? ["RB", "WR", "TE"].includes(player.position) : player.position === need.position)
         .sort((a, b) => Number(b.vorpScore || 0) - Number(a.vorpScore || 0) || Number(b.projectedPoints || 0) - Number(a.projectedPoints || 0));
       const player = candidates.find(candidate => !saved.claims.some(claim => String(claim.playerId) === String(candidate.id)));
       if (!player) return;
-      const drop = getPortfolioClaimDrop(roster, player);
+      const drop = getPortfolioClaimDrop(roster, player, league);
       const waiverRank = Number(roster.waiverPriority) || 0;
       const waiverRankBonus = waiverRank > 0 && waiverRank <= rosters.length ? (rosters.length - waiverRank + 1) * 2 : 0;
       suggestions.push({
@@ -5196,7 +5402,7 @@ async function renderPortfolioClaimPlan(forceRefresh = false) {
     const faabRemaining = Math.max(0, readFaabStateForLeague(item.league).budget - readFaabStateForLeague(item.league).claims.reduce((sum, claim) => sum + Math.max(0, Number(claim.bid) || 0), 0));
     const waiverLabel = item.waiverPriority ? `Waiver #${item.waiverPriority}` : "Waiver priority unavailable";
     return `<article class="portfolio-claim-group"><div class="portfolio-claim-group-heading"><strong>${draftEscapeHtml(item.league.name)} · ${draftEscapeHtml(item.roster.name)}</strong><span>${draftEscapeHtml(waiverLabel)} · $${faabRemaining} FAAB · ${draftEscapeHtml(item.need.label)}</span></div><div class="portfolio-claim-row">${renderPlayerProfile(item.player, `${Number(item.player.projectedPoints || 0).toFixed(1)} projected · +${Number(item.player.vorpScore || 0).toFixed(1)} VORP`)}<span class="portfolio-claim-drop">${item.drop ? `Drop candidate: ${draftEscapeHtml(item.drop.name)} (${Number(item.drop.projectedPoints || 0).toFixed(1)} projected)` : "No unlocked bench drop candidate"}</span><button type="button" class="btn-builder-action" data-portfolio-claim="${draftEscapeHtml(item.player.id)}" data-portfolio-league="${item.leagueIndex}" data-portfolio-drop="${draftEscapeHtml(item.drop?.id || "")}" data-portfolio-bid="${item.bid}" ${queued ? "disabled" : ""}>${queued ? "Already queued" : `Queue $${item.bid}`}</button></div></article>`;
-  }).join("") : `<div class="draft-empty">No available players currently match tracked roster gaps or depth needs.</div>`;
+  }).join("") : `<div class="draft-empty">No verified claim suggestions match your tracked rosters. Missing scoring inputs can exclude candidates; review scoring coverage before assuming there are no useful pickups.</div>`;
 }
 
 function queuePortfolioFaabClaim(button) {
@@ -5927,6 +6133,7 @@ function buildWeeklyRecommendations(waiverCandidates) {
   const managerIndex = parseInt(document.getElementById("teamSelect")?.value || "0", 10);
   const manager = state.managers[managerIndex];
   if (!manager) return [];
+  if (getScoringDecisionIssue(manager.players)) return [];
   const recommendations = [];
   const optimal = calcOptimalLineup(manager.players, false, getDecisionLineupConstraints(manager));
   const currentStarters = new Set((manager.starters || []).map(String));
@@ -6452,7 +6659,7 @@ async function renderGMInbox(forceRefresh = false) {
   if (document.getElementById("inboxRecap")?.open) renderLeagueNewsletter();
   if (getInboxScope() !== "all") document.getElementById("gmInboxContext").textContent = `Week ${state.week}${state.activeLeague.isDemo ? " · Demo" : ""} · ${selectedManager?.teamName || "Your roster"}${urgentCount ? ` · ${urgentCount} urgent decision${urgentCount === 1 ? "" : "s"}` : ""}`;
   document.getElementById("gmInboxDataDetails").hidden = false;
-  document.getElementById("gmInboxDataNote").textContent = `${getProjectionSourceNote()} Suggestions are estimates. Review and submit changes in your league.`;
+  document.getElementById("gmInboxDataNote").textContent = `${getScoringDecisionIssue()} ${getProjectionSourceNote()} Suggestions are estimates. Review and submit changes in your league.`.trim();
   const leagueRecords = Object.values(feedback).filter(record => record.leagueKey === leagueKey);
   const rated = leagueRecords.filter(record => typeof record.helpful === "boolean");
   const helpfulRate = rated.length ? `${Math.round(rated.filter(record => record.helpful).length / rated.length * 100)}% helpful · ${rated.length} ratings` : "No ratings yet";
@@ -6517,7 +6724,7 @@ function handleGMInboxClick(event) {
     return;
   }
   if (!actionButton) return;
-  window.FFOUsage?.track("recommendation_review", { tool: document.querySelector(".tab-page.active")?.id || "none" });
+  window.FFOUsage?.track("recommendation_review", { provider: state.activeLeague?.isDemo ? "demo" : state.provider || "none", tool: document.querySelector(".tab-page.active")?.id || "none" });
   const action = actionButton.dataset.gmOpen;
   const playerId = actionButton.dataset.gmPlayer;
   if (action === "watch" && playerId) { togglePlayerWatch(playerId); renderGMInbox(); return; }
@@ -6559,18 +6766,17 @@ function handleGMInboxClick(event) {
 
 function getPortfolioPlayerPoints(player, league) {
   const stats = state.rawStats[player.id];
-  const receptionPoints = Number(league.scoringSettings?.rec ?? 1);
-  const statsKey = receptionPoints >= 0.9 ? "pts_ppr" : (receptionPoints >= 0.4 ? "pts_half_ppr" : "pts_std");
+  if (league.isDemo) return player.seasonPpg || player.projectedPoints;
+  if (league.provider === "yahoo") return league === state.activeLeague ? player.seasonPpg : null;
   const games = Math.max(1, Number(stats?.gp || stats?.gms_active || 1));
-  if (Number.isFinite(Number(stats?.[statsKey]))) {
-    let points = Number(stats[statsKey]) / games;
-    const teBonus = Number(league.scoringSettings?.bonus_rec_te || 0);
-    if (player.position === "TE" && teBonus) points += (Number(stats.rec || 0) / games) * teBonus;
-    return points;
+  if (league.provider === "espn") {
+    const entries = (league.espnData?.teams || []).flatMap(team => team.roster?.entries || []);
+    const source = entries.find(entry => ESPN_PLAYER_TO_INTERNAL_ID.get(String((entry.playerPoolEntry?.player || entry.player || {}).id)) === player.id);
+    const season = (source?.playerPoolEntry?.player?.stats || source?.player?.stats || []).find(row => Number(row.scoringPeriodId) === 0 && Number(row.statSourceId) === 0);
+    return season?.appliedAverage !== null && season?.appliedAverage !== undefined && Number.isFinite(Number(season.appliedAverage)) ? Number(season.appliedAverage) : null;
   }
-  const activeReceptionPoints = Number(state.activeLeague?.scoringSettings?.rec ?? 1);
-  const receptionDelta = receptionPoints - activeReceptionPoints;
-  return Number(player.projectedPoints || player.seasonPpg || 0) + receptionDelta * Number(player.receptionsPerGame || 0);
+  const scored = scoreConfiguredStats(stats, league.scoringSettings || {}, player.position, league.provider).points;
+  return scored === null ? null : scored / games;
 }
 
 function getPortfolioStarterSlots(roster, position) {
@@ -6604,15 +6810,17 @@ function renderPortfolioMoveComparison() {
     const ownedAtPosition = roster.players.map(id => state.players[id]).filter(item => item && !item.isPick && item.position === player.position);
     const starterSlots = getPortfolioStarterSlots(roster, player.position);
     const need = Math.max(0, starterSlots - ownedAtPosition.length);
-    const replacement = ownedAtPosition.map(item => getPortfolioPlayerPoints(item, league)).sort((a, b) => a - b)[Math.max(0, ownedAtPosition.length - starterSlots)] || 0;
+    const replacements = ownedAtPosition.map(item => getPortfolioPlayerPoints(item, league));
     const points = getPortfolioPlayerPoints(player, league);
+    if (points === null || replacements.some(value => value === null)) return { league, roster, status: "Available; scoring inputs incomplete", outlook: "Scoring estimate unavailable", points: null };
+    const replacement = replacements.sort((a, b) => a - b)[Math.max(0, ownedAtPosition.length - starterSlots)] || 0;
     const impact = Math.max(0, points - replacement);
     return { league, roster, status: "Available", need: need ? `Starter need (${need})` : "Depth", points, impact, outlook: need ? "Priority add" : impact >= 8 ? "Useful depth" : "Low priority" };
   });
   const tone = result => !result.roster ? "muted" : result.status === "Available" ? (result.outlook === "Priority add" ? "good" : result.outlook === "Useful depth" ? "accent" : "muted") : result.status === "Already on your roster" ? "accent" : "muted";
   table.innerHTML = `<div class="pf-move-player">${renderPlayerProfile(player)}</div><div class="pf-move-grid">${results.map(result => result.roster
     ? `<article class="pf-move-card is-${tone(result)}"><header><strong>${draftEscapeHtml(result.league.name)}</strong><small>${draftEscapeHtml(result.roster.name)}</small></header>
-        <div class="pf-move-ppg"><b>${result.points === undefined ? "--" : result.points.toFixed(1)}</b><small>est. PPG</small></div>
+        <div class="pf-move-ppg"><b>${result.points == null ? "--" : result.points.toFixed(1)}</b><small>est. PPG</small></div>
         <span class="pf-move-outlook">${draftEscapeHtml(result.outlook || "--")}${result.impact ? ` · +${result.impact.toFixed(1)}` : ""}</span>
         <small class="pf-move-status">${draftEscapeHtml(result.status)}${result.need ? ` · ${draftEscapeHtml(result.need)}` : ""}</small></article>`
     : `<article class="pf-move-card is-muted"><header><strong>${draftEscapeHtml(result.league.name)}</strong></header><small class="pf-move-status">${draftEscapeHtml(result.status)}</small></article>`
@@ -9073,12 +9281,13 @@ function buildSeasonPlayerGrades(seasonData) {
     let team = String(player.team || "").toUpperCase();
     if (team === "JAC") team = "JAX"; if (team === "LA") team = "LAR";
     const gameWeeks = seasonData.weeks.filter(week => team && team !== "FA" && CURRENT_BYE_WEEKS[team] !== week);
-    let rosTotal = 0;
-    gameWeeks.forEach(week => { rosTotal += scoreLeagueStatLine(seasonData.projections[seasonData.weeks.indexOf(week)][player.id], rules) || 0; });
+    const weeklyScores = gameWeeks.map(week => scoreLeagueStatLine(seasonData.projections[seasonData.weeks.indexOf(week)][player.id], rules, player.position));
+    if (weeklyScores.some(points => points === null)) return;
+    const rosTotal = weeklyScores.reduce((sum, points) => sum + points, 0);
     const rosPpg = gameWeeks.length ? rosTotal / gameWeeks.length : 0;
     const stats = statsMatchSeason ? state.rawStats[player.id] : null;
     const games = Number(stats?.gp || stats?.gms_active || 0);
-    const seasonPoints = games > 0 ? scoreLeagueStatLine(stats, rules) : null;
+    const seasonPoints = games > 0 ? scoreLeagueStatLine(stats, rules, player.position) : null;
     const seasonPpg = seasonPoints !== null ? seasonPoints / games : null;
     const sos = ["QB", "RB", "WR", "TE", "DEF"].includes(player.position) && gameWeeks.length
       ? computeSosWindowMetrics(team, gameWeeks, player.position) : null;
@@ -9106,6 +9315,8 @@ function getSeasonSosLetter(avgRank) {
 
 function buildTeamGradeReport(managerIndex) {
   if (!state.activeLeague || state.managers.length < 2) return { reason: "Connect or import a league with at least two rosters." };
+  const scoringIssue = getScoringDecisionIssue();
+  if (scoringIssue) return { reason: scoringIssue };
   const manager = state.managers[managerIndex];
   if (!manager) return { reason: "Select a roster in the header to view its grade." };
   const slots = (state.activeLeague.rosterPositions || []).filter(slot => !["BN", "IR", "TAXI"].includes(slot));
@@ -9118,7 +9329,7 @@ function buildTeamGradeReport(managerIndex) {
   const missing = rosters.reduce((count, { ids }) => count + ids.filter(id => {
     const player = state.players[id];
     return !player || Boolean(player.isDemo) !== Boolean(state.activeLeague.isDemo) ||
-      typeof player.projectedPoints !== "number" || !Number.isFinite(player.projectedPoints) || player.projectedPoints < 0;
+      typeof player.projectedPoints !== "number" || !Number.isFinite(player.projectedPoints);
   }).length, 0);
   if (missing) return { reason: `${missing} roster player projection${missing === 1 ? " is" : "s are"} missing, invalid, or from a different data pool. Refresh or re-import before grading the league.` };
   const lineups = rosters.map(({ ids }) => calcOptimalLineup(ids, false));
@@ -9190,7 +9401,7 @@ function renderTeamGrades() {
       const unitGrade = getRelativeTeamGrade(points, unitAverage);
       return `<section class="team-grade-unit"><div class="draft-panel-heading"><h3>${escape(position)} unit</h3><span class="badge badge-blue">${escape(unitGrade.letter)}</span></div><p class="comparison-note">Top ${depth}: ${points.toFixed(1)} weighted pts/game · league ${unitAverage.toFixed(1)}</p><div class="team-grade-players">${players.map(player => {
         const profile = profiles[player.id];
-        if (!profile) return `<article class="team-grade-player">${renderPlayerProfile(player, "No rest-of-season projection")}<span class="grade-pill">—</span></article>`;
+        if (!profile) return `<article class="team-grade-player">${renderPlayerProfile(player, "Rest-of-season scoring inputs incomplete")}<span class="grade-pill">—</span></article>`;
         const seasonText = profile.seasonPpg === null ? "No games yet" : `${profile.seasonPpg.toFixed(1)} season (${profile.games} gp)`;
         const sosLetter = profile.sos ? getSeasonSosLetter(profile.sos.avgRank) : "";
         const rankText = profile.rank ? `${position}${profile.rank}` : "Unranked";
@@ -9221,6 +9432,7 @@ function getProjectionSourceNote() {
   if (state.workspaceSnapshot) return `Saved workspace snapshot from ${new Date(state.workspaceSnapshot).toLocaleString()}; projections and availability are not live. Reconnect or re-import to update.`;
   if (state.activeLeague?.isDemo) return "Fictional demo projections, fixed Week 6 snapshot; not actionable player advice.";
   if (state.activeLeague?.provider === "yahoo") return "Imported snapshot; re-import to update projections.";
+  if (state.activeLeague?.provider === "espn") return "ESPN league-scored projections are used when provided for the selected week. Other projections are recomputed from available stat counters; missing custom inputs withhold recommendations.";
   if (state.dataErrors.projections || !state.dataFreshness.projections) return "Projection feed unavailable or not verified; point estimates may use model fallbacks.";
   return `${state.activeLeague?.season || state.season} Week ${state.week} projections checked ${new Date(state.dataFreshness.projections).toLocaleString()}. Estimates are not guarantees.`;
 }
@@ -9352,7 +9564,8 @@ function renderStartSitAdvice() {
     (player.byeWeek > 0 && player.byeWeek === state.week) || (manager?.players?.includes(player.id) && !active.includes(player.id));
   const evidence = [a, b].map((player, index) => ({ projection: player.projectedPoints, unavailable: unavailable(player), adjustment: matchups[index].adjustment ?? null }));
   const sharedPosition = a.position === b.position || (state.activeLeague?.rosterPositions || []).some(slot => !["BN", "IR", "TAXI"].includes(slot) && isPosEligible(a.position, slot) && isPosEligible(b.position, slot));
-  const advice = !sharedPosition ? { reason: "These players do not share an eligible starter slot." } :
+  const scoringIssue = getScoringDecisionIssue([a.id, b.id]);
+  const advice = scoringIssue ? { reason: scoringIssue } : !sharedPosition ? { reason: "These players do not share an eligible starter slot." } :
     getPlayerGameDayStatus(a).locked || getPlayerGameDayStatus(b).locked ? { reason: "A player is kickoff-locked; no current-week start recommendation." } :
     FFOWeeklyMatchups.compare(...evidence);
   const winner = advice.preferred === "a" ? a : advice.preferred === "b" ? b : null;
@@ -9376,6 +9589,8 @@ function renderStartSitAdvice() {
 }
 
 function getComparisonRosterScenario(playerA, playerB, manager) {
+  const scoringIssue = getScoringDecisionIssue([...(manager?.players || []), playerA.id, playerB.id]);
+  if (scoringIssue) return { reason: scoringIssue };
   if (!state.activeLeague || !manager) return { reason: "Connect a league and select a roster to compare lineup impact." };
   if (playerA.id === playerB.id) return { reason: "Choose two different players to compare." };
   const rosterIds = manager.players || [];
@@ -9470,6 +9685,7 @@ function renderPlayerComparison(refreshChoices = true) {
   const results = document.getElementById("compareResults");
   if (!selectA || !selectB || !results) return;
   const pool = Object.values(state.players).filter(player => !player.isPick &&
+    (!player.importedLeagueKey || player.importedLeagueKey === getNewsletterLeagueKey()) &&
     ["QB", "RB", "WR", "TE", "K", "DEF"].includes(player.position) &&
     Boolean(player.isDemo) === Boolean(state.activeLeague?.isDemo) && player.isCurrentNfl);
   if (refreshChoices) {
@@ -9488,8 +9704,8 @@ function renderPlayerComparison(refreshChoices = true) {
   const numeric = value => typeof value === "number" && Number.isFinite(value) ? value : null;
   const format = value => numeric(value) === null ? "Unavailable" : value.toFixed(1);
   const rows = [
-    [`Week ${state.week} projected points`, playerA.projectedPoints, playerB.projectedPoints],
-    ["Season PPG (may be estimated)", playerA.seasonPpg, playerB.seasonPpg],
+    [`Week ${state.week} projected points`, playerA.projectionScoringIssue ? null : playerA.projectedPoints, playerB.projectionScoringIssue ? null : playerB.projectedPoints],
+    ["Season PPG (may be estimated)", playerA.seasonScoringIssue ? null : playerA.seasonPpg, playerB.seasonScoringIssue ? null : playerB.seasonPpg],
     ["Model trade value (not market price)", playerA.baseValue, playerB.baseValue]
   ].map(([label, a, b]) => {
     const delta = numeric(a) !== null && numeric(b) !== null ? b - a : null;
@@ -9571,24 +9787,8 @@ function bindControlEvents() {
   document.getElementById("providerSelect")?.addEventListener("change", () => {
     restoreConnectionInput();
     rememberConnectionFields();
-    forgetReloadWorkspace();
-    leaveWorkspaceSnapshot();
-    state.leagues = [];
-    state.activeLeague = null;
-    state.managers = [];
-    state.currentMatchups = [];
-    document.getElementById("leagueSelect").innerHTML = `<option value="">Connect a provider first</option>`;
-    document.getElementById("teamSelect").innerHTML = `<option value="">Select a league</option>`;
-    renderHistoricalRows([]);
-    document.getElementById("historyMeta").textContent = "History will update after you connect or import a league.";
-    renderWeeklyLeagueReport();
-    renderPickemChallenge();
     updateProviderControls();
-    renderPlayerComparison();
-    renderTeamGrades();
-    renderRosterPlanner();
-    renderLeagueRecords();
-    setStatus("Provider changed. Connect a league to load its data.");
+    setStatus(state.activeLeague ? "Choose another connection. Your current league stays loaded until the new connection succeeds." : "Choose a provider and connect a league to get started.");
   });
   document.getElementById("yahooImportFile")?.addEventListener("change", event => {
     if (!event.target.files?.[0]) return;
@@ -10071,7 +10271,7 @@ function reportReloadWorkspaceError(message) {
 }
 
 function rememberWorkspaceSelection() {
-  if (resumingReloadWorkspace || new URLSearchParams(location.search).get("resume") === "0" || !state.activeLeague || state.activeLeague.isDemo) return;
+  if (connectionSyncBusy || resumingReloadWorkspace || new URLSearchParams(location.search).get("resume") === "0" || !state.activeLeague || state.activeLeague.isDemo) return;
   const manager = state.managers[Number(document.getElementById("teamSelect").value)];
   if (!manager) return;
   try {
@@ -10085,7 +10285,7 @@ function rememberWorkspaceSelection() {
 }
 
 function saveReloadWorkspace() {
-  if (resumingReloadWorkspace || new URLSearchParams(location.search).get("resume") === "0" || !state.activeLeague || state.activeLeague.isDemo || !state.managers.length) return;
+  if (connectionSyncBusy || resumingReloadWorkspace || new URLSearchParams(location.search).get("resume") === "0" || !state.activeLeague || state.activeLeague.isDemo || !state.managers.length) return;
   rememberWorkspaceSelection();
   let backup;
   try { backup = buildWorkspaceBackup(); } catch (error) {
@@ -10242,6 +10442,7 @@ function applyWorkspaceSnapshot(backup) {
   playerAlertState.loaded = false;
   rosterPlannerContext = "";
   gmInboxContext = "";
+  recalcAllPlayers();
   renderAllViews(backup.ui.teamIndex);
   const planner = backup.ui.planner;
   document.getElementById("plannerWeeks").value = String(planner.weeks);
@@ -10388,9 +10589,10 @@ const TOOL_DEEP_LINKS = Object.freeze({
 function applyToolDeepLink() {
   const tabId = TOOL_DEEP_LINKS[new URLSearchParams(location.search).get("tool")];
   if (!tabId || !document.querySelector(`.nav-btn[data-tab="${tabId}"]`)) return;
-  if (!state.activeLeague && !["tab-intel", "tab-connect"].includes(tabId)) {
+  if (!state.activeLeague && tabId !== "tab-connect") {
     activateTab("tab-connect");
-    setStatus("Connect a league to open the linked tool.");
+    const name = document.querySelector(`.nav-btn[data-tab="${tabId}"]`).textContent.trim();
+    setStatus(`Connect a league to open ${name}. We will take you there after syncing.`);
     return;
   }
   activateTab(tabId);

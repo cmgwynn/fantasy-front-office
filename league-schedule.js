@@ -67,21 +67,11 @@ function normalizeLeagueSchedule(league, data, week, managers = state.managers) 
   return { games, issues: [...new Set(issues)] };
 }
 
-function scoreLeagueProjectionStats(stats, rules = state.activeLeague?.scoringSettings || {}) {
+function scoreLeagueProjectionStats(stats, rules = state.activeLeague?.scoringSettings || {}, position) {
   if (!stats || typeof stats !== "object") return null;
   const provider = state.activeLeague?.provider;
   if (!state.activeLeague) return Number.isFinite(stats.pts_ppr) ? stats.pts_ppr : null;
-  let score;
-  const counters = Object.keys(stats).filter(key => !key.startsWith("pts_") && Object.hasOwn(rules, key));
-  if (provider !== "espn" && counters.length) {
-    if (counters.some(key => typeof stats[key] !== "number" || !Number.isFinite(stats[key]) || typeof rules[key] !== "number" || !Number.isFinite(rules[key]))) return null;
-    score = counters.reduce((sum, key) => sum + stats[key] * rules[key], 0);
-  } else {
-    if (provider !== "espn" && Object.entries(rules).some(([key, value]) => key !== "rec" && value !== 0)) return null;
-    const field = rules.rec === 0 ? "pts_std" : rules.rec === 0.5 ? "pts_half_ppr" : rules.rec === 1 ? "pts_ppr" : "";
-    score = stats[field];
-  }
-  return Number.isFinite(score) ? score : null;
+  return scoreConfiguredStats(stats, rules, position, provider).points;
 }
 
 function getScheduleTeamProjection(manager, week, projections, starterSlots = state.activeLeague?.rosterPositions || []) {
@@ -96,7 +86,7 @@ function getScheduleTeamProjection(manager, week, projections, starterSlots = st
     const availability = getPlannerAvailability(player, week, true);
     if (availability.kind === "unknown") return null;
     if (availability.heldOut || availability.kind === "bye") continue;
-    const score = scoreLeagueProjectionStats(projections[id]?.stats || projections[id], rules);
+    const score = scoreLeagueProjectionStats(projections[id]?.stats || projections[id], rules, player.position);
     if (score === null) return null;
     candidates.push({ m: player, score });
   }
