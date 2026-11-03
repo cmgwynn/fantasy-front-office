@@ -630,6 +630,7 @@
   }
 
   async function refresh({ force = false } = {}) {
+    if (!await requestConnectedBetaAccess()) return;
     if (gd.loading) {
       gd.pending = gd.pending || gd.loading.then(() => { gd.pending = null; return refresh({ force }); });
       return gd.pending;
@@ -677,6 +678,7 @@
   }
 
   function activate() {
+    if (!window.FFOUsage?.isAllowed()) { showConnectedBetaGate(); return; }
     if (!gd.data && !gd.loadedAt && !gd.restored) { gd.restored = true; restoreViewCache(); }
     renderSavedManager();
     renderAlertsButton();
@@ -698,6 +700,7 @@
   }
 
   function ensureData() {
+    if (!window.FFOUsage?.isAllowed()) { showConnectedBetaGate(); return Promise.resolve(null); }
     if (gd.data || gd.loading) return gd.loading || Promise.resolve(gd.data);
     return refresh();
   }
@@ -736,6 +739,7 @@
     const provider = form.elements.provider.value;
     const value = form.elements.value.value.trim();
     if (!value) return;
+    if (!await requestConnectedBetaAccess()) return;
     const button = form.querySelector("button");
     button.disabled = true;
     try {

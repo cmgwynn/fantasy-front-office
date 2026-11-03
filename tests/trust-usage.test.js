@@ -37,24 +37,88 @@ test("playoff labels never imply mathematical must-win, clinch or elimination", 
   }
 });
 
-function usageContext(consent, previousWeek) {
-  const values = new Map(consent ? [["fantasy-front-office:usage-consent:v1", "yes"]] : []);
+function usageContext(consent, previousWeek, { us = false, privacy = false, beta = false, service = true, storageFails = false } = {}) {
+  const values = new Map(consent ? [["fantasy-front-office:usage-consent:v1", consent === "no" ? "no" : "yes"]] : []);
+  if (beta) values.set("fantasy-front-office:usage-beta-agreement:v1", "yes");
   if (previousWeek) values.set("fantasy-front-office:usage-consent:v1:last-visit", String(previousWeek));
   const requests = [];
+  const listeners = {};
+  const notice = { innerHTML: "", contains: () => false, querySelector: () => ({}) };
   const context = {
-    window: {}, console, URLSearchParams, Date, Set,
-    document: { querySelectorAll: () => [{ dataset: { tab: "tab-opt" } }], addEventListener() {} },
-    localStorage: { getItem: key => values.get(key) || null, setItem: (key, value) => values.set(key, value), removeItem: key => values.delete(key) },
-    fetch: async (url, options) => { requests.push({ url, options }); return { ok: true }; }
+    window: {}, navigator: { globalPrivacyControl: privacy }, console, URLSearchParams, Date, Set,
+    CustomEvent: class { constructor(type, options) { this.type = type; this.detail = options.detail; } },
+    document: { dispatchEvent() {}, querySelectorAll: selector => selector === ".nav-btn" ? [{ dataset: { tab: "tab-opt" } }] : [notice], addEventListener(event, callback) { listeners[event] = callback; } },
+    localStorage: { getItem: key => values.get(key) || null, setItem: (key, value) => { if (storageFails) throw new Error("Storage blocked"); values.set(key, value); }, removeItem: key => { if (storageFails) throw new Error("Storage blocked"); values.delete(key); } },
+    fetch: async (url, options) => {
+      if (options.method === "POST") requests.push({ url, options });
+      return { ok: service, headers: new Headers({ "X-FFO-Connected-Beta": us ? "eligible" : "unavailable" }) };
+    }
   };
   vm.runInNewContext(read("usage-metrics.js"), context);
-  return { track: context.window.FFOUsage.track, requests, values };
+  return { ...context.window.FFOUsage, requests, values, notice, listeners };
 }
 
-test("usage tracking is opt-in and does not send anything by default", async () => {
+test("usage tracking does not send events without beta agreement", async () => {
   const { track, requests } = usageContext(false);
   await track("connect_success", { provider: "sleeper" });
   assert.equal(requests.length, 0);
+});
+
+test("US beta agreement is unchecked and required before connecting", async () => {
+  const usage = usageContext(false, undefined, { us: true });
+  assert.equal(await usage.checkAccess(), false);
+  assert.doesNotMatch(usage.notice.innerHTML, / checked/);
+  await usage.track("connect_success", { provider: "sleeper" });
+  assert.equal(usage.requests.length, 0);
+  assert.equal(await usage.requireConnectionAccess(), false);
+  usage.listeners.change({ target: { matches: () => true, checked: true } });
+  assert.equal(await usage.requireConnectionAccess(), true);
+  await usage.track("connect_start", { provider: "sleeper" });
+  await usage.track("connect_success", { provider: "sleeper" });
+  assert.deepEqual(usage.requests.map(entry => JSON.parse(entry.options.body).event), ["visit", "connect_start", "connect_success"]);
+  assert.equal(usage.values.get("fantasy-front-office:usage-consent:v1"), "yes");
+  assert.equal(usage.values.get("fantasy-front-office:usage-beta-agreement:v1"), "yes");
+});
+
+test("saved optional choices do not imply beta agreement and browser privacy signals block access", async () => {
+  for (const [consent, privacy, beta] of [["no", false, false], [true, false, false], [true, true, true]]) {
+    const usage = usageContext(consent, undefined, { us: true, privacy, beta });
+    assert.equal(await usage.checkAccess(), false);
+    await usage.track("connect_success", { provider: "espn" });
+    assert.equal(usage.requests.length, 0);
+  }
+});
+
+test("withdrawing beta agreement immediately pauses access and stops future events", async () => {
+  const usage = usageContext(true, undefined, { us: true, beta: true });
+  assert.equal(await usage.checkAccess(), true);
+  const before = usage.requests.length;
+  usage.listeners.change({ target: { matches: () => true, checked: false } });
+  assert.equal(usage.isAllowed(), false);
+  await usage.track("connect_success", { provider: "sleeper" });
+  assert.equal(usage.requests.length, before);
+  assert.equal(usage.values.get("fantasy-front-office:usage-consent:v1"), "no");
+  assert.equal(usage.values.has("fantasy-front-office:usage-beta-agreement:v1"), false);
+});
+
+test("non-US/unknown locations, unavailable service and failed agreement saves cannot unlock beta access", async () => {
+  for (const options of [{}, { us: true, privacy: true }, { us: true, service: false }, { us: true, storageFails: true }]) {
+    const usage = usageContext(false, undefined, options);
+    await usage.checkAccess();
+    usage.listeners.change({ target: { matches: () => true, checked: true } });
+    assert.equal(await usage.requireConnectionAccess(), false);
+    assert.equal(usage.requests.length, 0);
+  }
+});
+
+test("withdrawal stops in-memory access even when browser storage fails", async () => {
+  const usage = usageContext(true, undefined, { us: true, beta: true, storageFails: true });
+  assert.equal(await usage.checkAccess(), true);
+  const before = usage.requests.length;
+  usage.listeners.change({ target: { matches: () => true, checked: false } });
+  assert.equal(usage.isAllowed(), false);
+  await usage.track("tool_open", { tool: "tab-opt" });
+  assert.equal(usage.requests.length, before);
 });
 
 test("usage privacy has scoped spacing, disclosure sections and an associated consent label", () => {
@@ -67,17 +131,20 @@ test("usage privacy has scoped spacing, disclosure sections and an associated co
   assert.match(read("styles.css"), /\.usage-dialog \{ overflow:auto; \}/);
 });
 
-test("regular opted-in visitors report a new reporting week without transmitting dates or IDs", () => {
+test("returning beta participants report a new week without transmitting dates or IDs", async () => {
   const week = Math.floor(Date.now() / (7 * 86400000));
-  const returning = usageContext(true, week - 1);
+  const returning = usageContext(true, week - 1, { us: true, beta: true });
+  await returning.checkAccess();
   assert.deepEqual(returning.requests.map(entry => JSON.parse(entry.options.body).event), ["visit", "return_week"]);
-  const sameWeek = usageContext(true, week);
+  const sameWeek = usageContext(true, week, { us: true, beta: true });
+  await sameWeek.checkAccess();
   assert.equal(sameWeek.requests.length, 1);
   assert.equal(returning.values.get("fantasy-front-office:usage-consent:v1:last-visit"), String(week));
 });
 
 test("usage tracking strictly limits payloads and deduplicates per page load", async () => {
-  const { track, requests } = usageContext(true);
+  const { track, requests, checkAccess } = usageContext(true, undefined, { us: true, beta: true });
+  await checkAccess();
   await track("tool_open", { provider: "sleeper", tool: "tab-opt", username: "do-not-send" });
   await track("tool_open", { provider: "sleeper", tool: "tab-opt" });
   await track("unrecognized_event");
@@ -92,10 +159,12 @@ test("usage tracking strictly limits payloads and deduplicates per page load", a
 
 const endpoint = () => import(`data:text/javascript;base64,${Buffer.from(read("functions/api/usage.js")).toString("base64")}`);
 function request(payload, options = {}) {
-  return new Request("https://fantasyfo.com/api/usage", {
+  const request = new Request("https://fantasyfo.com/api/usage", {
     method: "POST", headers: { Origin: "https://fantasyfo.com", "Content-Type": "application/json", ...options.headers },
     body: typeof payload === "string" ? payload : JSON.stringify(payload)
   });
+  Object.defineProperty(request, "cf", { value: { country: "US" } });
+  return request;
 }
 
 test("first-party usage endpoint accepts only fixed fields and writes no request metadata", async () => {
@@ -109,6 +178,8 @@ test("first-party usage endpoint accepts only fixed fields and writes no request
     assert.equal((await onRequest({ request: request(invalid), env })).status, 400);
   }
   assert.equal((await onRequest({ request: request(valid, { headers: { Origin: "https://other.test" } }), env })).status, 403);
+  assert.equal((await onRequest({ request: request(valid, { headers: { "Sec-GPC": "1" } }), env })).status, 403);
+  assert.equal((await onRequest({ request: request(valid, { headers: { DNT: "1" } }), env })).status, 403);
   assert.equal((await onRequest({ request: request("x".repeat(513)), env })).status, 413);
   assert.equal((await onRequest({ request: request(valid, { headers: { "Content-Type": "text/plain" } }), env })).status, 415);
   assert.equal(writes.length, 1);
@@ -121,6 +192,37 @@ test("unconfigured measurement explicitly reports unavailable instead of accepti
   assert.match(await response.text(), /not configured/);
   assert.equal((await onRequest({ request: new Request("https://fantasyfo.com/api/usage"), env: {} })).status, 503);
   assert.equal((await onRequest({ request: new Request("https://fantasyfo.com/api/usage"), env: { FFO_USAGE: {} } })).status, 200);
+});
+
+test("usage writes reject non-US and unknown locations without touching the dataset", async () => {
+  const { onRequest } = await endpoint();
+  const writes = [];
+  for (const country of ["GB", "DE", undefined]) {
+    const request = new Request("https://fantasyfo.com/api/usage", {
+      method: "POST", headers: { Origin: "https://fantasyfo.com", "Content-Type": "application/json" },
+      body: JSON.stringify({ event: "visit", provider: "none", tool: "none" })
+    });
+    if (country) Object.defineProperty(request, "cf", { value: { country } });
+    const response = await onRequest({ request, env: { FFO_USAGE: { writeDataPoint: point => writes.push(point) } } });
+    assert.equal(response.status, 403);
+  }
+  assert.equal(writes.length, 0);
+});
+
+test("beta eligibility is US-only, no-store, and respects edge GPC without storing geography", async () => {
+  const { onRequest } = await endpoint();
+  for (const [country, gpc, configured, expected] of [
+    ["US", false, true, "eligible"], ["US", true, true, "unavailable"],
+    ["GB", false, true, "unavailable"], ["DE", false, true, "unavailable"],
+    [undefined, false, true, "unavailable"], ["US", false, false, "unavailable"]
+  ]) {
+    const request = new Request("https://fantasyfo.com/api/usage", { headers: gpc ? { "Sec-GPC": "1" } : {} });
+    Object.defineProperty(request, "cf", { value: { country } });
+    const response = await onRequest({ request, env: configured ? { FFO_USAGE: {} } : {} });
+    assert.equal(response.headers.get("X-FFO-Connected-Beta"), expected);
+    assert.equal(response.headers.get("Cache-Control"), "no-store");
+    assert.doesNotMatch(await response.text(), /country|US|GB|DE/);
+  }
 });
 
 test("release metadata matches the app assets and fresh welcome avoids eager database initialization", () => {
@@ -137,7 +239,7 @@ test("release metadata matches the app assets and fresh welcome avoids eager dat
 });
 
 test("release prompts are dismissible and failed snapshot saves never trigger reload", async () => {
-  let version = "20261102-privacy-1";
+  let version = "20261102-beta-1";
   let clock = 60001;
   let banner = null;
   let reloads = 0;
@@ -153,7 +255,7 @@ test("release prompts are dismissible and failed snapshot saves never trigger re
     fetch: async () => ({ ok: true, json: async () => ({ version }) }),
     document: {
       hidden: false, addEventListener() {},
-      querySelector: selector => selector === "main" ? { prepend: node => { banner = node; } } : { src: "https://fantasyfo.com/app.js?v=20261102-privacy-1" },
+      querySelector: selector => selector === "main" ? { prepend: node => { banner = node; } } : { src: "https://fantasyfo.com/app.js?v=20261102-beta-1" },
       getElementById: () => banner,
       createElement: () => ({ setAttribute() {}, querySelector: selector => controls.get(selector), remove() { banner = null; } })
     }

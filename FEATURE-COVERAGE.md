@@ -51,17 +51,40 @@ a league to use roster-based features.
 - Roster age and selected-week warnings update while the page is open.
   The all-leagues Inbox identifies restored, aging and failed-refresh data.
 
-### Optional aggregate usage measurement
+### Required measurement for the connected US beta
 
-This is separate from Cloudflare Web Analytics. Usage privacy in the footer
-is opt-in and off by default.
+This is separate from Cloudflare Web Analytics. Both the welcome form and
+provider connection settings disclose measurement with an inline checkbox.
+Connected use is a US-only beta requiring an unchecked, explicit
+measurement agreement. The availability endpoint uses Cloudflare's request
+country (not client locale) to return `X-FFO-Connected-Beta: eligible` only
+for US requests with a configured binding and no GPC/DNT header. Country is
+not stored in events. Non-US/unknown locations, browser privacy signals and
+unavailable checks pause connected access. Responses are never cached.
+
+A separate `usage-beta-agreement:v1` local key prevents a previous optional
+measurement setting from being treated as beta agreement. Agreement is saved
+before a connection starts, allowing subsequent failure events to be counted.
+Sleeper/ESPN sync, Yahoo real imports, tracked-league switching, saved
+workspace restoration and Gameday loading check access, including automatic
+and deep-link entry points. Demo and public information pages remain available.
+Withdrawal immediately pauses connected views/refreshes and stops events,
+without deleting local plans. A snapshot of an already-loaded league is
+requested before pausing; existing persistence errors remain visible.
+The footer retains agreement withdrawal and re-enrollment controls.
+
+This beta condition is a product choice, not legal certification or a claim
+that analytics are technically necessary. Reassess requirements if audience,
+collection or practices change. Frontend gates are not authentication or
+guaranteed event delivery: browser tools can block or modify requests.
+The public event endpoint rejects non-US/unknown countries and privacy signals.
 The preference dialog separates shared/private information and uses a labeled
 consent card, padded actions and scrolling at small viewport heights.
 Fixed events measure visits, demo starts,
 connection starts/successes/failures, tool opens, recommendation reviews and
 returns in a later seven-day reporting bucket. A given event/provider/tool
 combination is counted at most once per page load. These are approximate
-event counts for consenting users, not unique visitors or an attributable
+event counts for participating users, not unique visitors or an attributable
 cohort funnel. Public submissions can be spoofed; do not use them for billing.
 
 The endpoint accepts only fixed event/provider/tool enums, caps bodies at
@@ -75,6 +98,9 @@ One operator setup step is required:
 1. Cloudflare **Workers & Pages → fantasy-front-office → Settings → Bindings**.
 2. **Add → Analytics engine**. Variable name: `FFO_USAGE`.
 3. Dataset: `ffo_usage`. Save and redeploy for the binding to take effect.
+   If Cloudflare reports Analytics Engine is not enabled, open its account
+   dashboard to provision access before retrying. Dataset creation alone
+   is not verification; the production endpoint and an event write are.
 4. `GET /api/usage` must return 200. Until configured it returns 503 explicitly,
    and new users cannot enable measurement in the preference dialog.
 5. Test using Usage privacy, then connect a test league. Turn it off again

@@ -20,7 +20,7 @@
   <h1>Optimizer Regression Checks</h1>
   <p id="summary" role="status">Loading the app runtime...</p>
   <ol id="results"></ol>
-  <iframe id="appFrame" src="../index.html?v=20261102-privacy-1&amp;resume=0" title="Optimizer test runtime"></iframe>
+  <iframe id="appFrame" src="../index.html?v=20261102-beta-1&amp;resume=0" title="Optimizer test runtime"></iframe>
   <script>
     async function runOptimizerFixtures() {
       const results = [];
@@ -2949,6 +2949,14 @@
         });
         const coldWelcome = frame.contentWindow.eval(`Boolean(document.querySelector("[data-try-demo]")) &&
           !performance.getEntriesByType("resource").some(entry => entry.name.includes("api.sleeper.app/v1/players/nfl"))`);
+        await frame.contentWindow.eval(`FFOUsage.checkAccess()`);
+        frame.contentWindow.FFOUsage = Object.freeze({
+          ...frame.contentWindow.FFOUsage,
+          isAllowed: () => true,
+          checkAccess: async () => true,
+          requireConnectionAccess: async () => true,
+          track() {}
+        });
         await frame.contentWindow.eval("initApp(true)");
         const results = await frame.contentWindow.eval(`(${runOptimizerFixtures.toString()})()`);
         results.unshift({ name: "Cold welcome offers a demo without downloading the NFL player database", passed: coldWelcome });
