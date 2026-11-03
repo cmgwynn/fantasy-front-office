@@ -80,6 +80,16 @@ of reusing active-league points. Model trade values remain relative indices.
 Yahoo totals remain user-imported, already-scored snapshots, not independently
 verified custom-scoring calculations.
 
+Lineup Optimizer keeps supplied Sleeper preset projections visible when full
+custom-league scoring inputs are unavailable. These display PPR/half-PPR/standard
+estimate labels, not verified league projections; actual-minus-estimate differences
+use that labeled baseline. Missing preset totals remain unavailable. This display
+fallback does not enable custom-scored recommendations or change model inputs.
+Individual completed games say Final even during the current NFL week; lineup
+totals stay provisional until all starters have finished. Compact desktop rows
+keep projection, actual and difference on one line; narrow layouts wrap only the
+difference. Review-only mode hides the unavailable best-lineup card.
+
 ### Usage-event interpretation
 
 Connection starts and outcomes, tool opens and recommendation reviews count

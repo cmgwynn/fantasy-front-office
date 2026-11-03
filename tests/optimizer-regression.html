@@ -20,7 +20,7 @@
   <h1>Optimizer Regression Checks</h1>
   <p id="summary" role="status">Loading the app runtime...</p>
   <ol id="results"></ol>
-  <iframe id="appFrame" src="../index.html?v=20261103-reliability-1&amp;resume=0" title="Optimizer test runtime"></iframe>
+  <iframe id="appFrame" src="../index.html?v=20261103-optimizer-display-1&amp;resume=0" title="Optimizer test runtime"></iframe>
   <script>
     async function runOptimizerFixtures() {
       const results = [];
@@ -3104,8 +3104,93 @@
           Boolean(getScoringDecisionIssue()) && buildWeeklyRecommendations().length === 0);
         renderOptimizerTab(0);
         check("Incomplete scoring keeps actual-lineup review available but withholds optimizer advice",
-          document.getElementById("optRows").textContent.includes("incomplete scoring inputs") &&
-          document.getElementById("optBestTot").textContent === "Projected best unavailable");
+          document.getElementById("optRows").textContent.includes("Optimized lineup advice is paused") &&
+          document.getElementById("optBestTot").hidden &&
+          document.querySelectorAll("#optRows .optimizer-unchanged-list .opt-sheet-row").length === 1);
+        const optimizerStateBefore = { schedule: state.gameDayByTeam, available: state.gameDayScheduleAvailable,
+          week: state.week, currentWeek: state.currentNflWeek, points: state.livePlayerPoints };
+        try {
+          state.week = 8; state.currentNflWeek = 8;
+          state.gameDayByTeam = { KC: { status: "final", kickoff: Date.now() - 86400000 } };
+          state.gameDayScheduleAvailable = true;
+          state.rawProj[scoringId].pts_ppr = 12.5;
+          state.livePlayerPoints = { [scoringId]: 22.5 };
+          renderOptimizerTab(0);
+          const row = document.querySelector("#optRows .opt-sheet-row");
+          check("Sparse custom scoring keeps the provided PPR forecast visible and explicitly labeled",
+            row.textContent.includes("12.5") && row.textContent.includes("PPR est") &&
+            row.textContent.includes("+10.0 vs PPR") &&
+            document.querySelector(".optimizer-scoring-note").textContent.includes("may differ from your league") &&
+            scoringPlayer.projectionScoringIssue.includes("bonus_pass_yd_300"));
+          check("Completed games in the current NFL week say Final with no provisional difference",
+            row.querySelectorAll(".opt-sheet-num small")[1].textContent === "Final" &&
+            !row.textContent.includes("so far") && !row.textContent.includes("So far") &&
+            document.getElementById("optCurTot").textContent.includes("Actual 22.5 · final") &&
+            !document.getElementById("optCurTot").textContent.includes("so far"));
+          check("Review-only totals remove the unavailable best-lineup card instead of leaving an empty column",
+            getComputedStyle(document.getElementById("optBestTot")).display === "none" &&
+            document.querySelector(".optimizer-totals").classList.contains("is-review-only"));
+          const previousTab = document.querySelector(".tab-page.active").id;
+          const frameWidth = window.frameElement.style.width;
+          const frameHeight = window.frameElement.style.height;
+          try {
+            activateTab("tab-opt");
+            window.frameElement.style.width = "1186px";
+            window.frameElement.style.height = "950px";
+            const desktopBounds = row.getBoundingClientRect();
+            const differenceBounds = row.querySelector(".opt-sheet-difference").getBoundingClientRect();
+            check("Desktop lineup rows stay at most 60px tall with the difference on the same row",
+              desktopBounds.height > 0 && desktopBounds.height <= 60 &&
+              differenceBounds.bottom <= desktopBounds.bottom &&
+              differenceBounds.top < desktopBounds.top + 32 &&
+              row.scrollWidth <= row.clientWidth);
+            window.frameElement.style.width = "320px";
+            check("Narrow lineup rows stay at most 84px tall without horizontal overflow",
+              row.getBoundingClientRect().height <= 84 && row.scrollWidth <= row.clientWidth);
+          } finally {
+            window.frameElement.style.width = frameWidth;
+            window.frameElement.style.height = frameHeight;
+            activateTab(previousTab);
+          }
+          const card = renderOptimizerPlayerCard(scoringPlayer, "current", new Map([[scoringId, 22.5]]), "THIS WEEK");
+          check("Suggested-change cards also use individual game completion rather than whole-week status",
+            card.includes("FINAL") && !card.includes("SO FAR") && !card.includes("so far"));
+          state.gameDayByTeam.KC.status = "live";
+          check("Live games retain provisional actual scores and differences",
+            renderOptimizerLineupRow("QB", scoringPlayer, new Map([[scoringId, 22.5]]), "THIS WEEK").includes("So far") &&
+            renderOptimizerTotal([scoringPlayer], new Map([[scoringId, 22.5]]), "THIS WEEK").includes("so far"));
+          state.gameDayByTeam.NYJ = { status: "final", kickoff: Date.now() - 86400000 };
+          const finishedPlayer = { ...scoringPlayer, id: "fixture_finished_score", team: "NYJ", projectedPoints: 10, projectionScoringIssue: "" };
+          const mixedScores = new Map([[scoringId, 22.5], [finishedPlayer.id, 15]]);
+          check("Mixed live and completed lineups keep totals provisional without relabeling finished players",
+            renderOptimizerTotal([scoringPlayer, finishedPlayer], mixedScores, "THIS WEEK").includes("so far") &&
+            !renderOptimizerLineupRow("QB", finishedPlayer, mixedScores, "THIS WEEK").includes("So far"));
+          check("A genuinely missing league projection is not displayed as zero",
+            getOptimizerProjection({ id: "fixture_no_projection" }).points === null);
+          state.rawProj[scoringId].pts_ppr = 0;
+          check("Provider baseline zeroes are preserved, not replaced by a model",
+            getOptimizerProjection(scoringPlayer).points === 0);
+          state.rawProj[scoringId].pts_ppr = -1;
+          check("Provider baseline negatives are preserved", getOptimizerProjection(scoringPlayer).points === -1);
+          state.rawProj[scoringId].pts_half_ppr = 8;
+          state.rawProj[scoringId].pts_std = 6;
+          state.activeLeague.scoringSettings.rec = 0.5;
+          check("Half-PPR leagues display a labeled half-PPR baseline rather than PPR",
+            getOptimizerProjection(scoringPlayer).points === 8 && getOptimizerProjection(scoringPlayer).basis === "½ PPR");
+          state.activeLeague.scoringSettings.rec = 0;
+          check("Non-PPR leagues display their supplied standard baseline",
+            getOptimizerProjection(scoringPlayer).points === 6 && getOptimizerProjection(scoringPlayer).basis === "STD");
+          state.activeLeague.scoringSettings.rec = 1;
+          delete state.rawProj[scoringId].pts_ppr;
+          check("Absent provider forecasts stay unavailable rather than becoming false zero projections",
+            getOptimizerProjection(scoringPlayer).points === null &&
+            renderOptimizerTotal([scoringPlayer], new Map(), "THIS WEEK").includes("<b>--</b>"));
+        } finally {
+          state.gameDayByTeam = optimizerStateBefore.schedule;
+          state.gameDayScheduleAvailable = optimizerStateBefore.available;
+          state.week = optimizerStateBefore.week; state.currentNflWeek = optimizerStateBefore.currentWeek;
+          state.livePlayerPoints = optimizerStateBefore.points;
+        }
         const missingSide = FFOGameday.sideTotals([FFOGameday.finishPlayer({
           name: "Missing scoring", team: "KC", proj: null, points: 2
         }, { byTeam: { KC: { state: "pre", remaining: 1 } } })], 2);

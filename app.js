@@ -1613,7 +1613,7 @@ function getScoringDecisionIssue(playerIds = state.managers.flatMap(manager => m
   const providerTotals = playerIds.length && playerIds.every(id => state.players[id]?.projectionSource === "ESPN league-scored projection");
   if (report.unsupported.length && !providerTotals) return `Unsupported scoring rules: ${report.unsupported.join(", ")}. Projection-based recommendations are unavailable; provider actual scores remain usable.`;
   const missing = [...new Set(playerIds)].filter(id => state.players[id]?.projectionScoringIssue);
-  return missing.length ? `${missing.length} player projection${missing.length === 1 ? " has" : "s have"} incomplete scoring inputs. Refresh projections; no verified lineup or trade recommendation is available for this roster.` : "";
+  return missing.length ? `${missing.length} player projection${missing.length === 1 ? " has" : "s have"} incomplete scoring inputs. Custom-scored recommendations are paused; Lineup Optimizer still shows available provider baseline estimates.` : "";
 }
 
 function getResolvedPlayoffTeamCount() {
@@ -4250,27 +4250,49 @@ function getOptimizerActualPoints() {
 }
 
 function getOptimizerPlayerActual(player, scores, scorePhase) {
+  scorePhase = getOptimizerPlayerPhase(player, scorePhase);
   if (scorePhase === "UPCOMING") return undefined;
   const game = getPlayerGameDayStatus(player);
   if (scorePhase === "THIS WEEK" && !game.locked && game.status !== "unknown") return undefined;
   return scores.get(String(player.id));
 }
 
-function renderOptimizerDifference(actual, projected, live = false) {
+function getOptimizerPlayerPhase(player, scorePhase) {
+  return scorePhase === "THIS WEEK" && getPlayerGameDayStatus(player).status === "final" ? "FINAL" : scorePhase;
+}
+
+function getOptimizerProjection(player) {
+  if (!player.projectionScoringIssue) return { points: Number.isFinite(player.projectedPoints) ? player.projectedPoints : null, label: "Proj", basis: "proj", baseline: false };
+  if (state.activeLeague?.provider === "sleeper") {
+    const rec = state.activeLeague.scoringSettings?.rec ?? 1;
+    const [key, basis] = rec === 0 ? ["pts_std", "STD"] : rec === 0.5 ? ["pts_half_ppr", "½ PPR"] : ["pts_ppr", "PPR"];
+    const points = state.rawProj[player.id]?.[key];
+    if (Number.isFinite(points)) return { points, label: `${basis} est`, basis, baseline: true };
+  }
+  return { points: null, label: "Proj", basis: "proj", baseline: false };
+}
+
+function renderOptimizerDifference(actual, projected, live = false, basis = "proj") {
   if (!Number.isFinite(actual) || !Number.isFinite(projected)) return '<span class="opt-difference unavailable">Diff --</span>';
   const difference = actual - projected;
-  return `<span class="opt-difference ${difference >= 0 ? "is-up" : "is-down"}">${difference > 0 ? "+" : ""}${difference.toFixed(1)} vs proj${live ? " · so far" : ""}</span>`;
+  return `<span class="opt-difference ${difference >= 0 ? "is-up" : "is-down"}">${difference > 0 ? "+" : ""}${difference.toFixed(1)} vs ${draftEscapeHtml(basis)}${live ? " · so far" : ""}</span>`;
 }
 
 function renderOptimizerTotal(players, scores, scorePhase) {
-  const projected = players.reduce((sum, player) => sum + Number(player.projectedPoints || 0), 0);
+  const projections = players.map(getOptimizerProjection);
+  const projected = projections.some(projection => projection.points === null) ? null : projections.reduce((sum, projection) => sum + projection.points, 0);
+  const baseline = projections.some(projection => projection.baseline);
+  const final = scorePhase === "FINAL" || (scorePhase === "THIS WEEK" && players.length > 0 && players.every(player => getOptimizerPlayerPhase(player, scorePhase) === "FINAL"));
+  const live = scorePhase === "THIS WEEK" && !final;
   const observed = players.map(player => getOptimizerPlayerActual(player, scores, scorePhase)).filter(Number.isFinite);
   const actual = observed.reduce((sum, points) => sum + points, 0);
   const complete = players.length > 0 && observed.length === players.length;
-  return `<b>${projected.toFixed(1)}</b><span>Projected</span><strong class="opt-total-actual">Actual ${observed.length ? actual.toFixed(1) : "--"}${scorePhase === "THIS WEEK" ? " · so far" : scorePhase === "FINAL" && complete ? " · final" : ""}</strong>${renderOptimizerDifference(complete ? actual : undefined, projected, scorePhase === "THIS WEEK")}${!complete ? `<span>${scorePhase === "UPCOMING" ? "Not started" : `${observed.length}/${players.length} player scores available; difference pending`}</span>` : ""}`;
+  return `<b>${projected === null ? "--" : projected.toFixed(1)}</b><span>${baseline ? "Projection estimate · includes provider baselines" : "Projected"}</span><strong class="opt-total-actual">Actual ${observed.length ? actual.toFixed(1) : "--"}${live ? " · so far" : final && complete ? " · final" : ""}</strong>${renderOptimizerDifference(complete ? actual : undefined, projected, live, baseline ? "est" : "proj")}${!complete ? `<span>${scorePhase === "UPCOMING" ? "Not started" : `${observed.length}/${players.length} player scores available; difference pending`}</span>` : ""}`;
 }
 
 function renderOptimizerPlayerCard(player, side, scores, scorePhase, unchanged = false) {
+  scorePhase = getOptimizerPlayerPhase(player, scorePhase);
+  const projection = getOptimizerProjection(player);
   const actualPoints = getOptimizerPlayerActual(player, scores, scorePhase);
   const kickoff = getPlayerGameDayStatus(player);
   const kickoffLabel = !kickoff.locked && kickoff.kickoff
@@ -4281,16 +4303,18 @@ function renderOptimizerPlayerCard(player, side, scores, scorePhase, unchanged =
     : actualPoints === undefined
       ? `<span class="opt-actual-score unavailable">Actual -- <small>No score data</small></span>`
     : `<span class="opt-actual-score">Actual ${actualPoints.toFixed(1)} <small>${scorePhase === "THIS WEEK" ? "SO FAR" : "FINAL"}</small></span>`;
-  return `<div class="opt-player-card ${side}"><img class="avatar" src="${avatarUrl(player)}" alt="" onerror="this.style.display='none'" /><div class="opt-player-details"><b><img class="team-logo-sm" src="${teamLogoUrl(player.team)}" alt="" onerror="this.style.display='none'"/>${draftEscapeHtml(player.name)}</b><span>${unchanged ? "Starting" : side === "current" ? "Current" : "Suggested"} / ${draftEscapeHtml(player.position)} / ${draftEscapeHtml(player.team)}</span><small class="optimizer-kickoff-status ${kickoff.locked ? "locked" : kickoff.status}">${draftEscapeHtml(kickoffLabel)}</small></div><div class="opt-score-stack"><strong>Proj ${Number(player.projectedPoints || 0).toFixed(1)}</strong>${actual}${renderOptimizerDifference(actualPoints, player.projectedPoints, scorePhase === "THIS WEEK")}</div></div>`;
+  return `<div class="opt-player-card ${side}"><img class="avatar" src="${avatarUrl(player)}" alt="" onerror="this.style.display='none'" /><div class="opt-player-details"><b><img class="team-logo-sm" src="${teamLogoUrl(player.team)}" alt="" onerror="this.style.display='none'"/>${draftEscapeHtml(player.name)}</b><span>${unchanged ? "Starting" : side === "current" ? "Current" : "Suggested"} / ${draftEscapeHtml(player.position)} / ${draftEscapeHtml(player.team)}</span><small class="optimizer-kickoff-status ${kickoff.locked ? "locked" : kickoff.status}">${draftEscapeHtml(kickoffLabel)}</small></div><div class="opt-score-stack"><strong>${draftEscapeHtml(projection.label)} ${projection.points === null ? "--" : projection.points.toFixed(1)}</strong>${actual}${renderOptimizerDifference(actualPoints, projection.points, scorePhase === "THIS WEEK", projection.basis)}</div></div>`;
 }
 
 function renderOptimizerLineupRow(slot, player, scores, scorePhase) {
+  scorePhase = getOptimizerPlayerPhase(player, scorePhase);
   const actualPoints = getOptimizerPlayerActual(player, scores, scorePhase);
   const kickoff = getPlayerGameDayStatus(player);
   const status = !kickoff.locked && kickoff.kickoff
     ? new Date(kickoff.kickoff).toLocaleString(undefined, { weekday: "short", hour: "numeric", minute: "2-digit" })
     : kickoff.label;
-  const projected = player.projectionScoringIssue ? null : Number(player.projectedPoints || 0);
+  const projection = getOptimizerProjection(player);
+  const projected = projection.points;
   const notStarted = scorePhase === "UPCOMING" || actualPoints === undefined || (scorePhase === "THIS WEEK" && !kickoff.locked && kickoff.status !== "unknown");
   const actual = notStarted ? "--" : actualPoints.toFixed(1);
   const beat = actual !== "--" && projected !== null && scorePhase === "FINAL" ? (actualPoints >= projected ? "is-up" : "is-down") : "";
@@ -4298,9 +4322,9 @@ function renderOptimizerLineupRow(slot, player, scores, scorePhase) {
     <span class="opt-sheet-slot" style="${posBadgeStyle(slot === "FLEX" || slot === "SUPER_FLEX" ? "" : player.position)}">${draftEscapeHtml(slot === "SUPER_FLEX" ? "SF" : slot)}</span>
     <span class="opt-sheet-photo"><img src="${draftEscapeHtml(avatarUrl(player))}" alt="" loading="lazy" onerror="this.remove()" /></span>
     <span class="opt-sheet-name"><strong>${draftEscapeHtml(player.name)}</strong><small><img class="team-logo-sm" src="${teamLogoUrl(player.team)}" alt="" onerror="this.remove()" />${draftEscapeHtml(player.position)} · ${draftEscapeHtml(player.team || "FA")}${kickoff.status === "unknown" ? "" : `<span class="optimizer-kickoff-status ${kickoff.status}">${draftEscapeHtml(status)}</span>`}</small></span>
-    <span class="opt-sheet-num"><b>${projected === null ? "--" : projected.toFixed(1)}</b><small>Proj</small></span>
-    <span class="opt-sheet-num ${beat}"><b>${actual}</b><small>${scorePhase === "THIS WEEK" ? "So far" : "Actual"}</small></span>
-    <span class="opt-sheet-difference">${renderOptimizerDifference(actualPoints, projected, scorePhase === "THIS WEEK")}</span>
+    <span class="opt-sheet-num"${projection.baseline ? ' title="Provider baseline estimate, not verified custom-league scoring"' : ""}><b>${projected === null ? "--" : projected.toFixed(1)}</b><small>${draftEscapeHtml(projection.label)}</small></span>
+    <span class="opt-sheet-num ${beat}"><b>${actual}</b><small>${scorePhase === "THIS WEEK" ? "So far" : scorePhase === "FINAL" ? "Final" : "Actual"}</small></span>
+    <span class="opt-sheet-difference">${renderOptimizerDifference(actualPoints, projected, scorePhase === "THIS WEEK", projection.basis)}</span>
   </div>`;
 }
 
@@ -4314,17 +4338,25 @@ function renderOptimizerTab(idx) {
   const rowsEl = document.getElementById("optRows");
   if (!rowsEl) return;
   rowsEl.innerHTML = "";
+  document.getElementById("optBestTot").hidden = false;
+  document.querySelector(".optimizer-totals").classList.remove("is-review-only");
+  document.getElementById("optHeader").textContent = "Current vs. optimal lineup";
   const scoringIssue = getScoringDecisionIssue(tm.players);
   if (scoringIssue) {
     const scores = getOptimizerActualPoints();
     const phase = state.week < state.currentNflWeek ? "FINAL" : state.week === state.currentNflWeek ? "THIS WEEK" : "UPCOMING";
-    rowsEl.innerHTML = `<p class="draft-empty">${draftEscapeHtml(scoringIssue)}</p>${(tm.starters || []).map((id, index) => {
+    const starters = (tm.starters || []).map(id => state.players[id]).filter(Boolean);
+    const baselines = starters.some(player => getOptimizerProjection(player).baseline);
+    rowsEl.innerHTML = `<p class="comparison-note optimizer-scoring-note">${baselines ? "Provider baseline estimates are shown where custom-scoring inputs are missing; they may differ from your league. Differences compare actual league points with the labeled estimate." : "Some league-scored projections are unavailable. Available projections and actual scores are shown below."} Optimized lineup advice is paused; see Scoring coverage above.</p><div class="optimizer-unchanged-list">${(tm.starters || []).map((id, index) => {
       const player = state.players[id];
       return player ? renderOptimizerLineupRow((state.activeLeague.rosterPositions || [])[index] || player.position, player, scores, phase) : "";
-    }).join("")}`;
-    document.getElementById("optCurTot").textContent = "Current lineup shown below; scoring estimate unavailable.";
+    }).join("")}</div>`;
+    document.getElementById("optCurTot").innerHTML = `<small>Your lineup</small>${renderOptimizerTotal(starters, scores, phase)}`;
     document.getElementById("optBestTot").textContent = "Projected best unavailable";
-    document.getElementById("optSubAlert").textContent = scoringIssue;
+    document.getElementById("optBestTot").hidden = true;
+    document.querySelector(".optimizer-totals").classList.add("is-review-only");
+    document.getElementById("optHeader").textContent = "Your current lineup";
+    document.getElementById("optSubAlert").textContent = "Custom-scoring inputs incomplete";
     return;
   }
   const emptyPlayer = (name, position) => ({ id: "0", name, position, team: "FA", projectedPoints: 0 });
