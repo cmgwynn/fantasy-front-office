@@ -4261,13 +4261,18 @@ function getOptimizerPlayerPhase(player, scorePhase) {
   return scorePhase === "THIS WEEK" && getPlayerGameDayStatus(player).status === "final" ? "FINAL" : scorePhase;
 }
 
+function getSleeperBaselineProjection(stats, rules) {
+  const rec = rules?.rec ?? 1;
+  const [key, basis] = rec === 0 ? ["pts_std", "STD"] : rec === 0.5 ? ["pts_half_ppr", "½ PPR"] : ["pts_ppr", "PPR"];
+  const points = stats?.[key];
+  return Number.isFinite(points) ? { points, label: `${basis} est`, basis, baseline: true } : null;
+}
+
 function getOptimizerProjection(player) {
   if (!player.projectionScoringIssue) return { points: Number.isFinite(player.projectedPoints) ? player.projectedPoints : null, label: "Proj", basis: "proj", baseline: false };
   if (state.activeLeague?.provider === "sleeper") {
-    const rec = state.activeLeague.scoringSettings?.rec ?? 1;
-    const [key, basis] = rec === 0 ? ["pts_std", "STD"] : rec === 0.5 ? ["pts_half_ppr", "½ PPR"] : ["pts_ppr", "PPR"];
-    const points = state.rawProj[player.id]?.[key];
-    if (Number.isFinite(points)) return { points, label: `${basis} est`, basis, baseline: true };
+    const baseline = getSleeperBaselineProjection(state.rawProj[player.id], state.activeLeague.scoringSettings);
+    if (baseline) return baseline;
   }
   return { points: null, label: "Proj", basis: "proj", baseline: false };
 }

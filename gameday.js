@@ -155,7 +155,7 @@
         ? `${isHome ? "vs" : "@"} ${opp} · ${new Date(game.kickoff).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" })}`
         : `${isHome ? "vs" : "@"} ${opp} · ${game.detail}`;
     }
-    return { ...player, proj: projectionMissing ? null : proj, points, projFinal: projectionMissing && remaining > 0 && !inactive ? null : projFinal, remaining, gameState: game.state, gameLabel, onField: game.possession === teamCode(player.team), redZone: Boolean(game.redZone && game.possession === teamCode(player.team)) };
+    return { ...player, projectionBaseline: remaining > 0 ? player.projectionBaseline || "" : "", proj: projectionMissing ? null : proj, points, projFinal: projectionMissing && remaining > 0 && !inactive ? null : projFinal, remaining, gameState: game.state, gameLabel, onField: game.possession === teamCode(player.team), redZone: Boolean(game.redZone && game.possession === teamCode(player.team)) };
   }
 
   function sideTotals(players, points) {
@@ -163,7 +163,7 @@
     const actual = Number.isFinite(Number(points)) && points !== null ? Number(points) : live;
     const projected = players.some(player => player.projFinal === null) ? null : actual + players.reduce((sum, player) => sum + (player.projFinal - player.points), 0);
     const variance = players.reduce((sum, player) => sum + Math.pow(0.45 * player.proj, 2) * player.remaining, 0);
-    return { points: actual, projected, variance, playing: players.filter(p => p.gameState === "in").length, toPlay: players.filter(p => p.gameState === "pre" && !INACTIVE_STATUSES.includes(p.injury)).length };
+    return { points: actual, projected, variance, projectionEstimated: players.some(player => player.projectionBaseline), playing: players.filter(p => p.gameState === "in").length, toPlay: players.filter(p => p.gameState === "pre" && !INACTIVE_STATUSES.includes(p.injury)).length };
   }
 
   function winProbability(me, opp) {
@@ -181,17 +181,25 @@
     return scoreConfiguredStats(stats, rules, position, "sleeper").points;
   }
 
-  function sleeperPlayer(id, slot, points, projections, rules) {
+  function sleeperPlayer(id, slot, points, projections, rules, projectionError = "") {
     if (!id || id === "0") return { key: `empty:${slot}`, empty: true, slot, name: "Empty slot", position: slot, team: "", proj: 0, points: 0, injury: "" };
     const player = (typeof state !== "undefined" && state.players?.[id]) || {};
     const isDef = /^[A-Z]{2,3}$/.test(id);
     const name = player.name || (isDef ? `${id} D/ST` : `Player ${id}`);
     const team = player.team || (isDef ? id : "");
+    const coverage = scoreConfiguredStats(projections?.[id], rules, player.position || (isDef ? "DEF" : ""), "sleeper");
+    const baseline = coverage.points === null && !projectionError ? getSleeperBaselineProjection(projections?.[id], rules) : null;
+    const projectionIssue = projectionError || [
+      !projections?.[id] ? "No weekly player projection supplied" : "",
+      coverage.missing.length ? `Missing scoring inputs: ${coverage.missing.join(", ")}` : "",
+      coverage.unsupported.length ? `Unsupported scoring rules: ${coverage.unsupported.join(", ")}` : ""
+    ].filter(Boolean).join(". ");
     return {
       key: nameKey(name, team), id: String(id), slot, name, position: player.position || (isDef ? "DEF" : ""), team,
       photo: typeof avatarUrl === "function" ? avatarUrl({ ...player, id: String(id), position: player.position || (isDef ? "DEF" : ""), team }) : "",
       injury: normalizeInjury(player.injuryStatus) || (player.injuryStatus && player.injuryStatus !== "Healthy" ? player.injuryStatus : ""),
-      points: Number(points?.[id]) || 0, proj: scoreSleeperProjection(projections?.[id], rules, player.position || (isDef ? "DEF" : ""))
+      points: Number(points?.[id]) || 0, proj: baseline ? baseline.points : coverage.points, projectionIssue,
+      projectionBaseline: baseline?.basis || ""
     };
   }
 
@@ -243,7 +251,7 @@
           return {
             teamId: String(roster.roster_id), name: user.metadata?.team_name || user.display_name || `Team ${roster.roster_id}`,
             avatar: sleeperAvatar(user), matchupId: row?.matchup_id ?? null, points: row ? Number(row.points) || 0 : null,
-            players: starters.map((id, index) => sleeperPlayer(id, slots[index] || "FLEX", row?.players_points, ctx.projections, rules))
+            players: starters.map((id, index) => sleeperPlayer(id, slots[index] || "FLEX", row?.players_points, ctx.projections, rules, ctx.projectionError))
           };
         };
         const me = side(mine);
@@ -279,7 +287,8 @@
     const photo = position === "DEF" ? (typeof teamLogoUrl === "function" ? teamLogoUrl(team) : "") : `https://a.espncdn.com/i/headshots/nfl/players/full/${encodeURIComponent(player.id)}.png`;
     return {
       key: nameKey(known?.name || name, team), id: internalId || `espn_${player.id}`, slot: position, name: known?.name || name, position, team, photo,
-      injury: normalizeInjury(player.injuryStatus), points: espnStat(player, week, 0), proj: espnStat(player, week, 1)
+      injury: normalizeInjury(player.injuryStatus), points: espnStat(player, week, 0), proj: espnStat(player, week, 1),
+      projectionIssue: espnStat(player, week, 1) === null ? `ESPN did not supply a league-scored projection for Week ${week}` : ""
     };
   }
 
@@ -417,12 +426,17 @@
     const season = String(nfl?.season || new Date().getFullYear());
     const week = Math.min(18, Math.max(1, Number(nfl?.display_week || nfl?.week) || 1));
     const offseason = nfl?.season_type && nfl.season_type !== "regular";
+    let projectionError = typeof fetchSleeperWeekProjections === "function" ? "" : "Weekly projection feed is unavailable.";
     const [board, projections] = await Promise.all([
       fetchJson(`https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard?seasontype=2&week=${week}&dates=${season}`).catch(() => null),
-      typeof fetchSleeperWeekProjections === "function" ? fetchSleeperWeekProjections(season, week).catch(() => ({})) : {}
+      typeof fetchSleeperWeekProjections === "function" ? fetchSleeperWeekProjections(season, week).catch(error => {
+        console.error("Gameday weekly projections could not be loaded:", error);
+        projectionError = "Weekly projections could not be loaded. Refresh Gameday to retry.";
+        return {};
+      }) : {}
     ]);
     const scoreboard = normalizeScoreboard(board);
-    const ctx = { season, week, projections, hidden: new Set(store.hidden) };
+    const ctx = { season, week, projections, projectionError, hidden: new Set(store.hidden) };
     const groups = await Promise.all(store.sources.map(source => {
       const run = source.type === "sleeper" ? loadSleeperSource(source, ctx) : source.type === "espn" ? loadEspnSource(source, ctx) : Promise.resolve(loadYahooSource(source, ctx));
       return run.catch(error => [{ key: sourceKey(source), provider: source.type, name: source.username || source.name || "League", sourceKey: sourceKey(source), error: error.message }]);
@@ -459,7 +473,7 @@
       <span class="gd-slot">${esc(player.slot === "SUPER_FLEX" ? "SF" : player.slot === "REC_FLEX" ? "RF" : player.slot)}</span>
       ${player.empty ? '<span class="gd-photo" style="width:30px;height:30px"><b>—</b></span>' : photo(player, 30)}
       <span class="gd-player-name"><strong>${esc(player.name)}${injury}</strong><small>${esc([player.position, player.team].filter(Boolean).join(" · "))}${player.gameLabel ? ` · ${esc(player.gameLabel)}` : ""}</small></span>
-      <span class="gd-player-pts"><b data-gd-score>${fmt(player.points)}</b><small>${player.gameState === "post" ? "final" : `proj ${fmt(player.projFinal)}`}</small></span>
+      <span class="gd-player-pts"><b data-gd-score>${fmt(player.points)}</b><small${player.projFinal === null || player.projectionBaseline ? ` title="${esc(player.projectionIssue || "Projection inputs unavailable")}"` : ""}>${player.gameState === "post" ? "final" : `${player.projectionBaseline ? `${esc(player.projectionBaseline)} est` : "proj"} ${fmt(player.projFinal)}`}</small></span>
     </li>`;
   }
 
@@ -510,6 +524,12 @@
 
   let lineupDialog;
   let lineupSelection;
+  function renderProjectionNotice(side) {
+    if (!side || (side.projected !== null && !side.projectionEstimated)) return "";
+    const affected = side.players.filter(player => player.projFinal === null || player.projectionBaseline);
+    return `<details class="gd-projection-issues" data-gd-key="projection-${esc(side.teamId)}"><summary>${esc(side.name)}: ${side.projected === null ? "projected final unavailable" : "projected final uses baseline estimates"} (${affected.length} starter${affected.length === 1 ? "" : "s"})</summary><p class="gd-none">Available Sleeper baselines estimate remaining points when exact league scoring is incomplete. Custom scoring differences are not included. Missing baselines remain unavailable.</p><ul>${affected.map(player => `<li><strong>${esc(player.name)}</strong>: ${player.projectionBaseline ? `${esc(player.projectionBaseline)} baseline estimate. ` : ""}${esc(player.projectionIssue || "Projection inputs unavailable")}</li>`).join("")}</ul></details>`;
+  }
+
   function renderLineupComparison() {
     if (!lineupDialog?.open || !lineupSelection) return;
     const league = gd.data?.leagues.find(item => item.key === lineupSelection.key && !item.hidden && !item.error);
@@ -531,7 +551,8 @@
       });
       return `<section class="gd-lineup-team${key === lineupSelection.side ? " is-selected" : ""}" data-gd-key="${key}">
         <h4 tabindex="-1" data-lineup-heading="${key}">${esc(side.name)} <small>${key === "me" ? "Your team" : "Opponent"}</small></h4>
-        <p class="gd-lineup-total"><b data-gd-score>${fmt(side.points)}</b> actual · ${fmt(side.projected)} projected final</p>
+        <p class="gd-lineup-total"><b data-gd-score>${fmt(side.points)}</b> actual · ${fmt(side.projected)} projected final${side.projectionEstimated ? " (baseline estimate)" : ""}</p>
+        ${renderProjectionNotice(side)}
         <p class="gd-lineup-progress">${esc(progress)}</p>
         ${players.length ? `<ul class="gd-players">${players.map(renderPlayerRow).join("")}</ul>` : '<p>No starting lineup supplied by the provider.</p>'}
       </section>`;
@@ -569,12 +590,12 @@
     if (league.error) return `<article class="gd-card is-error" data-gd-key="${esc(league.key)}">${head}<p class="gd-error">${esc(league.error)}</p></article>`;
     const { me, opp } = league;
     const pct = league.winPct;
-    const sideBlock = (side, mine) => side ? `<div class="gd-side${mine ? " is-me" : ""}">${side.avatar ? `<span class="gd-photo gd-team-photo" style="width:34px;height:34px"><img src="${esc(side.avatar)}" alt="" width="34" height="34" loading="lazy" onerror="this.remove()"><b>${esc(side.name.slice(0, 1))}</b></span>` : `<span class="gd-photo gd-team-photo" style="width:34px;height:34px"><b>${esc(side.name.slice(0, 1))}</b></span>`}<div class="gd-side-name"><button type="button" class="gd-team-lineup" data-gameday-lineup="${esc(league.key)}" data-lineup-side="${mine ? "me" : "opp"}" aria-haspopup="dialog" aria-label="${esc(`View ${side.name} lineup and compare matchup`)}" title="View lineup and compare"><strong>${esc(side.name)}</strong></button><small>${side.playing} live · ${side.toPlay} to play</small></div><div class="gd-side-score"><b data-gd-score>${fmt(side.points)}</b><small>proj ${fmt(side.projected)}</small></div></div>` : `<div class="gd-side is-empty"><small>No opponent this week</small></div>`;
-    const winBar = pct === null ? "" : `<div class="gd-win" aria-label="Win chance ${Math.round(pct)}%"><div class="gd-win-bar"><span style="width:${pct.toFixed(1)}%"></span></div><small title="Fantasy Front Office's own live model (projections plus remaining game time). It can differ a few points from Sleeper's or ESPN's in-app odds."><b>${Math.round(pct)}%</b> to win <i class="gd-model">FFO model</i></small></div>`;
+    const sideBlock = (side, mine) => side ? `<div class="gd-side${mine ? " is-me" : ""}">${side.avatar ? `<span class="gd-photo gd-team-photo" style="width:34px;height:34px"><img src="${esc(side.avatar)}" alt="" width="34" height="34" loading="lazy" onerror="this.remove()"><b>${esc(side.name.slice(0, 1))}</b></span>` : `<span class="gd-photo gd-team-photo" style="width:34px;height:34px"><b>${esc(side.name.slice(0, 1))}</b></span>`}<div class="gd-side-name"><button type="button" class="gd-team-lineup" data-gameday-lineup="${esc(league.key)}" data-lineup-side="${mine ? "me" : "opp"}" aria-haspopup="dialog" aria-label="${esc(`View ${side.name} lineup and compare matchup`)}" title="View lineup and compare"><strong>${esc(side.name)}</strong></button><small>${side.playing} live · ${side.toPlay} to play</small></div><div class="gd-side-score"><b data-gd-score>${fmt(side.points)}</b><small>${side.projectionEstimated ? "est" : "proj"} ${fmt(side.projected)}</small></div></div>` : `<div class="gd-side is-empty"><small>No opponent this week</small></div>`;
+    const winBar = pct === null ? "" : `<div class="gd-win" aria-label="Win chance ${Math.round(pct)}%"><div class="gd-win-bar"><span style="width:${pct.toFixed(1)}%"></span></div><small title="Fantasy Front Office's own live model (projections plus remaining game time). It can differ a few points from Sleeper's or ESPN's in-app odds."><b>${Math.round(pct)}%</b> to win <i class="gd-model">FFO model${me.projectionEstimated || opp?.projectionEstimated ? " · baseline estimate" : ""}</i></small></div>`;
     const state = pct === null ? "" : pct >= 60 ? " is-winning" : pct <= 40 ? " is-losing" : " is-close";
     return `<article class="gd-card${state}" data-gd-key="${esc(league.key)}">${head}${renderStanding(league.standing)}${renderTeamPicker(league)}
       <div class="gd-score">${sideBlock(me, true)}${sideBlock(opp, false)}</div>${winBar}
-      ${me.projected === null || opp?.projected === null ? '<p class="gd-none">Scoring inputs incomplete: projected totals and win probability are unavailable. Actual scores and players remaining are still shown.</p>' : ""}
+      ${me.projected === null || opp?.projected === null ? `<p class="gd-none">Scoring inputs incomplete${opp ? ": win probability requires projected totals for both teams" : ""}. Actual scores and players remaining are still shown.</p>` : ""}${renderProjectionNotice(me)}${renderProjectionNotice(opp)}
       <ul class="gd-players">${me.players.map(renderPlayerRow).join("")}</ul>
       ${opp ? `<details class="gd-opp" data-gd-key="o${esc(league.key)}"><summary>${esc(opp.name)} lineup</summary><ul class="gd-players">${opp.players.map(renderPlayerRow).join("")}</ul></details>` : ""}
     </article>`;

@@ -72,11 +72,24 @@ only a reception preset can still use the exactly matching supplied point bucket
 
 The expandable scoring/source notice exposes the rules and incomplete coverage.
 Optimizer, Inbox advice, start/sit, trade verdicts, team grades, waiver candidates
-and matchup estimates withhold affected projection-based advice. Gameday still
-shows provider actual points and players remaining, but does not invent a
-projected final or win probability. Unsupported cross-league estimates show
+and matchup estimates withhold affected projection-based advice. Gameday shows
+provider actual points and players remaining. For Sleeper only, incomplete
+league-scored projections use an available reception-preset baseline, labeled
+as an estimate on players, team totals, and FFO win probability. Standard and
+half-PPR leagues use their matching bucket; other reception settings use PPR.
+Custom-scoring differences are not included in this fallback. Exact league-scored
+projections take priority, and missing baseline totals remain unavailable.
+Live finals combine actual league points with projected remaining points as game
+time changes on the existing one-minute refresh; completed games use actuals only.
+This Gameday fallback does not enable strict custom-scored advice elsewhere.
+Unsupported cross-league estimates show
 unavailable; claim suggestions rescore candidates for the target league instead
 of reusing active-league points. Model trade values remain relative indices.
+Gameday matchup cards and lineup comparisons expose expandable, per-team
+projection diagnostics naming unfinished starters with missing scoring inputs
+or unsupported rules. Weekly feed failures and absent ESPN league-scored
+projections are identified separately. One incomplete side blocks matchup win
+probability, but does not hide the other side's available projected final.
 Yahoo totals remain user-imported, already-scored snapshots, not independently
 verified custom-scoring calculations.
 
