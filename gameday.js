@@ -306,7 +306,9 @@
       const teamName = team => team.name || `${team.location || ""} ${team.nickname || ""}`.trim() || `Team ${team.id}`;
       const selections = (typeof state !== "undefined" && state.portfolioRosterSelections) || {};
       const myId = String(selections[key] || source.teamId || teams[0].id);
-      const period = Number(data.status?.currentMatchupPeriod) || ctx.week;
+      const periods = data.settings?.scheduleSettings?.matchupPeriods;
+      const mappedPeriod = Object.entries(periods || {}).find(([, weeks]) => Array.isArray(weeks) && weeks.some(week => Number(week) === Number(ctx.week)))?.[0];
+      const period = Number(mappedPeriod) || (periods ? Number(ctx.week) : Number(data.status?.currentMatchupPeriod) || Number(ctx.week));
       const game = (data.schedule || []).find(item => Number(item.matchupPeriodId) === period && [item.home?.teamId, item.away?.teamId].map(String).includes(myId));
       const side = teamId => {
         const team = teams.find(item => String(item.id) === String(teamId));
@@ -422,19 +424,20 @@
 
   async function loadGameday() {
     const store = readStore();
-    const nfl = await cached("nfl-state", STALE_MS, () => fetchJson("https://api.sleeper.app/v1/state/nfl"));
+    const nfl = await cached("nfl-state", REFRESH_MS, () => fetchJson("https://api.sleeper.app/v1/state/nfl"));
     const season = String(nfl?.season || new Date().getFullYear());
     const week = Math.min(18, Math.max(1, Number(nfl?.display_week || nfl?.week) || 1));
     const offseason = nfl?.season_type && nfl.season_type !== "regular";
     let projectionError = typeof fetchSleeperWeekProjections === "function" ? "" : "Weekly projection feed is unavailable.";
     const [board, projections] = await Promise.all([
-      fetchJson(`https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard?seasontype=2&week=${week}&dates=${season}`).catch(() => null),
+      fetchJson(`https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard?seasontype=2&week=${week}&dates=${season}`),
       typeof fetchSleeperWeekProjections === "function" ? fetchSleeperWeekProjections(season, week).catch(error => {
         console.error("Gameday weekly projections could not be loaded:", error);
         projectionError = "Weekly projections could not be loaded. Refresh Gameday to retry.";
         return {};
       }) : {}
     ]);
+    if (!Array.isArray(board?.events)) throw new Error("NFL scoreboard returned an invalid response. Refresh Gameday to retry.");
     const scoreboard = normalizeScoreboard(board);
     const ctx = { season, week, projections, projectionError, hidden: new Set(store.hidden) };
     const groups = await Promise.all(store.sources.map(source => {
@@ -595,7 +598,7 @@
     const state = pct === null ? "" : pct >= 60 ? " is-winning" : pct <= 40 ? " is-losing" : " is-close";
     return `<article class="gd-card${state}" data-gd-key="${esc(league.key)}">${head}${renderStanding(league.standing)}${renderTeamPicker(league)}
       <div class="gd-score">${sideBlock(me, true)}${sideBlock(opp, false)}</div>${winBar}
-      ${me.projected === null || opp?.projected === null ? `<p class="gd-none">Scoring inputs incomplete${opp ? ": win probability requires projected totals for both teams" : ""}. Actual scores and players remaining are still shown.</p>` : ""}${renderProjectionNotice(me)}${renderProjectionNotice(opp)}
+      ${me.projected === null || opp?.projected === null ? `<p class="gd-none">Scoring inputs incomplete${opp ? ": win probability requires projected totals for both teams" : ""}. Actual scores and players remaining are still shown.</p>` : ""}
       <ul class="gd-players">${me.players.map(renderPlayerRow).join("")}</ul>
       ${opp ? `<details class="gd-opp" data-gd-key="o${esc(league.key)}"><summary>${esc(opp.name)} lineup</summary><ul class="gd-players">${opp.players.map(renderPlayerRow).join("")}</ul></details>` : ""}
     </article>`;
@@ -615,7 +618,7 @@
     const alerts = buildAlerts(visible);
     const rooting = buildRooting(visible);
     const cards = visible.length ? visible.map(renderLeagueCard).join("") : `<div class="gd-empty"><strong>No in-season leagues to show</strong><p>Open Saved leagues below to show hidden leagues or add another.</p></div>`;
-    return `${renderStrip(data.scoreboard)}${renderAlerts(alerts)}<div class="gd-cards">${cards}</div>${renderRooting(rooting)}`;
+    return `${gd.error ? `<p class="gd-error" role="alert">${esc(gd.error)}</p>` : ""}${renderStrip(data.scoreboard)}${renderAlerts(alerts)}<div class="gd-cards">${cards}</div>${renderRooting(rooting)}`;
   }
 
   function syncAttributes(from, to) {
@@ -691,7 +694,15 @@
     const root = document.getElementById("gamedayRoot");
     const meta = document.getElementById("gamedayMeta");
     if (!root) return;
-    if (!gd.data) { if (!root.childNodes.length || !gd.loading) morph(root, readStore().sources.length ? renderSkeleton() : renderGamedayHtml({ leagues: [], scoreboard: { games: [] } })); return; }
+    if (!gd.data) {
+      if (gd.error) {
+        morph(root, `<p class="gd-error" role="alert">${esc(gd.error)} Use Refresh to retry.</p>`);
+        if (meta) meta.textContent = "Gameday data unavailable";
+      } else if (!root.childNodes.length || !gd.loading) {
+        morph(root, readStore().sources.length ? renderSkeleton() : renderGamedayHtml({ leagues: [], scoreboard: { games: [] } }));
+      }
+      return;
+    }
     morph(root, renderGamedayHtml(gd.data));
     renderLineupComparison();
     if (meta) {
@@ -735,7 +746,7 @@
     }
     const button = document.getElementById("gamedayRefreshBtn");
     if (button) { button.disabled = true; button.textContent = "Updating"; }
-    if (force) cache.forEach((value, key) => { if (!key.startsWith("nfl-state")) cache.delete(key); });
+    if (force) cache.clear();
     gd.loading = (async () => {
       try {
         gd.data = await loadGameday();
@@ -743,7 +754,7 @@
         gd.error = "";
         gd.restored = false;
       } catch (error) {
-        gd.error = error.message || "Could not refresh";
+        gd.error = `${gd.data ? "Scores may be stale; refresh failed" : "Could not load Gameday"}: ${error.message || "Provider unavailable"}`;
       } finally {
         gd.loading = null;
         if (button) { button.disabled = false; button.textContent = "Refresh"; }
@@ -762,17 +773,8 @@
     return document.getElementById("tab-intel")?.classList.contains("active") && !document.hidden;
   }
 
-  function needsRefresh() {
-    if (!gd.data) return true;
-    const age = Date.now() - gd.loadedAt;
-    if (age > STALE_MS) return true;
-    const games = gd.data.scoreboard.games;
-    const now = Date.now();
-    return games.some(game => game.state === "in" || (game.state === "pre" && game.kickoff - now < 90000 && now - game.kickoff < 3 * 3600000));
-  }
-
   function tick() {
-    if (isActive() && needsRefresh() && Date.now() - gd.loadedAt >= REFRESH_MS - 1000) refresh();
+    if (isActive() && !gd.loading && Date.now() - gd.loadedAt >= REFRESH_MS) return refresh();
   }
 
   function activate() {

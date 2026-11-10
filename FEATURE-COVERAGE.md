@@ -82,12 +82,21 @@ projections take priority, and missing baseline totals remain unavailable.
 Live finals combine actual league points with projected remaining points as game
 time changes on the existing one-minute refresh; completed games use actuals only.
 This Gameday fallback does not enable strict custom-scored advice elsewhere.
+Gameday continues refreshing while its tab is active even between games, so NFL
+week/season rollovers and failed requests are retried. Manual Refresh also clears
+the cached NFL state. ESPN uses its explicit week-to-matchup mapping when supplied,
+including multiweek playoff periods, rather than a potentially lagging current period.
+Scoreboard outages or malformed responses keep the last successful snapshot with
+a visible stale-score warning and its original timestamp; first-load failures show
+an error instead of an endless skeleton. Provider-specific league failures remain
+visible on their cards without replacing other providers' successful results.
 Unsupported cross-league estimates show
 unavailable; claim suggestions rescore candidates for the target league instead
 of reusing active-league points. Model trade values remain relative indices.
-Gameday matchup cards and lineup comparisons expose expandable, per-team
-projection diagnostics naming unfinished starters with missing scoring inputs
-or unsupported rules. Weekly feed failures and absent ESPN league-scored
+Gameday matchup cards retain compact estimate labels without expandable explanation
+rows. Lineup comparisons expose expandable, per-team projection diagnostics naming
+unfinished starters with missing scoring inputs or unsupported rules.
+Weekly feed failures and absent ESPN league-scored
 projections are identified separately. One incomplete side blocks matchup win
 probability, but does not hide the other side's available projected final.
 Yahoo totals remain user-imported, already-scored snapshots, not independently

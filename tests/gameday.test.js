@@ -6,13 +6,21 @@ const vm = require("node:vm");
 
 const read = file => fs.readFileSync(path.join(__dirname, "..", file), "utf8");
 
-async function load({ provider = "sleeper", projections, projectionError, rules, injury = "", gameState = "pre", live = {}, espnProjection = 14, espnWeek = 9 } = {}) {
+async function load({ provider = "sleeper", projections, projectionError, rules, injury = "", gameState = "pre", live = {}, espnProjection = 14, espnWeek = 9, allowFailure = false } = {}) {
   const errors = [];
+  const requests = [];
+  const timers = [];
+  const clock = { now: Date.now() };
+  class TestDate extends Date {
+    static now() { return clock.now; }
+  }
   const sandbox = {
-    URL, URLSearchParams, location: { search: "?resume=0" },
+    URL, URLSearchParams, Date: TestDate, location: { search: "?resume=0" },
     window: { FFOUsage: { isAllowed: () => true } },
-    document: { addEventListener() {}, dispatchEvent() {}, getElementById: () => null },
-    navigator: {}, setInterval() {}, CustomEvent: class {},
+    document: {
+      addEventListener() {}, dispatchEvent() {}, getElementById: () => null
+    },
+    navigator: {}, setInterval(callback, ms) { timers.push({ callback, ms }); }, CustomEvent: class {},
     console: { error: (...args) => errors.push(args) },
     requestConnectedBetaAccess: async () => true,
     state: {
@@ -24,12 +32,16 @@ async function load({ provider = "sleeper", projections, projectionError, rules,
     },
     ESPN_POSITION_CODES: { 2: "RB" }, ESPN_TEAM_CODES: { 12: "KC", 2: "BUF" },
     fetchSleeperWeekProjections: async () => {
-      if (projectionError) throw new Error("Feed failed");
+      requests.push(`projections:${live.season || "2026"}:${live.week || 9}`);
+      if (projectionError || live.fail === "projections") throw new Error("Feed failed");
       return projections || { a: { rush_yd: 80, rec: 2 }, b: { rush_yd: 60, rec: 1, pass_yd: 0 } };
     },
     fetchJson: async url => {
       url = String(url);
-      if (url.endsWith("/state/nfl")) return { season: "2026", display_week: 9, season_type: "regular" };
+      requests.push(url);
+      if (live.fail && url.includes(live.fail)) throw new Error(`Provider unavailable: ${live.fail}`);
+      if (url.endsWith("/state/nfl")) return { season: live.season || "2026", display_week: live.week || 9, season_type: "regular" };
+      if (url.includes("/scoreboard") && live.invalidBoard) return { error: "No scoreboard" };
       if (url.includes("/scoreboard")) return {
         events: [{
           id: "game", date: "2026-11-09T20:00:00Z",
@@ -53,9 +65,13 @@ async function load({ provider = "sleeper", projections, projectionError, rules,
             ]
           } } }] }
         })),
-        status: { currentMatchupPeriod: 9 },
-        schedule: [{ id: 1, matchupPeriodId: 9, home: { teamId: 1 }, away: { teamId: 2 } }],
-        settings: {}
+        status: { currentMatchupPeriod: live.espnCurrentPeriod || 9 },
+        schedule: [
+          { id: 1, matchupPeriodId: 9, home: { teamId: 1 }, away: { teamId: 2 } },
+          { id: 2, matchupPeriodId: 10, home: { teamId: 2 }, away: { teamId: 1 } },
+          { id: 3, matchupPeriodId: 15, home: { teamId: 1 }, away: { teamId: 2 } }
+        ],
+        settings: { scheduleSettings: { matchupPeriods: { 9: [9], 10: [10], 15: [15, 16] } } }
       };
       if (url.includes("/user/")) return [{
         league_id: "league", name: "Sleeper test", status: "in_season", roster_positions: ["RB"],
@@ -85,10 +101,10 @@ async function load({ provider = "sleeper", projections, projectionError, rules,
     ? { type: "sleeper", userId: "user" }
     : { type: "espn", leagueId: "league", teamId: "1" });
   await gameday.ensureData();
-  assert.equal(gameday.freshness.error, "");
-  const league = gameday.data.leagues[0];
-  assert.equal(league.error, undefined);
-  return { gameday, league, errors, html: gameday.renderGamedayHtml(gameday.data) };
+  if (!allowFailure) assert.equal(gameday.freshness.error, "");
+  const league = gameday.data?.leagues[0];
+  if (!allowFailure) assert.equal(league.error, undefined);
+  return { gameday, league, errors, requests, clock, timers, sandbox, html: gameday.data ? gameday.renderGamedayHtml(gameday.data) : "" };
 }
 
 test("sparse Sleeper inputs identify the player and exact missing counters without inventing totals", async () => {
@@ -99,8 +115,9 @@ test("sparse Sleeper inputs identify the player and exact missing counters witho
   assert.equal(league.me.toPlay, 1);
   assert.equal(league.winPct, null);
   assert.match(league.me.players[0].projectionIssue, /Missing scoring inputs: pass_yd/);
-  assert.match(html, /Starter &lt;A&gt;<\/strong>: Missing scoring inputs: pass_yd/);
-  assert.match(html, /projected final unavailable \(1 starter\)/);
+  assert.match(html, /Starter &lt;A&gt;/);
+  assert.match(html, /title="Missing scoring inputs: pass_yd"/);
+  assert.doesNotMatch(html, /gd-projection-issues/);
   assert.match(html, /win probability requires projected totals for both teams/);
   assert.match(html, /proj 7\.0/);
   assert.doesNotMatch(html, /class="gd-win"/);
@@ -120,7 +137,7 @@ test("Sleeper baseline estimates restore totals and label team, player and win p
   assert.match(html, /est 18\.0/);
   assert.match(html, /PPR est 18\.0/);
   assert.match(html, /FFO model · baseline estimate/);
-  assert.match(html, /Custom scoring differences are not included/);
+  assert.doesNotMatch(html, /gd-projection-issues|projected final uses baseline estimates|Custom scoring differences are not included/);
   assert.match(html, /Missing scoring inputs: rec, pass_yd/);
   assert.equal(gameday.scoreSleeperProjection({ pts_ppr: 18 }, { rush_yd: 0.1 }, "RB"), null);
 });
@@ -223,4 +240,156 @@ test("ESPN missing and wrong-week applied totals remain unavailable with a provi
     assert.equal(league.winPct, null);
     assert.match(html, /ESPN did not supply a league-scored projection for Week 9/);
   }
+});
+
+test("scoreboard outages keep the last snapshot explicitly stale and recover without false final scores", async () => {
+  const live = { state: "in", period: 2, clock: 0 };
+  const { gameday, clock } = await load({ live, projections: { a: { pts_ppr: 20 }, b: { pts_ppr: 10 } } });
+  const previous = gameday.data;
+  const checkedAt = gameday.freshness.checkedAt;
+  live.fail = "/scoreboard";
+  clock.now += 60000;
+  await gameday.refresh({ force: true });
+  assert.equal(gameday.data, previous);
+  assert.equal(gameday.freshness.checkedAt, checkedAt);
+  assert.match(gameday.freshness.error, /Scores may be stale.*Provider unavailable/);
+  assert.match(gameday.renderGamedayHtml(gameday.data), /role="alert">Scores may be stale/);
+  assert.equal(gameday.data.leagues[0].me.players[0].gameState, "in");
+  delete live.fail;
+  await gameday.refresh({ force: true });
+  assert.equal(gameday.freshness.error, "");
+  assert.doesNotMatch(gameday.renderGamedayHtml(gameday.data), /Scores may be stale/);
+  assert.ok(gameday.freshness.checkedAt > checkedAt);
+});
+
+test("invalid scoreboard responses and first-load outages are explicit failures", async () => {
+  const invalid = await load({ live: { invalidBoard: true }, allowFailure: true });
+  assert.equal(invalid.gameday.data, null);
+  assert.match(invalid.gameday.freshness.error, /scoreboard/i);
+  for (const fail of ["/scoreboard", "/state/nfl"]) {
+    const failed = await load({ live: { fail }, allowFailure: true });
+    assert.equal(failed.gameday.data, null);
+    assert.match(failed.gameday.freshness.error, /Could not load Gameday/);
+  }
+});
+
+test("projection outages preserve actuals but withhold live predictions, then recover", async () => {
+  const live = { state: "in", period: 2, clock: 0 };
+  const { gameday } = await load({ live, projections: { a: { pts_ppr: 20 }, b: { pts_ppr: 10 } } });
+  live.fail = "projections";
+  await gameday.refresh({ force: true });
+  assert.equal(gameday.data.leagues[0].me.points, 11);
+  assert.equal(gameday.data.leagues[0].me.projected, null);
+  assert.equal(gameday.data.leagues[0].winPct, null);
+  assert.match(gameday.renderGamedayHtml(gameday.data), /Weekly projections could not be loaded/);
+  delete live.fail;
+  await gameday.refresh({ force: true });
+  assert.equal(gameday.data.leagues[0].me.projected, 21);
+  assert.ok(Number.isFinite(gameday.data.leagues[0].winPct));
+});
+
+test("ESPN and Sleeper league outages show errors and recover without reconnecting", async () => {
+  for (const [provider, endpoint] of [["espn", "lm-api-reads"], ["sleeper", "/matchups/"]]) {
+    const live = {};
+    const { gameday } = await load({ provider, live });
+    live.fail = endpoint;
+    await gameday.refresh({ force: true });
+    const failed = gameday.data.leagues[0];
+    assert.match(failed.error, /Provider unavailable/);
+    assert.equal(failed.me, undefined);
+    assert.match(gameday.renderGamedayHtml(gameday.data), /gd-error/);
+    delete live.fail;
+    await gameday.refresh({ force: true });
+    assert.equal(gameday.data.leagues[0].error, undefined);
+    assert.ok(gameday.data.leagues[0].me);
+  }
+});
+
+test("halftime, overtime, final and stat corrections recalculate from the same baseline", async () => {
+  const live = { state: "in", period: 2, clock: 0, points: 10 };
+  const { gameday } = await load({ live, projections: { a: { pts_ppr: 20 }, b: { pts_ppr: 10 } } });
+  assert.equal(gameday.data.leagues[0].me.projected, 20);
+  live.period = 3;
+  live.clock = 900;
+  await gameday.refresh({ force: true });
+  assert.equal(gameday.data.leagues[0].me.projected, 20);
+  live.period = 5;
+  live.clock = 300;
+  live.points = 18;
+  await gameday.refresh({ force: true });
+  assert.equal(gameday.data.leagues[0].me.projected, 18.6);
+  assert.ok(Number.isFinite(gameday.data.leagues[0].winPct));
+  live.state = "post";
+  live.points = 19;
+  await gameday.refresh({ force: true });
+  assert.equal(gameday.data.leagues[0].me.projected, 19);
+  assert.equal(gameday.data.leagues[0].me.variance, 0);
+  assert.equal(gameday.data.leagues[0].winPct, 100);
+  live.points = 4;
+  await gameday.refresh({ force: true });
+  assert.equal(gameday.data.leagues[0].me.projected, 4);
+  assert.equal(gameday.data.leagues[0].winPct, 50);
+  live.points = 3;
+  await gameday.refresh({ force: true });
+  assert.equal(gameday.data.leagues[0].winPct, 0);
+});
+
+test("automatic refresh advances the week within a minute and manual refresh advances the season immediately", async () => {
+  const live = {};
+  const { gameday, clock, requests } = await load({ live });
+  live.week = 10;
+  clock.now += 60001;
+  await gameday.refresh();
+  assert.equal(gameday.data.week, 10);
+  assert.ok(requests.some(url => url.includes("/matchups/10")));
+  assert.ok(requests.includes("projections:2026:10"));
+  live.season = "2027";
+  live.week = 1;
+  await gameday.refresh({ force: true });
+  assert.equal(gameday.data.season, "2027");
+  assert.equal(gameday.data.week, 1);
+  assert.ok(requests.some(url => url.includes("/leagues/nfl/2027")));
+  assert.ok(requests.includes("projections:2027:1"));
+});
+
+test("ESPN chooses the requested week's matchup even when the provider current period lags", async () => {
+  const live = { week: 10, espnCurrentPeriod: 9 };
+  const { league } = await load({ provider: "espn", live });
+  assert.equal(league.me.matchupId, "2");
+  const playoffs = await load({ provider: "espn", live: { week: 16, espnCurrentPeriod: 9 } });
+  assert.equal(playoffs.league.me.matchupId, "3");
+});
+
+test("one provider can fail and recover while the other provider stays available", async () => {
+  const live = {};
+  const { gameday } = await load({ live });
+  gameday.rememberSource({ type: "espn", leagueId: "league", teamId: "1" });
+  live.fail = "lm-api-reads";
+  await gameday.refresh({ force: true });
+  assert.equal(gameday.data.leagues.length, 2);
+  assert.ok(gameday.data.leagues.find(league => league.provider === "sleeper").me);
+  assert.match(gameday.data.leagues.find(league => league.provider === "espn").error, /Provider unavailable/);
+  delete live.fail;
+  await gameday.refresh({ force: true });
+  assert.ok(gameday.data.leagues.every(league => league.me && !league.error));
+});
+
+test("the active Gameday timer retries first-load failures and rolls over even without live games", async () => {
+  const live = { fail: "/scoreboard" };
+  const { gameday, sandbox, timers, clock, requests } = await load({ live, allowFailure: true });
+  sandbox.document.getElementById = id => id === "tab-intel" ? { classList: { contains: () => true } } : null;
+  gameday.activate();
+  await gameday.ensureData();
+  delete live.fail;
+  const timer = timers.find(timer => timer.ms === 15000);
+  assert.ok(timer);
+  clock.now += 60001;
+  await timer.callback();
+  assert.equal(gameday.freshness.error, "");
+  assert.equal(gameday.data.week, 9);
+  live.week = 10;
+  clock.now += 60001;
+  await timer.callback();
+  assert.equal(gameday.data.week, 10);
+  assert.ok(requests.some(url => url.includes("/matchups/10")));
 });
