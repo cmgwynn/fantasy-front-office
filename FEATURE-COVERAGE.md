@@ -50,6 +50,15 @@ a league to use roster-based features.
   product illustration is labeled illustrative, not an actual live result or
   an interactive demo. The public demo option remains removed.
 - Trade package totals say Model trade value, not fantasy points.
+- Trade Finder's Acquire a player generator compares one- or two-player packages
+  at an 85% model-value match or better, using the Builder's rounded 6%
+  two-for-one discount. Owned reserve/taxi players can be offered; inactive
+  players still remain excluded from current lineup calculations.
+  Missing scoring inputs withhold lineup-impact estimates and needs-based
+  recommendations, not targeted model-value comparisons. Empty selections and
+  no qualifying packages show an explanation. Unrelated Finder filters retain
+  generated offers; roster changes require fresh generation, and Builder review
+  rechecks the sending team, target owner and package.
 
 ### Shared custom-scoring coverage
 

@@ -20,7 +20,7 @@
   <h1>Optimizer Regression Checks</h1>
   <p id="summary" role="status">Loading the app runtime...</p>
   <ol id="results"></ol>
-  <iframe id="appFrame" src="../index.html?v=20261109-gameday-recovery-1&amp;resume=0" title="Optimizer test runtime"></iframe>
+  <iframe id="appFrame" src="../index.html?v=20261112-trade-finder-1&amp;resume=0" title="Optimizer test runtime"></iframe>
   <script>
     async function runOptimizerFixtures() {
       const results = [];
@@ -1836,14 +1836,22 @@
         const targetValueBefore = state.players.fixture_claim_rb.baseValue;
         const giveValueBefore = state.players.fixture_drop_wr.baseValue;
         const otherValueBefore = state.players.fixture_owned_qb.baseValue;
+        const targetLeagueBefore = state.activeLeague;
+        const targetScoringIssueBefore = state.players.fixture_drop_wr.projectionScoringIssue;
+        const targetControlsBefore = Object.fromEntries(["teamSelect", "tradeTeamA", "tradeTeamB", "tradeTargetSearch", "tradeTargetPackage"].map(id => [id, document.getElementById(id).value]));
+        const targetTeamOptionsBefore = Object.fromEntries(["tradeTeamA", "tradeTeamB"].map(id => [id, document.getElementById(id).innerHTML]));
+        const targetTradeBefore = { a: state.tradeSideA, b: state.tradeSideB };
         try {
           state.players.fixture_claim_rb.baseValue = 2000;
           state.players.fixture_drop_wr.baseValue = 2000;
           state.players.fixture_owned_qb.baseValue = 100;
           state.managers = [
-            { ...targetManagersBefore[0], rosterId: 1, players: ["fixture_drop_wr", "fixture_owned_qb"], reserve: [], taxi: [] },
-            { ...targetManagersBefore[1], rosterId: 2, players: ["fixture_claim_rb"], reserve: [], taxi: [] }
+            { ...targetManagersBefore[0], rosterId: 1, currentRank: 1, playoffPct: 75, wins: 6, losses: 2, players: ["fixture_drop_wr", "fixture_owned_qb"], reserve: [], taxi: [] },
+            { ...targetManagersBefore[1], rosterId: 2, currentRank: 2, playoffPct: 50, wins: 4, losses: 4, players: ["fixture_claim_rb"], reserve: [], taxi: [] }
           ];
+          ["tradeTeamA", "tradeTeamB"].forEach(id => {
+            document.getElementById(id).innerHTML = '<option value="0">My team</option><option value="1">Partner</option>';
+          });
           const offers = buildTargetTradeOffers(0, "fixture_claim_rb", "one");
           check("Targeted trade packages contain the exact target and only the sending team's assets",
             offers.offers.length === 1 && offers.offers[0].getIds.join() === "fixture_claim_rb" &&
@@ -1854,11 +1862,118 @@
           check("Targeted trade generator rejects unowned targets and targets already on your roster",
             Boolean(buildTargetTradeOffers(0, "fixture_drop_wr").reason) &&
             Boolean(buildTargetTradeOffers(0, "missing_target").reason));
+          state.players.fixture_owned_qb.baseValue = 101;
+          check("Targeted two-player values use the same rounded consolidation discount as Builder",
+            buildTargetTradeOffers(0, "fixture_claim_rb", "two").offers[0].value === 1975);
+          state.players.fixture_owned_qb.baseValue = 100;
+          state.players.fixture_drop_wr.baseValue = 1700;
+          check("Targeted offers include the exact 85% match threshold",
+            buildTargetTradeOffers(0, "fixture_claim_rb", "one").offers[0].match === 85);
+          state.players.fixture_drop_wr.baseValue = 1699;
+          check("Targeted offers reject matches below 85%",
+            buildTargetTradeOffers(0, "fixture_claim_rb", "one").offers.length === 0);
+          state.players.fixture_drop_wr.baseValue = 2000;
+          state.managers[0].reserve = ["fixture_drop_wr"];
+          check("Owned reserve players remain available to trade without entering the active lineup",
+            buildTargetTradeOffers(0, "fixture_claim_rb", "one").offers[0].giveIds.join() === "fixture_drop_wr" &&
+            !getPlannerRosterIds(state.managers[0]).includes("fixture_drop_wr"));
+          state.managers[0].reserve = [];
+          document.getElementById("tradeTeamA").value = "0";
+          document.getElementById("tradeTargetSearch").value = "";
+          document.getElementById("tradeTargetPackage").value = "one";
+          renderTradeTargets();
+          const targetResults = document.getElementById("tradeTargetResults");
+          document.getElementById("tradeTargetGenerate").click();
+          check("Generate offers button explains an empty target selection",
+            targetResults.textContent.includes("Choose a player to acquire"));
+          document.getElementById("tradeTargetPlayer").value = "fixture_claim_rb";
+          document.getElementById("tradeTargetGenerate").click();
+          check("Actual Generate offers click renders packages and a Builder action",
+            targetResults.querySelectorAll("[data-target-offer]").length === 1 &&
+            targetResults.textContent.includes(state.players.fixture_claim_rb.name));
+          check("Target selector only lists other managers' rostered players",
+            !Array.from(document.getElementById("tradeTargetPlayer").options).some(option =>
+              ["fixture_drop_wr", "fixture_owned_qb"].includes(option.value)));
+          const generatedHtml = targetResults.innerHTML;
+          renderTradeFinder();
+          check("Refreshing unrelated Finder filters preserves targeted offers",
+            targetResults.innerHTML === generatedHtml);
+          targetResults.querySelector("[data-target-offer]").click();
+          check("Targeted offer review loads the correct managers and exact assets into Builder",
+            document.getElementById("tradeTeamA").value === "0" && document.getElementById("tradeTeamB").value === "1" &&
+            state.tradeSideA.join() === "fixture_drop_wr" && state.tradeSideB.join() === "fixture_claim_rb" &&
+            document.getElementById("tmode-0").style.display === "grid");
+          state.activeLeague = { ...targetLeagueBefore, provider: "sleeper", isDemo: false, scoringSettings: { rec: 1 } };
+          state.players.fixture_drop_wr.projectionScoringIssue = "Missing bonus counter";
+          document.getElementById("tradeTargetGenerate").click();
+          check("Incomplete scoring still generates model-value offers but explicitly withholds lineup impact",
+            targetResults.querySelectorAll("[data-target-offer]").length === 1 &&
+            targetResults.textContent.includes("incomplete scoring inputs") &&
+            !targetResults.textContent.includes("Selected-week lineup estimate:"));
+          document.getElementById("finderCountLbl").textContent = "99 proposals";
+          renderTradeFinder();
+          check("Paused needs analysis clears outdated proposal counts and positional grades",
+            document.getElementById("finderCountLbl").textContent === "0 proposals" &&
+            document.getElementById("posGradesGrid").children.length === 0 &&
+            document.getElementById("myArchetypeBadge").textContent === "ANALYSIS PAUSED" &&
+            document.getElementById("rosterNeedsSummary").textContent.includes("incomplete scoring inputs"));
+          state.activeLeague = targetLeagueBefore;
+          state.players.fixture_drop_wr.projectionScoringIssue = targetScoringIssueBefore;
+          document.getElementById("tradeTargetGenerate").click();
+          const staleReview = targetResults.querySelector("[data-target-offer]");
+          state.managers[1].players = [];
+          state.managers.push({ ...state.managers[1], rosterId: 3, players: ["fixture_claim_rb"] });
+          staleReview.click();
+          check("Targeted offer review rejects a target transferred to a different manager",
+            targetResults.textContent.includes("Generate fresh offers"));
+          state.managers.pop();
+          state.managers[1].players = ["fixture_claim_rb"];
+          document.getElementById("tradeTargetGenerate").click();
+          const changedSenderReview = targetResults.querySelector("[data-target-offer]");
+          document.getElementById("tradeTeamA").value = "1";
+          changedSenderReview.click();
+          check("Targeted offer review rejects a changed sending team",
+            targetResults.textContent.includes("Generate fresh offers"));
+          document.getElementById("tradeTeamA").value = "0";
+          document.getElementById("tradeTargetGenerate").click();
+          document.getElementById("tradeTargetPackage").value = "two";
+          document.getElementById("tradeTargetPackage").dispatchEvent(new Event("change"));
+          check("Changing offer size clears the previous generated packages", !targetResults.textContent);
+          document.getElementById("tradeTargetGenerate").click();
+          check("Two-player offer size is honored by the actual button",
+            targetResults.querySelectorAll("[data-target-offer]").length === 1 &&
+            targetResults.querySelectorAll(".trade-asset-item").length === 2);
+          document.getElementById("tradeTargetPackage").value = "one";
+          state.activeLeague = { ...targetLeagueBefore, provider: "yahoo" };
+          document.getElementById("tradeTeamA").value = "1";
+          document.getElementById("tradeTeamA").dispatchEvent(new Event("change"));
+          check("Changing the sending team clears offers and removes its own players from targets",
+            !targetResults.textContent &&
+            !Array.from(document.getElementById("tradeTargetPlayer").options).some(option => option.value === "fixture_claim_rb"));
+          document.getElementById("tradeTeamA").value = "0";
+          renderTradeTargets();
+          document.getElementById("tradeTargetPlayer").value = "fixture_claim_rb";
+          state.players.fixture_drop_wr.baseValue = 100;
+          document.getElementById("tradeTargetGenerate").click();
+          check("Generate offers button explains when no packages meet the value threshold",
+            targetResults.textContent.includes("No one- or two-player offers meet the 85%"));
+          state.managers = [];
+          document.getElementById("tradeTargetGenerate").click();
+          check("Disconnected trade generation explains that a league must be connected",
+            targetResults.textContent.includes("Connect a league"));
         } finally {
           state.managers = targetManagersBefore;
+          state.activeLeague = targetLeagueBefore;
+          state.players.fixture_drop_wr.projectionScoringIssue = targetScoringIssueBefore;
           state.players.fixture_claim_rb.baseValue = targetValueBefore;
           state.players.fixture_drop_wr.baseValue = giveValueBefore;
           state.players.fixture_owned_qb.baseValue = otherValueBefore;
+          state.tradeSideA = targetTradeBefore.a;
+          state.tradeSideB = targetTradeBefore.b;
+          Object.entries(targetTeamOptionsBefore).forEach(([id, html]) => { document.getElementById(id).innerHTML = html; });
+          Object.entries(targetControlsBefore).forEach(([id, value]) => { document.getElementById(id).value = value; });
+          renderTradeTargets();
+          renderTradeBuilderSide(true); renderTradeBuilderSide(false); updateTradeEvaluation();
         }
         check("Draft reception presets change rankings by the exact modeled PPR points",
           Math.abs(scoreDraftPlayer(receptionPlayer, planSettings, {}, 6) - scoreDraftPlayer(receptionPlayer, { ...planSettings, scoring: "standard" }, {}, 6) - 500) < 0.000001);

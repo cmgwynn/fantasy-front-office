@@ -1143,7 +1143,7 @@ function openProviderInCurrentTab() {
   else window.open(url, "_blank", "noopener,noreferrer");
 }
 
-function renderTradeTargets() {
+function renderTradeTargets({ preserveResults = false } = {}) {
   const select = document.getElementById("tradeTargetPlayer");
   const myIndex = Number(document.getElementById("tradeTeamA").value);
   const query = normalizeDraftPlayerName(document.getElementById("tradeTargetSearch").value);
@@ -1163,17 +1163,17 @@ function renderTradeTargets() {
   select.innerHTML = '<option value="">Choose a player from another roster</option>' +
     targets.map(({ player, owner }) => `<option value="${draftEscapeHtml(player.id)}">${draftEscapeHtml(`${player.name} · ${player.position} · ${owner.teamName}`)}</option>`).join("");
   if (targets.some(({ player }) => player.id === oldValue)) select.value = oldValue;
-  document.getElementById("tradeTargetResults").replaceChildren();
+  if (!preserveResults || select.value !== oldValue) document.getElementById("tradeTargetResults").replaceChildren();
 }
 
 function buildTargetTradeOffers(myIndex, targetId, size = "all") {
+  if (!state.managers.length) return { reason: "Connect a league before generating offers." };
+  if (!targetId) return { reason: "Choose a player to acquire before generating offers." };
   const mine = state.managers[myIndex], target = state.players[targetId];
   const owners = state.managers.map((team, index) => ({ team, index })).filter(({ team, index }) => index !== myIndex && team.players?.includes(targetId));
   if (!mine || !target || target.isPick || owners.length !== 1 || mine.players?.includes(targetId)) return { reason: "Choose a player uniquely owned by another team." };
   const { team: partner, index: partnerIndex } = owners[0];
-  const scoringIssue = getScoringDecisionIssue([...(mine.players || []), ...(partner.players || [])]);
-  if (scoringIssue) return { reason: scoringIssue };
-  const candidates = getPlannerRosterIds(mine).map(id => state.players[id]).filter(player => player && !player.isPick &&
+  const candidates = [...new Set(mine.players || [])].map(id => state.players[id]).filter(player => player && !player.isPick &&
     Number.isFinite(player.baseValue) && player.baseValue > 0).sort((a, b) => b.baseValue - a.baseValue);
   if (!Number.isFinite(target.baseValue) || target.baseValue <= 0) return { reason: "Target value is unavailable. Refresh player data." };
   const packages = [];
@@ -1181,7 +1181,7 @@ function buildTargetTradeOffers(myIndex, targetId, size = "all") {
   if (size !== "one") candidates.forEach((player, index) => candidates.slice(index + 1).forEach(other => packages.push([player.id, other.id])));
   const offers = packages.map(giveIds => {
     const rawValue = giveIds.reduce((sum, id) => sum + state.players[id].baseValue, 0);
-    const value = rawValue * (giveIds.length === 2 ? 0.94 : 1);
+    const value = giveIds.length === 2 ? Math.round(rawValue * 0.94) : rawValue;
     const match = 100 * (1 - Math.abs(value - target.baseValue) / Math.max(value, target.baseValue));
     return { giveIds, getIds: [targetId], myIndex, partnerIndex, match, value };
   }).filter(offer => offer.match >= 85).sort((a, b) => b.match - a.match).slice(0, 6)
@@ -1203,7 +1203,9 @@ function generateTargetTradeOffers() {
     button.addEventListener("click", () => {
       const offer = result.offers[Number(button.dataset.targetOffer)];
       const checked = buildTargetTradeOffers(offer.myIndex, result.target.id, document.getElementById("tradeTargetPackage").value);
-      if (checked.reason || !checked.offers.some(candidate => candidate.giveIds.join() === offer.giveIds.join())) {
+      if (Number(document.getElementById("tradeTeamA").value) !== offer.myIndex ||
+        checked.reason || !checked.offers.some(candidate => candidate.partnerIndex === offer.partnerIndex &&
+          candidate.giveIds.join() === offer.giveIds.join())) {
         container.innerHTML = '<p class="comparison-note">The roster or target changed. Generate fresh offers.</p>'; return;
       }
       openTradeInBuilder(offer.giveIds, offer.getIds, offer.myIndex, offer.partnerIndex);
@@ -3912,7 +3914,7 @@ function renderTradeDatabase() {
 
 function renderTradeFinder() {
   ensureDynamicTradeControls();
-  renderTradeTargets();
+  renderTradeTargets({ preserveResults: true });
   const myIdx = parseInt(document.getElementById("tradeTeamA")?.value || "0", 10) || 0;
   const myTm = state.managers[myIdx];
   const arrow = k => (finderSortKey === k ? (finderSortDir === -1 ? " ▼" : " ▲") : "");
@@ -3932,6 +3934,11 @@ function renderTradeFinder() {
   const tbody = tbl.querySelector("tbody");
   const scoringIssue = getScoringDecisionIssue();
   if (scoringIssue) {
+    document.getElementById("finderCountLbl").textContent = "0 proposals";
+    document.getElementById("posGradesGrid").replaceChildren();
+    document.getElementById("myArchetypeBadge").textContent = "ANALYSIS PAUSED";
+    document.getElementById("myArchetypeBadge").className = "badge badge-yellow";
+    document.getElementById("rosterNeedsSummary").textContent = scoringIssue;
     tbody.innerHTML = `<tr><td colspan="6" class="draft-empty">${draftEscapeHtml(scoringIssue)}</td></tr>`;
     return;
   }
@@ -9764,7 +9771,7 @@ function renderAllViews(teamIdx) {
   renderDecisionDataStatus();
   renderRosterTab(teamIdx); renderPowerTab();
   renderTradeBuilderSide(true); renderTradeBuilderSide(false);
-  updateTradeEvaluation(); renderTradeFinder();
+  updateTradeEvaluation(); renderTradeTargets(); renderTradeFinder();
   renderOptimizerTab(teamIdx); renderWaiversTab();
   renderMatchupSim(); drawSingleAnalyticsChart();
   renderPlayerComparison();
@@ -10076,6 +10083,7 @@ function bindControlEvents() {
     rememberWorkspaceSelection();
     const idx = parseInt(e.target.value, 10);
     if (document.getElementById("tradeTeamA")) document.getElementById("tradeTeamA").value = idx;
+    renderTradeTargets();
     renderRosterTab(idx); renderOptimizerTab(idx); renderWaiversTab(); renderSosTab(); renderTradeFinder(); renderDraftRoom(); buildTradeDatabase();
     if (document.getElementById("inboxRecap")?.open) renderLeagueNewsletter();
     if (document.getElementById("tab-intel")?.classList.contains("active")) renderLeagueIntelTab();
@@ -10103,6 +10111,7 @@ function bindControlEvents() {
   document.getElementById("tradeTeamA")?.addEventListener("change", e => {
     if (document.getElementById("teamSelect")) document.getElementById("teamSelect").value = e.target.value;
     state.tradeSideA = [];
+    renderTradeTargets();
     renderTradeBuilderSide(true); updateTradeEvaluation(); buildTradeDatabase();
   });
   document.getElementById("tradeTeamB")?.addEventListener("change", () => { state.tradeSideB = []; renderTradeBuilderSide(false); updateTradeEvaluation(); });
