@@ -647,6 +647,16 @@ button.my-league:hover { border-color:var(--accent); background:#20262A; }
 .planner-matrix .compare-portrait { width:36px; height:36px; flex-basis:36px; }
 .trade-target-controls { display:flex; flex-direction:column; gap:10px; }
 .trade-target-controls label { display:flex; flex-direction:column; gap:5px; }
+.trade-controls-grid, .trade-offer-sides { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr)); gap:12px; }
+.trade-controls-grid select, .trade-controls-grid input, .trade-player-picker select, .trade-player-picker input { width:100%; min-width:0; }
+.trade-player-picker { display:flex; flex-direction:column; gap:8px; padding:12px; border:1px solid var(--border); border-radius:10px; background:var(--bg-panel); }
+.trade-player-picker select { min-height:130px; }
+.trade-offer-side { display:flex; flex-direction:column; gap:8px; padding:12px; border:1px solid var(--border); border-radius:10px; min-width:0; }
+.trade-offer-side h4 { margin:0; font-size:13px; }
+.trade-offer-side.is-send h4 { color:var(--bad); }
+.trade-offer-side.is-receive h4 { color:var(--good); }
+.trade-result-toolbar { display:flex; align-items:center; flex-wrap:wrap; gap:10px; }
+.trade-target-offers { grid-template-columns:1fr; }
 #companionBar[hidden] { display:none; }
 #companionBar { margin:0 12px 10px; padding:8px 10px; border:1px solid var(--accent); border-radius:10px; background:var(--bg-panel); display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
 #companionOpenLeague { color:var(--accent); background:var(--accent-bg); border:1px solid var(--accent); font-weight:800; }
@@ -1664,10 +1674,24 @@ button.gd-alert:disabled { cursor:default; opacity:1; }
 .gd-lineup-total { margin:0 0 8px; font-size:12px; }
 .gd-lineup-total b { font-size:20px; font-variant-numeric:tabular-nums; }
 .gd-lineup-progress { margin:0 0 12px; font-size:12px; color:var(--text-muted); line-height:1.5; }
+.gd-versus { margin-top:16px; }
+.gd-versus-row, .gd-versus-labels { display:grid; grid-template-columns:minmax(0,1fr) 44px minmax(0,1fr); gap:8px; align-items:center; }
+.gd-versus-labels { text-align:center; font-size:12px; font-weight:700; margin-bottom:8px; }
+.gd-versus-row { border-top:1px solid var(--border); padding:8px 0; }
+.gd-versus-cell { min-width:0; }
+.gd-versus-slot { text-align:center; color:var(--accent); font-size:11px; font-weight:800; overflow-wrap:anywhere; }
+.gd-versus-cell .gd-slot { display:none; }
+.gd-versus-missing { color:var(--text-muted); font-size:12px; padding:8px; }
 @media (max-width:680px) {
-  .gd-lineup-grid { grid-template-columns:minmax(0, 1fr); }
-  .gd-lineup-team.is-selected { order:-1; }
+  .gd-lineup-grid { gap:8px; }
+  .gd-lineup-team { padding:8px; }
   .gd-lineup-body { padding:12px; }
+  .gd-versus-row, .gd-versus-labels { grid-template-columns:minmax(0,1fr) 30px minmax(0,1fr); gap:4px; }
+  .gd-versus-cell .gd-player { flex-wrap:wrap; padding:6px 2px; gap:4px; }
+  .gd-versus-cell .gd-photo { display:none; }
+  .gd-versus-cell .gd-player-name { flex-basis:100%; min-width:0; }
+  .gd-versus-cell .gd-player-name strong, .gd-versus-cell .gd-player-name small { white-space:normal; overflow-wrap:anywhere; }
+  .gd-versus-cell .gd-player-pts { width:100%; text-align:left; }
 }
 .usage-dialog .share-dialog-head { padding:18px 20px 14px; gap:16px; border-bottom:1px solid var(--border); }
 .usage-dialog .share-dialog-close { flex:0 0 40px; height:40px; border-radius:10px; }

@@ -26,6 +26,12 @@ a league to use roster-based features.
 
 ## Current release
 
+Gameday's View matchup rosters and team-name buttons open a versus starter comparison. Both teams remain
+side by side on mobile, with rows paired by roster slot and repeated-slot
+occurrence, not player rank or projection. Unmatched starters and absent
+opponents are explicit; bench rosters are not supplied by this view. Live
+refresh preserves the dialog and keyed player rows.
+
 ### Connection safety, focused onboarding and scoring
 
 - Provider selection edits a connection draft, not the active workspace. A sync
@@ -50,15 +56,59 @@ a league to use roster-based features.
   product illustration is labeled illustrative, not an actual live result or
   an interactive demo. The public demo option remains removed.
 - Trade package totals say Model trade value, not fantasy points.
-- Trade Finder's Acquire a player generator compares one- or two-player packages
-  at an 85% model-value match or better, using the Builder's rounded 6%
-  two-for-one discount. Owned reserve/taxi players can be offered; inactive
-  players still remain excluded from current lineup calculations.
+- Trade Finder groups the target search with its roster list and offers local
+  team selection plus personal-lineup or balanced-team ranking. Automatic
+  packages can include multiple owned players on either side and always include
+  the target; there is no fixed player-count ceiling. A bounded, value-band and
+  package-size shortlist keeps the search practical, rather than exhaustively
+  evaluating every roster subset. Results show full sending/receiving player
+  cards, model values, both teams' estimated ROS and selected-week impacts, and
+  distinct package shapes. Rankings do not predict acceptance or guarantee a
+  win-win. All comparisons require an 85% model-value match or better and use the
+  Builder's shared rounded consolidation discount (6% per extra asset, capped
+  at 18%). Owned reserve/taxi players can be offered; inactive players remain
+  excluded from current lineup calculations.
   Missing scoring inputs withhold lineup-impact estimates and needs-based
   recommendations, not targeted model-value comparisons. Empty selections and
   no qualifying packages show an explanation. Unrelated Finder filters retain
   generated offers; roster changes require fresh generation, and Builder review
   rechecks the sending team, target owner and package.
+- Trade Database separates Generated Trade Ideas (the default) from Completed
+  League Trades. Ideas use only current league-owned assets, allow same-position
+  swaps, and are generated locally even when history/scoring feeds are missing.
+  History uses Sleeper's last eight transaction weeks, records the actual
+  sending managers rather than inferring them from current ownership, and
+  reports partial failures. ESPN/Yahoo history is explicitly unavailable.
+  Multi-team trades are excluded rather than misassigned to the first two
+  managers; mixed player/pick trades label omitted pick legs.
+  Historical player-only trades are read-only; shown values are current model
+  estimates, not trade-time values. Search filters the adjacent results table;
+  team, position, goal and source controls all live in that same view.
+- Balanced generated ideas require at least one meaningful ROS starter gain
+  (>0.05 points/game) and neither team losing more than 0.05. Personal ideas
+  require a gain for the selected team; partner losses are explicit. Targeted
+  Finder comparisons can still show neutral/loss-making packages, labeled as
+  value/depth tradeoffs rather than upgrades. Missing scoring permits value-only
+  comparisons, never a claimed verified benefit.
+- All trade surfaces show active/bench capacity and extra-player warnings when
+  roster slots are supplied, plus lost starter coverage and IR/taxi eligibility
+  notices. Capacity estimates assume incoming players need ordinary roster spots;
+  gains precede any required drops, so verify destination eligibility and provider
+  processing rules. Picks do not consume player spots. Needs-based estimates now
+  exclude IR/taxi assets consistently with Builder and target estimates.
+  Inferred partner archetypes are not actual preferences; redraft teams are not
+  assumed to accept losses in exchange for youth. Balanced needs ideas cannot
+  hide a ROS loss behind an archetype or favorable playoff schedule.
+- Builder validates current ownership before scoring and retains model-value
+  analysis when lineup projections are unavailable. Trade analysis never changes
+  the separate matchup simulator's output.
+  Needs grades use actual eligible starter positions and competition ranks
+  (equal unit scores tie), not roster order. Grades describe relative unit
+  strength, not proof that a player is expendable or that an upgrade exists.
+  Opening Trade Database reports an explicit generating status and yields before computing
+  the shortlist. Package totals are reused across candidate pairs instead of
+  recomputed for every match. Generation remains bounded and synchronous after
+  that yield; it is not an exhaustive solver or a background worker.
 
 ### Shared custom-scoring coverage
 

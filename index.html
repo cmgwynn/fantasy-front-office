@@ -23,7 +23,7 @@
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:image" content="https://fantasyfo.com/icons/og-image.jpg" />
   <script type="application/ld+json">{"@context":"https://schema.org","@type":"WebApplication","name":"Fantasy Front Office","url":"https://fantasyfo.com/","applicationCategory":"SportsApplication","operatingSystem":"Any","description":"Free fantasy football tools for Sleeper, ESPN and Yahoo leagues: Gameday across leagues, lineup optimizer, waiver planner, trade analyzer and playoff odds.","offers":{"@type":"Offer","price":"0","priceCurrency":"USD"}}</script>
-  <link rel="stylesheet" href="styles.css?v=20261112-trade-finder-1" />
+  <link rel="stylesheet" href="styles.css?v=20261112-trade-versus-2" />
 </head>
 <body>
 
@@ -346,8 +346,8 @@
       <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
         <div class="seg-bar-container">
           <button class="seg-btn active" data-tmode="0">Trade Builder</button>
-          <button class="seg-btn" data-tmode="1">Trade Database</button>
-          <button class="seg-btn" data-tmode="2">Trade Finder & Needs Analysis</button>
+          <button class="seg-btn" data-tmode="1">Trade Database: Ideas & History</button>
+          <button class="seg-btn" data-tmode="2">Trade Finder & Team Needs</button>
         </div>
         <span id="tradeFormatBadge" class="badge badge-blue">REDRAFT MODE</span>
       </div>
@@ -399,44 +399,57 @@
 
       <!-- SUB-MODE 1: TRADE DATABASE (ROSTER-FILTERED & SORTABLE) -->
       <div id="tmode-1" style="display:none; flex-direction:column; gap:12px;">
-        <div class="card-banner" style="padding:12px 16px;">
-          <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
-            <input id="dbSearch" placeholder="Search player or manager name..." style="flex:1; min-width:190px;" />
-            <label style="font-size:12px; color:var(--good); font-weight:800;">Roster Filter:</label>
-            <select id="dbRosterScope" style="width:auto; min-width:235px; border-color:rgba(48,209,88,0.5);">
-              <option value="MY_ROSTER">Involving My Selected Roster Only</option>
-              <option value="ALL">All League & Market Comps</option>
-            </select>
-            <select id="dbPosFilter" style="width:155px;">
+        <section class="card-banner trade-target-controls" aria-label="Browse trade ideas and history">
+          <h3>Browse trade ideas or completed trades</h3>
+          <p class="comparison-note">Generated ideas use players owned by teams in your league. Balanced ideas avoid meaningful lineup losses; personal ideas prioritize your gain and disclose the partner's tradeoff. If scoring is unavailable, results are value comparisons only. History shows completed provider trades, not recommendations.</p>
+          <div class="trade-controls-grid">
+            <label for="dbTeam">Your team<select id="dbTeam" data-trade-roster></select></label>
+            <label for="dbSrcFilter">Show<select id="dbSrcFilter">
+              <option value="MARKET">Generated Trade Ideas</option>
+              <option value="LEAGUE">Completed League Trades</option>
+            </select></label>
+            <label for="dbGoal">Rank ideas by<select id="dbGoal">
+              <option value="balanced">Balance both teams</option><option value="mine">Improve my lineup</option>
+            </select></label>
+            <label for="dbRosterScope">Teams<select id="dbRosterScope">
+              <option value="MY_ROSTER">My selected team</option>
+              <option value="ALL">All league teams (history)</option>
+            </select></label>
+            <label for="dbPosFilter">Position<select id="dbPosFilter">
               <option value="ALL">All Positions</option><option value="QB">QB Trades</option>
               <option value="RB">RB Trades</option><option value="WR">WR Trades</option><option value="TE">TE Trades</option>
-            </select>
-            <select id="dbSrcFilter" style="width:215px;">
-              <option value="ALL">All Sources (League + Comps)</option>
-              <option value="LEAGUE">Completed League Trades Only</option>
-              <option value="MARKET">Roster Market Comps Only</option>
-            </select>
-            <span id="dbCountLbl" class="badge badge-green">0 trades found</span>
+            </select></label>
+            <label for="dbSearch">Filter these results<input id="dbSearch" type="search" placeholder="Player or manager name" /></label>
           </div>
-        </div>
+          <div class="trade-result-toolbar"><button id="dbRefresh" type="button">Refresh ideas & history</button><span id="dbCountLbl" class="badge badge-green">0 results</span></div>
+          <p id="dbStatus" class="comparison-note" role="status"></p>
+        </section>
         <div class="table-wrap"><table id="dbTable"></table></div>
       </div>
 
       <!-- SUB-MODE 2: TRADE FINDER & POSITIONAL NEEDS ANALYSIS -->
       <div id="tmode-2" style="display:none; flex-direction:column; gap:12px;">
         <section class="card-banner trade-target-controls" aria-label="Generate offers for a player">
-          <h3>Acquire a player</h3>
-          <p class="comparison-note">Choose who you want, then generate packages from your roster. Options are model-value comparisons, not acceptance predictions. Missing scoring inputs pause lineup estimates, not these value comparisons.</p>
-          <label for="tradeTargetSearch">Find a target<input id="tradeTargetSearch" type="search" placeholder="Player name or team" /></label>
-          <label for="tradeTargetPlayer">Player to acquire<select id="tradeTargetPlayer"><option value="">Choose a rostered player</option></select></label>
-          <label for="tradeTargetPackage">Offer size<select id="tradeTargetPackage"><option value="all">One or two players</option><option value="one">One player</option><option value="two">Two-player package</option></select></label>
+          <h3>Find a trade around a player</h3>
+          <p class="comparison-note">Choose your team and a target. Comparisons always include your target and can include other players from that partner. A value match is not necessarily a lineup upgrade: both teams' gains, losses and roster-space costs are shown. Nothing is submitted.</p>
+          <div class="trade-controls-grid">
+            <label for="tradeFinderTeam">Your team<select id="tradeFinderTeam" data-trade-roster></select></label>
+            <label for="tradeTargetGoal">Trade goal<select id="tradeTargetGoal"><option value="balanced">Balance both teams</option><option value="mine">Improve my lineup</option></select></label>
+          </div>
+          <div class="trade-player-picker">
+            <label for="tradeTargetSearch">Search the target roster list<input id="tradeTargetSearch" type="search" placeholder="Player, NFL team or manager" aria-controls="tradeTargetPlayer" /></label>
+            <label for="tradeTargetPlayer">Select your target<select id="tradeTargetPlayer" size="5"><option value="">Choose a rostered player</option></select></label>
+            <p id="tradeTargetStatus" class="comparison-note" role="status"></p>
+          </div>
+          <label for="tradeTargetPackage">Package preference<select id="tradeTargetPackage"><option value="all">Automatic packages on both sides</option><option value="one">Send one player, receive only the target</option><option value="two">Send two players, receive only the target</option></select></label>
           <button id="tradeTargetGenerate" type="button">Generate offers</button>
+          <p class="comparison-note">Ranks a practical shortlist by estimated lineup gains and model-value balance, not acceptance odds. Larger packages receive a consolidation discount. Check roster limits and timing in your provider. Incomplete scoring means value-only comparisons.</p>
           <div id="tradeTargetResults" aria-live="polite"></div>
         </section>
         <div class="card-banner" style="gap:10px;">
           <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
             <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
-              <div style="font-size:13px; font-weight:800;">ROSTER POSITIONAL GRADES & CONTENDER / REBUILDER BLUEPRINT</div>
+              <div style="font-size:13px; font-weight:800;">TEAM NEEDS & POSITIONAL UPGRADE IDEAS</div>
               <span id="myArchetypeBadge" class="badge badge-green">TITLE CONTENDER</span>
             </div>
             <div style="font-size:11px; color:var(--text-muted); font-weight:600;">Click any positional card below to filter Trade Finder for that upgrade</div>
@@ -447,6 +460,8 @@
           </div>
         </div>
         <div class="card-banner" style="padding:12px 16px;">
+          <h3>Find positional upgrades instead</h3>
+          <p class="comparison-note">These filters apply only to the upgrade ideas below. Grades use active players and your league's starter slots. Partner profiles are inferred from standings, not verified preferences. Balanced ideas cannot hide a rest-of-season loss behind playoff projections.</p>
           <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
             <label style="font-size:12px; color:var(--text-muted);">Target Upgrade:</label>
             <select id="finderPos" style="width:auto; min-width:180px;">
@@ -1153,23 +1168,23 @@
 </footer>
 
 <p id="appInstallStatus" class="app-install-status" role="status"></p>
-<script src="pwa.js?v=20261112-trade-finder-1"></script>
-<script src="monetization-config.js?v=20261112-trade-finder-1"></script>
-<script src="data-fetch.js?v=20261112-trade-finder-1"></script>
-<script src="scoring.js?v=20261112-trade-finder-1"></script>
-<script src="demo-league.js?v=20261112-trade-finder-1"></script>
-<script src="league-records.js?v=20261112-trade-finder-1"></script>
-<script src="workspace-backup.js?v=20261112-trade-finder-1"></script>
-<script src="playoff-simulator.js?v=20261112-trade-finder-1"></script>
-<script src="weekly-matchups.js?v=20261112-trade-finder-1"></script>
-<script src="share-cards.js?v=20261112-trade-finder-1"></script>
-<script src="feedback.js?v=20261112-trade-finder-1"></script>
-<script src="playoff-push.js?v=20261112-trade-finder-1"></script>
-<script src="waiver-day.js?v=20261112-trade-finder-1"></script>
-<script src="league-schedule.js?v=20261112-trade-finder-1"></script>
-<script src="usage-metrics.js?v=20261112-trade-finder-1"></script>
-<script src="app.js?v=20261112-trade-finder-1"></script>
-<script src="release-updates.js?v=20261112-trade-finder-1"></script>
-<script src="gameday.js?v=20261112-trade-finder-1"></script>
+<script src="pwa.js?v=20261112-trade-versus-2"></script>
+<script src="monetization-config.js?v=20261112-trade-versus-2"></script>
+<script src="data-fetch.js?v=20261112-trade-versus-2"></script>
+<script src="scoring.js?v=20261112-trade-versus-2"></script>
+<script src="demo-league.js?v=20261112-trade-versus-2"></script>
+<script src="league-records.js?v=20261112-trade-versus-2"></script>
+<script src="workspace-backup.js?v=20261112-trade-versus-2"></script>
+<script src="playoff-simulator.js?v=20261112-trade-versus-2"></script>
+<script src="weekly-matchups.js?v=20261112-trade-versus-2"></script>
+<script src="share-cards.js?v=20261112-trade-versus-2"></script>
+<script src="feedback.js?v=20261112-trade-versus-2"></script>
+<script src="playoff-push.js?v=20261112-trade-versus-2"></script>
+<script src="waiver-day.js?v=20261112-trade-versus-2"></script>
+<script src="league-schedule.js?v=20261112-trade-versus-2"></script>
+<script src="usage-metrics.js?v=20261112-trade-versus-2"></script>
+<script src="app.js?v=20261112-trade-versus-2"></script>
+<script src="release-updates.js?v=20261112-trade-versus-2"></script>
+<script src="gameday.js?v=20261112-trade-versus-2"></script>
 </body>
 </html>

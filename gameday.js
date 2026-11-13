@@ -527,6 +527,20 @@
 
   let lineupDialog;
   let lineupSelection;
+  function pairLineupPlayers(mine = [], opponent = []) {
+    const normalizeSlot = player => {
+      const slot = String(player.slot || player.position || "OTHER").toUpperCase();
+      return ({ "D/ST": "DEF", DST: "DEF", "W/R/T": "FLEX", "W/R": "REC_FLEX", "Q/W/R/T": "SUPER_FLEX" })[slot] || slot;
+    };
+    const slots = [...new Set([...mine, ...opponent].map(normalizeSlot))];
+    return slots.flatMap(slot => {
+      const left = mine.filter(player => normalizeSlot(player) === slot);
+      const right = opponent.filter(player => normalizeSlot(player) === slot);
+      return Array.from({ length: Math.max(left.length, right.length) }, (_, index) =>
+        ({ key: `${slot}:${index}`, slot, mine: left[index] || null, opponent: right[index] || null }));
+    });
+  }
+
   function renderProjectionNotice(side) {
     if (!side || (side.projected !== null && !side.projectionEstimated)) return "";
     const affected = side.players.filter(player => player.projFinal === null || player.projectionBaseline);
@@ -547,20 +561,23 @@
       const progress = [`${counts.live} live`, `${counts.upcoming} yet to play`, `${counts.finished} finished`,
         ...[["inactive", "inactive"], ["bye", "on bye"], ["unknown", "status unknown"], ["empty", "empty slots"]]
           .filter(([kind]) => counts[kind]).map(([kind, label]) => `${counts[kind]} ${label}`)].join(" · ");
-      const players = side.players.map(player => {
-        if (player.empty) return player;
-        const game = gd.data.scoreboard.byTeam[teamCode(player.team)];
-        return { ...player, gameLabel: !game ? "Game status unknown" : game.state === "post" ? `${player.gameLabel} · Finished` : game.state === "in" ? `${player.gameLabel} · Live` : player.gameLabel };
-      });
       return `<section class="gd-lineup-team${key === lineupSelection.side ? " is-selected" : ""}" data-gd-key="${key}">
         <h4 tabindex="-1" data-lineup-heading="${key}">${esc(side.name)} <small>${key === "me" ? "Your team" : "Opponent"}</small></h4>
         <p class="gd-lineup-total"><b data-gd-score>${fmt(side.points)}</b> actual · ${fmt(side.projected)} projected final${side.projectionEstimated ? " (baseline estimate)" : ""}</p>
         ${renderProjectionNotice(side)}
         <p class="gd-lineup-progress">${esc(progress)}</p>
-        ${players.length ? `<ul class="gd-players">${players.map(renderPlayerRow).join("")}</ul>` : '<p>No starting lineup supplied by the provider.</p>'}
+        ${side.players.length ? "" : '<p>No starting lineup supplied by the provider.</p>'}
       </section>`;
     };
-    morph(body, `<p class="gd-lineup-context">Week ${esc(gd.data.week)} · ${esc(league.name)}${league.imported ? " · Imported snapshot, not live" : ""} · Updated ${esc(new Date(gd.data.checkedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }))}${gd.error ? ` · ${esc(gd.error)}` : ""}</p><p class="gd-lineup-note">Starters only. Yet to play excludes known inactive players; game status does not guarantee participation. Scores and statuses can be delayed.</p><div class="gd-lineup-grid">${panel(league.me, "me")}${panel(league.opp, "opp")}</div>`);
+    const cell = (player, side) => {
+      if (!player) return `<div class="gd-versus-cell"><p class="gd-versus-missing">${side === "opp" && !league.opp ? "No opponent" : "No matching starter supplied"}</p></div>`;
+      const game = gd.data.scoreboard.byTeam[teamCode(player.team)];
+      const labeled = player.empty ? player : { ...player, gameLabel: !game ? "Game status unknown"
+        : game.state === "post" ? `${player.gameLabel} · Finished` : game.state === "in" ? `${player.gameLabel} · Live` : player.gameLabel };
+      return `<div class="gd-versus-cell"><ul class="gd-players" aria-label="${side === "me" ? "Your starter" : "Opponent starter"}">${renderPlayerRow(labeled)}</ul></div>`;
+    };
+    const rows = pairLineupPlayers(league.me?.players, league.opp?.players);
+    morph(body, `<p class="gd-lineup-context">Week ${esc(gd.data.week)} · ${esc(league.name)}${league.imported ? " · Imported snapshot, not live" : ""} · Updated ${esc(new Date(gd.data.checkedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }))}${gd.error ? ` · ${esc(gd.error)}` : ""}</p><p class="gd-lineup-note">Starters only, paired by roster slot and occurrence. Missing matches do not mean an empty provider slot. Yet to play excludes known inactive players; scores and statuses can be delayed.</p><div class="gd-lineup-grid">${panel(league.me, "me")}${panel(league.opp, "opp")}</div><div class="gd-versus" aria-label="Starting lineup versus comparison"><div class="gd-versus-labels"><span>Your starters</span><span>VS</span><span>Opponent starters</span></div>${rows.map(row => `<div class="gd-versus-row" data-gd-key="versus-${esc(row.key)}">${cell(row.mine, "me")}<span class="gd-versus-slot">${esc(row.slot === "SUPER_FLEX" ? "SF" : row.slot === "REC_FLEX" ? "RF" : row.slot)}</span>${cell(row.opponent, "opp")}</div>`).join("")}</div>`);
   }
 
   function openLineupComparison(key, side) {
@@ -598,6 +615,7 @@
     const state = pct === null ? "" : pct >= 60 ? " is-winning" : pct <= 40 ? " is-losing" : " is-close";
     return `<article class="gd-card${state}" data-gd-key="${esc(league.key)}">${head}${renderStanding(league.standing)}${renderTeamPicker(league)}
       <div class="gd-score">${sideBlock(me, true)}${sideBlock(opp, false)}</div>${winBar}
+      <button type="button" class="gd-team-lineup" data-gameday-lineup="${esc(league.key)}" data-lineup-side="me" aria-haspopup="dialog">View matchup rosters</button>
       ${me.projected === null || opp?.projected === null ? `<p class="gd-none">Scoring inputs incomplete${opp ? ": win probability requires projected totals for both teams" : ""}. Actual scores and players remaining are still shown.</p>` : ""}
       <ul class="gd-players">${me.players.map(renderPlayerRow).join("")}</ul>
       ${opp ? `<details class="gd-opp" data-gd-key="o${esc(league.key)}"><summary>${esc(opp.name)} lineup</summary><ul class="gd-players">${opp.players.map(renderPlayerRow).join("")}</ul></details>` : ""}
@@ -947,7 +965,7 @@
   window.FFOGameday = Object.freeze({
     STORE_KEY, readStore, rememberSource, removeSource, setLeagueHidden, sourceKey, renderSavedManager,
     normalizeScoreboard, remainingFraction, finishPlayer, sideTotals, winProbability, finalizeLeague,
-    buildAlerts, buildRooting, renderAlerts, renderGamedayHtml, morph, activate, refresh, renderGameday, scoreSleeperProjection, lineupProgress,
+    buildAlerts, buildRooting, renderAlerts, renderGamedayHtml, morph, activate, refresh, renderGameday, scoreSleeperProjection, lineupProgress, pairLineupPlayers,
     loadYahooSource, notifyLineupAlerts, computeStanding, standingGapLabel, ordinal, ensureData, manageLeague, get data() { return gd.data; }, set data(value) { gd.data = value; gd.loadedAt = Date.now(); },
     get freshness() { return { checkedAt: gd.loadedAt, error: gd.error, restored: gd.restored, loading: Boolean(gd.loading) }; }
   });

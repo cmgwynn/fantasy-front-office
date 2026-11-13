@@ -20,7 +20,7 @@
   <h1>Optimizer Regression Checks</h1>
   <p id="summary" role="status">Loading the app runtime...</p>
   <ol id="results"></ol>
-  <iframe id="appFrame" src="../index.html?v=20261112-trade-finder-1&amp;resume=0" title="Optimizer test runtime"></iframe>
+  <iframe id="appFrame" src="../index.html?v=20261112-trade-versus-2&amp;resume=0" title="Optimizer test runtime"></iframe>
   <script>
     async function runOptimizerFixtures() {
       const results = [];
@@ -968,12 +968,14 @@
         check("Trade model refuses missing projections instead of rendering a zero-point success",
           buildTradeLineupImpact(state.managers[0], state.managers[1], ["fixture_drop_wr"], ["fixture_owned_rb"]).reason?.includes("missing or invalid"));
         state.players.fixture_owned_rb.projectedPoints = 14;
-        const lockedTradeTeam = { rosterId: 3, players: ["fixture_locked_starter"], starters: ["fixture_locked_starter"] };
+        const lockedTradeTeam = { rosterId: 3, teamName: "Locked team", players: ["fixture_locked_starter"], starters: ["fixture_locked_starter"] };
+        state.managers.push(lockedTradeTeam);
         state.gameDayScheduleAvailable = true;
         const lockedTradeImpact = buildTradeLineupImpact(lockedTradeTeam, state.managers[1], ["fixture_locked_starter"], ["fixture_owned_rb"]);
         check("Trade model skips only current-week impact for a kickoff-locked asset and keeps next-week rosters",
           lockedTradeImpact.currentWeekLocked === true && !lockedTradeImpact.reason && !lockedTradeImpact.teamA &&
           lockedTradeImpact.afterA.includes("fixture_owned_rb") && lockedTradeImpact.afterB.includes("fixture_locked_starter"));
+        state.managers.pop();
         state.gameDayScheduleAvailable = false;
         const tradeControlsBefore = ["tradeTeamA", "tradeTeamB"].map(id => ({ id, html: document.getElementById(id).innerHTML, value: document.getElementById(id).value }));
         const tradeSidesBefore = [state.tradeSideA, state.tradeSideB];
@@ -986,7 +988,15 @@
           updateTradeEvaluation();
           check("Trade screen displays both before/after starting-lineup totals and processing assumptions",
             document.querySelectorAll(".trade-impact-grid > div").length === 2 &&
-            document.getElementById("tradeConsole").textContent.includes("does not verify roster limits"));
+            document.getElementById("tradeConsole").textContent.includes("processing time"));
+          const simBeforeTrade = document.getElementById("simRows").innerHTML;
+          state.players.fixture_drop_wr.projectionScoringIssue = "Fixture missing scoring counter";
+          updateTradeEvaluation();
+          check("Incomplete trade scoring preserves asset-value analysis and leaves the separate simulator untouched",
+            !document.getElementById("tradeFairness").textContent.includes("paused") &&
+            document.getElementById("tradeConsole").textContent.includes("Model values remain available") &&
+            document.getElementById("simRows").innerHTML === simBeforeTrade);
+          state.players.fixture_drop_wr.projectionScoringIssue = "";
           state.tradeSideA = [];
           state.tradeSideB = [];
           updateTradeEvaluation();
@@ -1771,6 +1781,8 @@
           const previousGameday = gdApi.data;
           gdApi.data = { season: 2026, week: 9, checkedAt: Date.now(), scoreboard: gdBoard, leagues: gdLeagues };
           document.body.append(gdView);
+          check("Gameday has a visible View matchup rosters action, not only clickable team names",
+            [...gdView.querySelectorAll("[data-gameday-lineup]")].some(button => button.textContent === "View matchup rosters" && button.getAttribute("aria-haspopup") === "dialog"));
           gdView.querySelector('[data-gameday-lineup="sleeper:1"][data-lineup-side="opp"]').click();
           const lineupDialog = document.querySelector(".gd-lineup-dialog");
           check("Clicking an opponent team name opens both starting lineups and focuses the selected team",
@@ -1780,6 +1792,26 @@
             lineupDialog.querySelector(".is-selected h4").textContent.includes("Theirs") &&
             lineupDialog.textContent.includes("1 yet to play"));
           const lineupNode = lineupDialog.querySelector(".gd-player");
+          check("Gameday comparison uses aligned versus rows rather than separate roster lists",
+            lineupDialog.querySelectorAll(".gd-versus-row").length > 0 &&
+            Array.from(lineupDialog.querySelectorAll(".gd-versus-row")).every(row => row.querySelectorAll(".gd-versus-cell").length === 2) &&
+            !lineupDialog.querySelector(".gd-lineup-team .gd-player"));
+          const versusFrameWidth = window.frameElement.style.width;
+          const versusFrameHeight = window.frameElement.style.height;
+          try {
+            window.frameElement.style.width = "375px";
+            window.frameElement.style.height = "812px";
+            const versusRow = lineupDialog.querySelector(".gd-versus-row");
+            const cells = versusRow.querySelectorAll(".gd-versus-cell");
+            check("Mobile versus comparison keeps both players side by side without dialog overflow",
+              cells[0].getBoundingClientRect().right < cells[1].getBoundingClientRect().left &&
+              Math.abs(cells[0].getBoundingClientRect().top - cells[1].getBoundingClientRect().top) < versusRow.clientHeight &&
+              lineupDialog.scrollWidth <= lineupDialog.clientWidth &&
+              Array.from(lineupDialog.querySelectorAll(".gd-versus-cell")).every(cell => cell.scrollWidth <= cell.clientWidth));
+          } finally {
+            window.frameElement.style.width = versusFrameWidth;
+            window.frameElement.style.height = versusFrameHeight;
+          }
           gdLeagues[0].me.points = -1;
           gdApi.renderGameday();
           check("An open Gameday comparison refreshes in place without closing or rebuilding player rows",
@@ -1838,18 +1870,22 @@
         const otherValueBefore = state.players.fixture_owned_qb.baseValue;
         const targetLeagueBefore = state.activeLeague;
         const targetScoringIssueBefore = state.players.fixture_drop_wr.projectionScoringIssue;
-        const targetControlsBefore = Object.fromEntries(["teamSelect", "tradeTeamA", "tradeTeamB", "tradeTargetSearch", "tradeTargetPackage"].map(id => [id, document.getElementById(id).value]));
-        const targetTeamOptionsBefore = Object.fromEntries(["tradeTeamA", "tradeTeamB"].map(id => [id, document.getElementById(id).innerHTML]));
+        const targetControlsBefore = Object.fromEntries(["teamSelect", "tradeTeamA", "tradeTeamB", "tradeTargetSearch", "tradeTargetPackage", "tradeTargetGoal", "dbSrcFilter", "dbGoal", "dbSearch", "dbPosFilter", "dbRosterScope"].map(id => [id, document.getElementById(id).value]));
+        const targetTeamOptionsBefore = Object.fromEntries(["teamSelect", "tradeTeamA", "tradeTeamB"].map(id => [id, document.getElementById(id).innerHTML]));
         const targetTradeBefore = { a: state.tradeSideA, b: state.tradeSideB };
+        const tradeBonusIds = ["fixture_trade_bonus_mine", "fixture_trade_bonus_partner"];
+        const targetDbBefore = state.dbTrades;
+        const targetHistoryBefore = tradeHistoryStatus;
         try {
           state.players.fixture_claim_rb.baseValue = 2000;
           state.players.fixture_drop_wr.baseValue = 2000;
           state.players.fixture_owned_qb.baseValue = 100;
+          const targetManagerStats = { pf: 0, pa: 0, maxPf: 0, eff: 0, power: 0, allPlayL: 0, rosPpg: 0, history: [], ownedPicks: [] };
           state.managers = [
-            { ...targetManagersBefore[0], rosterId: 1, currentRank: 1, playoffPct: 75, wins: 6, losses: 2, players: ["fixture_drop_wr", "fixture_owned_qb"], reserve: [], taxi: [] },
-            { ...targetManagersBefore[1], rosterId: 2, currentRank: 2, playoffPct: 50, wins: 4, losses: 4, players: ["fixture_claim_rb"], reserve: [], taxi: [] }
+            { ...targetManagersBefore[0], ...targetManagerStats, rosterId: 1, currentRank: 1, playoffPct: 75, wins: 6, losses: 2, players: ["fixture_drop_wr", "fixture_owned_qb"], reserve: [], taxi: [] },
+            { ...targetManagersBefore[1], ...targetManagerStats, rosterId: 2, currentRank: 2, playoffPct: 50, wins: 4, losses: 4, players: ["fixture_claim_rb"], reserve: [], taxi: [] }
           ];
-          ["tradeTeamA", "tradeTeamB"].forEach(id => {
+          ["teamSelect", "tradeTeamA", "tradeTeamB"].forEach(id => {
             document.getElementById(id).innerHTML = '<option value="0">My team</option><option value="1">Partner</option>';
           });
           const offers = buildTargetTradeOffers(0, "fixture_claim_rb", "one");
@@ -1942,7 +1978,8 @@
           document.getElementById("tradeTargetGenerate").click();
           check("Two-player offer size is honored by the actual button",
             targetResults.querySelectorAll("[data-target-offer]").length === 1 &&
-            targetResults.querySelectorAll(".trade-asset-item").length === 2);
+            targetResults.querySelectorAll(".is-send .trade-asset-item").length === 2 &&
+            targetResults.querySelectorAll(".is-receive .trade-asset-item").length === 1);
           document.getElementById("tradeTargetPackage").value = "one";
           state.activeLeague = { ...targetLeagueBefore, provider: "yahoo" };
           document.getElementById("tradeTeamA").value = "1";
@@ -1956,7 +1993,104 @@
           state.players.fixture_drop_wr.baseValue = 100;
           document.getElementById("tradeTargetGenerate").click();
           check("Generate offers button explains when no packages meet the value threshold",
-            targetResults.textContent.includes("No one- or two-player offers meet the 85%"));
+            targetResults.textContent.includes("No packages meet the 85%"));
+          state.players.fixture_drop_wr.baseValue = 2000;
+          tradeBonusIds.forEach(id => {
+            state.players[id] = { ...state.players.fixture_claim_rb, id, name: id, position: "TE", baseValue: 1000, seasonPpg: 8, projectedPoints: 8 };
+          });
+          state.managers[0].players.push(tradeBonusIds[0]);
+          state.managers[1].players.push(tradeBonusIds[1]);
+          document.getElementById("tradeTargetPackage").value = "all";
+          document.getElementById("tradeTargetGenerate").click();
+          const variableOffers = buildTargetTradeOffers(0, "fixture_claim_rb", "all", document.getElementById("tradeTargetGoal").value);
+          check("Automatic offers include the target plus a partner-owned player and render both asset stacks",
+            variableOffers.offers.some(offer => offer.getIds.length > 1) &&
+            Array.from(targetResults.querySelectorAll(".trade-target-offer")).every((card, index) =>
+              card.querySelectorAll(".is-send .trade-asset-item").length === variableOffers.offers[index].giveIds.length &&
+              card.querySelectorAll(".is-receive .trade-asset-item").length === variableOffers.offers[index].getIds.length));
+          check("Target offers explain lineup tradeoffs and do not equate value match with acceptance",
+            targetResults.textContent.includes("Model-value match is not acceptance probability"));
+          const needsRosterReview = getTradeRosterReview(state.managers[0], state.managers[1], ["fixture_drop_wr"], ["fixture_claim_rb", tradeBonusIds[1]]);
+          check("Uneven trade packages show extra-player costs beside their lineup estimates",
+            needsRosterReview.warnings.some(warning => warning.includes("extra player") || warning.includes("drop or reassign")));
+          const collateralIndex = variableOffers.offers.findIndex(offer => offer.getIds.length > 1);
+          targetResults.querySelector(`[data-target-offer="${collateralIndex}"]`).click();
+          check("Review in Builder transfers every receiving player and preserves both model-value totals",
+            state.tradeSideB.join() === variableOffers.offers[collateralIndex].getIds.join() &&
+            state.tradeSideA.join() === variableOffers.offers[collateralIndex].giveIds.join() &&
+            document.getElementById("sideATitle").textContent.endsWith(String(variableOffers.offers[collateralIndex].value)) &&
+            document.getElementById("sideBTitle").textContent.endsWith(String(variableOffers.offers[collateralIndex].getValue)));
+          check("Target search and target selection share one bordered picker",
+            document.getElementById("tradeTargetSearch").closest(".trade-player-picker") ===
+              document.getElementById("tradeTargetPlayer").closest(".trade-player-picker") &&
+            document.getElementById("tradeTargetPlayer").size === 5);
+          document.getElementById("tradeTargetSearch").value = state.managers[1].teamName;
+          document.getElementById("tradeTargetSearch").dispatchEvent(new Event("input"));
+          check("Target search finds the owning manager and reports the adjacent roster matches",
+            Array.from(document.getElementById("tradeTargetPlayer").options).some(option => option.value === "fixture_claim_rb") &&
+            document.getElementById("tradeTargetStatus").textContent.includes("matching players"));
+          document.getElementById("tradeTargetSearch").value = "no-matching-trade-player";
+          document.getElementById("tradeTargetSearch").dispatchEvent(new Event("input"));
+          check("Target search explicitly reports no matches instead of leaving an unexplained blank list",
+            document.getElementById("tradeTargetStatus").textContent.includes("No rostered players match"));
+          document.getElementById("tradeTargetSearch").value = "";
+          renderTradeTargets();
+          document.getElementById("tradeTargetPlayer").value = "fixture_claim_rb";
+          document.getElementById("tradeTargetGenerate").click();
+          document.getElementById("tradeTargetGoal").value = "mine";
+          document.getElementById("tradeTargetGoal").dispatchEvent(new Event("change"));
+          check("Changing the target trade goal invalidates the previously ranked offers", !targetResults.textContent);
+          document.getElementById("dbSearch").value = "";
+          document.getElementById("dbPosFilter").value = "ALL";
+          document.getElementById("dbSrcFilter").value = "MARKET";
+          state.dbTrades = [];
+          document.getElementById("dbGoal").value = "mine";
+          renderTradeDatabase();
+          check("Trade database generates owned-roster ideas without any completed history",
+            document.querySelectorAll("#dbTable tbody button").length > 0 &&
+            document.getElementById("dbCountLbl").textContent.includes("ideas") &&
+            document.getElementById("dbStatus").textContent.includes("Not completed trades") &&
+            document.getElementById("dbRosterScope").disabled);
+          check("Generated Database recommendations require a real selected-team gain instead of neutral churn",
+            getGeneratedTradeIdeas(0, "mine").every(offer => !offer.rosImpact || offer.rosImpact.mine > 0.05));
+          scheduleTradeDatabaseRender();
+          check("Opening Database visibly reports generation before doing the work",
+            document.getElementById("dbTable").getAttribute("aria-busy") === "true" &&
+            document.getElementById("dbStatus").textContent.startsWith("Generating roster ideas"));
+          await new Promise(resolve => setTimeout(resolve, 0));
+          check("Database generation replaces the busy status with its actual result",
+            document.getElementById("dbTable").getAttribute("aria-busy") === "false" &&
+            document.getElementById("dbStatus").textContent.startsWith("Ideas for"));
+          document.getElementById("dbSearch").value = "no-matching-trade";
+          document.getElementById("dbSearch").dispatchEvent(new Event("input"));
+          check("Database search filters its adjacent results with an actionable empty state",
+            document.querySelectorAll("#dbTable tbody button").length === 0 &&
+            document.getElementById("dbTable").textContent.includes("Clear the search"));
+          document.getElementById("dbSearch").value = "";
+          document.getElementById("dbSrcFilter").value = "LEAGUE";
+          document.getElementById("dbSrcFilter").dispatchEvent(new Event("change"));
+          check("Unsupported-provider history is explicitly unavailable, separate from generated ideas",
+            /unavailable|not available/.test(document.getElementById("dbStatus").textContent) &&
+            document.getElementById("dbGoal").disabled);
+          tradeHistoryStatus = { key: `${state.activeLeague.provider}:${state.activeLeague.leagueId}:${state.week}`, loading: false, errors: ["Week 8: fixture outage"], coverage: "Partial completed history" };
+          state.dbTrades = [{ aIds: ["fixture_claim_rb"], bIds: ["fixture_drop_wr"], aVal: 2000, bVal: 2000,
+            rosterA: 1, rosterB: 2, src: "LEAGUE", label: "Completed fixture", format: "Redraft" }];
+          renderTradeDatabase();
+          check("History is filtered by actual sending manager even when assets changed owners; it stays read-only",
+            document.getElementById("dbTable").textContent.includes("Completed fixture") &&
+            !document.querySelector("#dbTable tbody button") &&
+            document.getElementById("dbStatus").textContent.includes("fixture outage") &&
+            document.getElementById("dbTable").textContent.includes("today’s estimates"));
+          document.getElementById("dbSrcFilter").value = "MARKET";
+          renderTradeDatabase();
+          document.getElementById("dbTeam").value = "1";
+          document.getElementById("dbTeam").dispatchEvent(new Event("change"));
+          check("Local database and Finder team controls stay synchronized with the Builder",
+            document.getElementById("tradeTeamA").value === "1" &&
+            document.getElementById("tradeFinderTeam").value === "1" &&
+            document.getElementById("dbTeam").value === "1" &&
+            document.getElementById("teamSelect").value === "1" &&
+            document.getElementById("rTeamName").textContent === state.managers[1].teamName);
           state.managers = [];
           document.getElementById("tradeTargetGenerate").click();
           check("Disconnected trade generation explains that a league must be connected",
@@ -1970,6 +2104,10 @@
           state.players.fixture_owned_qb.baseValue = otherValueBefore;
           state.tradeSideA = targetTradeBefore.a;
           state.tradeSideB = targetTradeBefore.b;
+          state.dbTrades = targetDbBefore;
+          tradeHistoryStatus = targetHistoryBefore;
+          tradeIdeasCache.key = "";
+          tradeBonusIds.forEach(id => { delete state.players[id]; });
           Object.entries(targetTeamOptionsBefore).forEach(([id, html]) => { document.getElementById(id).innerHTML = html; });
           Object.entries(targetControlsBefore).forEach(([id, value]) => { document.getElementById(id).value = value; });
           renderTradeTargets();

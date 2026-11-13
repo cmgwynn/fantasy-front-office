@@ -6,6 +6,25 @@ const vm = require("node:vm");
 
 const read = file => fs.readFileSync(path.join(__dirname, "..", file), "utf8");
 
+test("versus lineups pair repeated slots, normalize defense and retain unmatched starters", () => {
+  const source = read("gameday.js");
+  const context = vm.createContext({});
+  vm.runInContext(source.slice(source.indexOf("  function pairLineupPlayers("), source.indexOf("  function renderProjectionNotice(")), context);
+  const mine = [{ slot: "RB", name: "RB1" }, { slot: "RB", name: "RB2" }, { slot: "D/ST", name: "Defense" }, { slot: "FLEX", empty: true }];
+  const opponent = [{ slot: "RB", name: "Their RB" }, { slot: "DEF", name: "Their defense" }, { slot: "QB", name: "Their QB" }];
+  const rows = context.pairLineupPlayers(mine, opponent);
+  assert.equal(rows.length, 5);
+  assert.equal(rows[0].opponent.name, "Their RB");
+  assert.equal(rows[1].mine.name, "RB2");
+  assert.equal(rows[1].opponent, null);
+  assert.equal(rows[2].opponent.name, "Their defense");
+  assert.equal(rows[3].mine.empty, true);
+  assert.equal(rows[4].mine, null);
+  assert.equal(new Set(rows.map(row => row.key)).size, rows.length);
+  assert.equal(context.pairLineupPlayers(mine).length, mine.length);
+  assert.equal(context.pairLineupPlayers().length, 0);
+});
+
 async function load({ provider = "sleeper", projections, projectionError, rules, injury = "", gameState = "pre", live = {}, espnProjection = 14, espnWeek = 9, allowFailure = false } = {}) {
   const errors = [];
   const requests = [];

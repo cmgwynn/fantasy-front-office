@@ -324,7 +324,11 @@ const faabState = { budget: 100, weeksRemaining: 12, strategy: "balanced", claim
 const weeklyMatchupLoads = new Map();
 const weeklyMatchupData = new Map();
 
-let dbSortKey = "matchPct", dbSortDir = -1;
+let dbSortKey = "rankScore", dbSortDir = -1;
+let tradeHistoryStatus = { key: "", loading: false, errors: [], coverage: "" };
+let tradeHistoryRequest = 0;
+let tradeIdeasCache = { key: "", offers: [] };
+let tradeDatabaseRenderRequest = 0;
 let finderSortKey = "Composite", finderSortDir = -1;
 let analyticsSortDir = -1;
 
@@ -617,6 +621,8 @@ function switchTradeMode(modeIdx) {
     const el = document.getElementById(`tmode-${i}`);
     if (el) el.style.display = (i === modeIdx) ? (i === 0 ? "grid" : "flex") : "none";
   });
+  if (modeIdx === 1) scheduleTradeDatabaseRender();
+  if (modeIdx === 2) renderTradeTargets({ preserveResults: true });
 }
 
 function updateAnalyticsDropdownOptions() {
@@ -1143,7 +1149,17 @@ function openProviderInCurrentTab() {
   else window.open(url, "_blank", "noopener,noreferrer");
 }
 
+function syncTradeRosterControls() {
+  const value = document.getElementById("tradeTeamA").value;
+  const options = state.managers.map((manager, index) => `<option value="${index}">${draftEscapeHtml(manager.teamName)}</option>`).join("");
+  document.querySelectorAll("[data-trade-roster]").forEach(select => {
+    if (select.innerHTML !== options) select.innerHTML = options;
+    select.value = value;
+  });
+}
+
 function renderTradeTargets({ preserveResults = false } = {}) {
+  syncTradeRosterControls();
   const select = document.getElementById("tradeTargetPlayer");
   const myIndex = Number(document.getElementById("tradeTeamA").value);
   const query = normalizeDraftPlayerName(document.getElementById("tradeTargetSearch").value);
@@ -1151,9 +1167,9 @@ function renderTradeTargets({ preserveResults = false } = {}) {
   const owners = state.managers.filter((_, index) => index !== myIndex);
   const seen = new Set();
   const targets = owners.flatMap(owner => (owner.players || []).map(id => ({ player: state.players[id], owner })))
-    .filter(({ player }) => player && !player.isPick && ["QB", "RB", "WR", "TE", "K", "DEF"].includes(player.position) &&
+    .filter(({ player, owner }) => player && !player.isPick && ["QB", "RB", "WR", "TE", "K", "DEF"].includes(player.position) &&
       Boolean(player.isDemo) === Boolean(state.activeLeague?.isDemo) &&
-      normalizeDraftPlayerName(`${player.name} ${player.team}`).includes(query))
+      normalizeDraftPlayerName(`${player.name} ${player.team} ${owner.teamName}`).includes(query))
     .filter(({ player }) => {
       if (seen.has(player.id)) return false;
       seen.add(player.id);
@@ -1163,10 +1179,115 @@ function renderTradeTargets({ preserveResults = false } = {}) {
   select.innerHTML = '<option value="">Choose a player from another roster</option>' +
     targets.map(({ player, owner }) => `<option value="${draftEscapeHtml(player.id)}">${draftEscapeHtml(`${player.name} · ${player.position} · ${owner.teamName}`)}</option>`).join("");
   if (targets.some(({ player }) => player.id === oldValue)) select.value = oldValue;
+  document.getElementById("tradeTargetStatus").textContent = !state.managers.length ? "Connect a league to see rostered targets."
+    : targets.length ? `${targets.length} matching players on other teams. Select one above.`
+    : "No rostered players match this search. Clear or change your search.";
   if (!preserveResults || select.value !== oldValue) document.getElementById("tradeTargetResults").replaceChildren();
 }
 
-function buildTargetTradeOffers(myIndex, targetId, size = "all") {
+function getTradePackageValues(giveIds, getIds) {
+  return getTradeValueMatch(giveIds.reduce((sum, id) => sum + (state.players[id]?.baseValue || 0), 0),
+    getIds.reduce((sum, id) => sum + (state.players[id]?.baseValue || 0), 0), giveIds.length, getIds.length);
+}
+
+function getTradeValueMatch(giveValue, getValue, giveCount, getCount) {
+  if (giveCount && getCount && giveCount !== getCount) {
+    const factor = 1 - Math.min(0.18, Math.abs(giveCount - getCount) * 0.06);
+    if (giveCount > getCount) giveValue = Math.round(giveValue * factor);
+    else getValue = Math.round(getValue * factor);
+  }
+  const maxValue = Math.max(giveValue, getValue);
+  return { giveValue, getValue, match: maxValue > 0 ? 100 * (1 - Math.abs(giveValue - getValue) / maxValue) : 0 };
+}
+
+function isTradeOfferOwned(offer) {
+  const mine = state.managers[offer.myIndex], partner = state.managers[offer.partnerIndex];
+  if (!mine || !partner || mine === partner) return false;
+  if (new Set([...offer.giveIds, ...offer.getIds]).size !== offer.giveIds.length + offer.getIds.length) return false;
+  return [[mine, offer.giveIds], [partner, offer.getIds]].every(([team, ids]) =>
+    ids.length && ids.every(id => state.players[id] && team.players?.includes(id) &&
+      state.managers.filter(owner => owner.players?.includes(id)).length === 1));
+}
+
+function getTradeRosterReview(teamA, teamB, sideA, sideB, checkCoverage = true) {
+  if (!teamA || !teamB || teamA === teamB || String(teamA.rosterId) === String(teamB.rosterId)) return { reason: "Choose two different teams." };
+  if (!sideA.length || !sideB.length) return { reason: "Select at least one asset on each side." };
+  if (new Set([...sideA, ...sideB]).size !== sideA.length + sideB.length) return { reason: "An asset appears more than once." };
+  for (const [team, ids] of [[teamA, sideA], [teamB, sideB]]) {
+    if (ids.some(id => !state.players[id] || ![...(team.players || []), ...(team.ownedPicks || []).map(pick => pick.id)].includes(id) ||
+      state.managers.filter(owner => state.players[id].isPick ? owner.ownedPicks?.some(pick => pick.id === id) : owner.players?.includes(id)).length !== 1)) {
+      return { reason: "A selected asset is missing, ambiguously owned or no longer owned by its sending team. Refresh and revise the package." };
+    }
+  }
+  if ([...sideA, ...sideB].some(id => state.players[id].isPick) && !isPickTradingAllowedInLeague()) return { reason: "Draft-pick trading is unavailable for this league." };
+  if ([...sideA, ...sideB].some(id => !Number.isFinite(state.players[id].baseValue) || state.players[id].baseValue <= 0)) return { reason: "An asset's model value is missing or invalid. Refresh before evaluating." };
+  if (!checkCoverage) return { warnings: [] };
+  const slots = state.activeLeague?.rosterPositions || [];
+  const capacity = slots.filter(slot => !["IR", "TAXI"].includes(slot)).length;
+  const warnings = [];
+  [[teamA, teamB, sideA, sideB], [teamB, teamA, sideB, sideA]].forEach(([team, partner, outgoing, incoming]) => {
+    const before = getPlannerRosterIds(team);
+    const sent = outgoing.filter(id => !state.players[id].isPick);
+    const received = incoming.filter(id => !state.players[id].isPick);
+    const after = before.filter(id => !sent.includes(id)).concat(received.filter(id => !before.includes(id)));
+    const name = team.teamName.split(" (")[0];
+    if (capacity && after.length > capacity) warnings.push(`${name}: ${after.length} players for ${capacity} active/bench spots; drop or reassign at least ${after.length - capacity} player(s). Displayed gains are before those moves.`);
+    else if (received.length > sent.length) warnings.push(`${name}: receives ${received.length - sent.length} extra player(s). ${capacity ? `${Math.max(0, capacity - after.length)} active/bench spots remain.` : "Roster capacity is unavailable; verify space with your provider."}`);
+    if (received.some(id => (partner.reserve || []).includes(id) || (partner.taxi || []).includes(id))) warnings.push(`${name}: receives IR/taxi assets. Their current inactive status is retained for lineup estimates, but destination eligibility must be checked.`);
+    const eligibleAfter = before.filter(id => !sent.includes(id)).concat(received.filter(id => getPlannerRosterIds(partner).includes(id)));
+    if (checkCoverage) {
+      const starterSlots = slots.filter(slot => !["BN", "IR", "TAXI"].includes(slot));
+      const coverage = ids => assignLineupPlayersToSlots(starterSlots, ids.map(id => state.players[id]).filter(Boolean).map(m => ({ m, score: 1 }))).filter(Boolean).length;
+      const lostCoverage = coverage(before) - coverage(eligibleAfter);
+      if (lostCoverage > 0) warnings.push(`${name}: loses coverage of ${lostCoverage} previously filled starter slot(s). Add an eligible replacement before setting a lineup.`);
+    }
+  });
+  return { warnings };
+}
+
+function renderTradeRosterWarnings(review) {
+  return (review.warnings || []).map(warning => `<p class="comparison-note trade-roster-warning">${draftEscapeHtml(warning)}</p>`).join("");
+}
+
+function buildTradePlayerPackages(ids, requiredId = "") {
+  const players = [...new Set(ids)].map(id => state.players[id]).filter(player => player && !player.isPick &&
+    Number.isFinite(player.baseValue) && player.baseValue > 0).sort((a, b) => b.baseValue - a.baseValue || a.id.localeCompare(b.id));
+  const totalValue = players.reduce((sum, player) => sum + player.baseValue, 0) || 1;
+  let packages = [requiredId ? [requiredId] : []];
+  for (const player of players) {
+    if (player.id === requiredId) continue;
+    packages = packages.concat(packages.map(ids => ids.concat(player.id)));
+    if (packages.length > 256) {
+      // Retain varied sizes and value bands rather than exploring exponentially many roster subsets.
+      const bands = new Map();
+      packages.forEach(ids => {
+        const value = ids.reduce((sum, id) => sum + state.players[id].baseValue, 0);
+        const key = `${ids.length}:${Math.round(value / totalValue * 24)}`;
+        if (!bands.has(key)) bands.set(key, ids);
+      });
+      const varied = [...bands.values()].sort((a, b) => a.length - b.length);
+      packages = varied.length <= 256 ? varied : Array.from({ length: 256 }, (_, index) => varied[Math.floor(index * varied.length / 256)]);
+    }
+  }
+  return packages.filter(ids => ids.length);
+}
+
+function rankTradeOffer(offer, goal) {
+  // Neutral roster-wide exchanges should not outrank simpler, useful packages.
+  const complexity = Math.pow(offer.giveIds.length + offer.getIds.length, 2) * 0.5;
+  if (!offer.rosImpact) return offer.match * 0.1 - complexity;
+  const { mine, partner } = offer.rosImpact;
+  const gain = goal === "mine" ? mine : Math.min(mine, partner) * 2 + (mine + partner) * 0.5;
+  return gain * 10 + offer.match * 0.1 - complexity;
+}
+
+function isTradeLineupUpgrade(offer, goal) {
+  if (!offer.rosImpact) return true;
+  return goal === "mine" ? offer.rosImpact.mine > 0.05
+    : Math.min(offer.rosImpact.mine, offer.rosImpact.partner) >= -0.05 && Math.max(offer.rosImpact.mine, offer.rosImpact.partner) > 0.05;
+}
+
+function buildTargetTradeOffers(myIndex, targetId, size = "all", goal = "balanced", upgradesOnly = false) {
   if (!state.managers.length) return { reason: "Connect a league before generating offers." };
   if (!targetId) return { reason: "Choose a player to acquire before generating offers." };
   const mine = state.managers[myIndex], target = state.players[targetId];
@@ -1176,42 +1297,125 @@ function buildTargetTradeOffers(myIndex, targetId, size = "all") {
   const candidates = [...new Set(mine.players || [])].map(id => state.players[id]).filter(player => player && !player.isPick &&
     Number.isFinite(player.baseValue) && player.baseValue > 0).sort((a, b) => b.baseValue - a.baseValue);
   if (!Number.isFinite(target.baseValue) || target.baseValue <= 0) return { reason: "Target value is unavailable. Refresh player data." };
-  const packages = [];
-  if (size !== "two") candidates.forEach(player => packages.push([player.id]));
-  if (size !== "one") candidates.forEach((player, index) => candidates.slice(index + 1).forEach(other => packages.push([player.id, other.id])));
-  const offers = packages.map(giveIds => {
-    const rawValue = giveIds.reduce((sum, id) => sum + state.players[id].baseValue, 0);
-    const value = giveIds.length === 2 ? Math.round(rawValue * 0.94) : rawValue;
-    const match = 100 * (1 - Math.abs(value - target.baseValue) / Math.max(value, target.baseValue));
-    return { giveIds, getIds: [targetId], myIndex, partnerIndex, match, value };
-  }).filter(offer => offer.match >= 85).sort((a, b) => b.match - a.match).slice(0, 6)
-    .map(offer => ({ ...offer, impact: buildTradeLineupImpact(mine, partner, offer.giveIds, [targetId]) }));
-  return { offers, target, partner };
+  const givePackages = size === "one" ? candidates.map(player => [player.id])
+    : size === "two" ? candidates.flatMap((player, index) => candidates.slice(index + 1).map(other => [player.id, other.id]))
+    : buildTradePlayerPackages(mine.players || []);
+  const getPackages = size === "all" ? buildTradePlayerPackages(partner.players || [], targetId) : [[targetId]];
+  const ownerCounts = new Map();
+  state.managers.forEach(team => [...new Set(team.players || [])].forEach(id => ownerCounts.set(id, (ownerCounts.get(id) || 0) + 1)));
+  const validGivePackages = givePackages.filter(ids => ids.every(id => ownerCounts.get(id) === 1));
+  const validGetPackages = getPackages.filter(ids => ids.every(id => ownerCounts.get(id) === 1));
+  const packageTotals = packages => packages.map(ids => ids.reduce((sum, id) => sum + state.players[id].baseValue, 0));
+  const giveTotals = packageTotals(validGivePackages), getTotals = packageTotals(validGetPackages);
+  const scoringIssue = getScoringDecisionIssue([...(mine.players || []), ...(partner.players || [])]);
+  const beforeMine = getPlannerRosterIds(mine), beforePartner = getPlannerRosterIds(partner);
+  const canModel = !scoringIssue && [...beforeMine, ...beforePartner].every(id => Number.isFinite(state.players[id]?.seasonPpg) && Number.isFinite(state.players[id]?.projectedPoints));
+  const mineBase = canModel ? calcOptimalLineup(beforeMine, true).total : 0;
+  const partnerBase = canModel ? calcOptimalLineup(beforePartner, true).total : 0;
+  // Profiles narrow the search; displayed impacts use the full lineup optimizer.
+  const positionProfile = ids => {
+    const bestByPosition = {};
+    ids.forEach(id => {
+      const player = state.players[id];
+      if (player) bestByPosition[player.position] = Math.max(bestByPosition[player.position] || 0, player.seasonPpg);
+    });
+    return bestByPosition;
+  };
+  const profileTotal = profile => Object.values(profile).reduce((sum, points) => sum + points, 0);
+  const mineProfileBase = canModel ? profileTotal(positionProfile(beforeMine)) : 0;
+  const partnerProfileBase = canModel ? profileTotal(positionProfile(beforePartner)) : 0;
+  const mineRemaining = canModel ? validGivePackages.map(ids => positionProfile(beforeMine.filter(id => !ids.includes(id)))) : [];
+  const partnerRemaining = canModel ? validGetPackages.map(ids => positionProfile(beforePartner.filter(id => !ids.includes(id)))) : [];
+  const mineIncoming = canModel ? validGetPackages.map(ids => positionProfile(ids.filter(id => beforePartner.includes(id)))) : [];
+  const partnerIncoming = canModel ? validGivePackages.map(ids => positionProfile(ids.filter(id => beforeMine.includes(id)))) : [];
+  const profileGain = (remaining, incoming, before) => profileTotal(remaining) - before +
+    Object.entries(incoming).reduce((sum, [position, points]) => sum + Math.max(0, points - (remaining[position] || 0)), 0);
+  const candidatesByShape = new Map();
+  validGivePackages.forEach((giveIds, giveIndex) => validGetPackages.forEach((getIds, getIndex) => {
+    const values = getTradeValueMatch(giveTotals[giveIndex], getTotals[getIndex], giveIds.length, getIds.length);
+    if (values.match < 85 || new Set([...giveIds, ...getIds]).size !== giveIds.length + getIds.length) return;
+    const offer = { giveIds, getIds, myIndex, partnerIndex, match: values.match, value: values.giveValue, getValue: values.getValue };
+    const mineGain = canModel ? profileGain(mineRemaining[giveIndex], mineIncoming[getIndex], mineProfileBase) : 0;
+    const partnerGain = canModel ? profileGain(partnerRemaining[getIndex], partnerIncoming[giveIndex], partnerProfileBase) : 0;
+    offer.shortlistScore = values.match + (goal === "mine" ? mineGain : Math.min(mineGain, partnerGain) + (mineGain + partnerGain) * 0.5) * 5 -
+      (giveIds.length + getIds.length) * 2;
+    const shape = `${giveIds.length}:${getIds.length}`;
+    const group = candidatesByShape.get(shape) || [];
+    group.push(offer);
+    group.sort((a, b) => b.shortlistScore - a.shortlistScore);
+    if (group.length > 8) group.length = 8;
+    candidatesByShape.set(shape, group);
+  }));
+  const groups = [...candidatesByShape.values()].sort((a, b) =>
+    (a[0].giveIds.length + a[0].getIds.length) - (b[0].giveIds.length + b[0].getIds.length));
+  const shortlist = groups.slice(0, 48).map(group => group[0]);
+  const remaining = groups.flat().filter(offer => !shortlist.includes(offer)).sort((a, b) => b.shortlistScore - a.shortlistScore);
+  shortlist.push(...remaining.slice(0, 96 - shortlist.length));
+  const modeled = shortlist.map(offer => {
+    const afterMine = beforeMine.filter(id => !offer.giveIds.includes(id)).concat(offer.getIds.filter(id => beforePartner.includes(id)));
+    const afterPartner = beforePartner.filter(id => !offer.getIds.includes(id)).concat(offer.giveIds.filter(id => beforeMine.includes(id)));
+    const rosImpact = canModel ? {
+      mine: calcOptimalLineup(afterMine, true).total - mineBase,
+      partner: calcOptimalLineup(afterPartner, true).total - partnerBase
+    } : null;
+    return { ...offer, rosImpact, rankScore: rankTradeOffer({ ...offer, rosImpact }, goal),
+      impact: buildTradeLineupImpact(mine, partner, offer.giveIds, offer.getIds) };
+  }).filter(offer => !upgradesOnly || isTradeLineupUpgrade(offer, goal)).sort((a, b) => b.rankScore - a.rankScore || b.match - a.match);
+  // Keep distinct package shapes visible, including packages containing more than the target.
+  const offers = [];
+  const shapes = new Set();
+  const practical = modeled.filter(offer => offer.rankScore >= (modeled[0]?.rankScore ?? 0) - 20);
+  practical.forEach(offer => {
+    const shape = `${offer.giveIds.length}:${offer.getIds.length}`;
+    if (offers.length < 4 && !shapes.has(shape)) { offers.push(offer); shapes.add(shape); }
+  });
+  practical.forEach(offer => { if (offers.length < 6 && !offers.includes(offer)) offers.push(offer); });
+  offers.sort((a, b) => b.rankScore - a.rankScore);
+  return { offers, target, partner, scoringIssue: scoringIssue || (!canModel ? "Season PPG or player projections are unavailable; these are value-only comparisons." : "") };
 }
 
 function generateTargetTradeOffers() {
   const result = buildTargetTradeOffers(Number(document.getElementById("tradeTeamA").value),
-    document.getElementById("tradeTargetPlayer").value, document.getElementById("tradeTargetPackage").value);
+    document.getElementById("tradeTargetPlayer").value, document.getElementById("tradeTargetPackage").value,
+    document.getElementById("tradeTargetGoal").value);
   const container = document.getElementById("tradeTargetResults");
   if (result.reason || !result.offers.length) {
-    container.innerHTML = `<p class="comparison-note">${draftEscapeHtml(result.reason || "No one- or two-player offers meet the 85% model-value match. Try another package size or build a custom offer below.")}</p>`;
+    container.innerHTML = `<p class="comparison-note">${draftEscapeHtml(result.reason || "No packages meet the 85% model-value match for this preference. Try Automatic packages, another target, or the Trade Builder.")}</p>`;
     return;
   }
-  container.innerHTML = `<p class="comparison-note">Acquire ${draftEscapeHtml(result.target.name)} from ${draftEscapeHtml(result.partner.teamName)}. Two-player offers use a 6% consolidation discount. Check roster space, trade timing and acceptance with the other manager.</p><div class="trade-target-offers">${result.offers.map((offer, index) =>
-    `<article class="trade-target-offer"><strong>${offer.match.toFixed(0)}% model-value match</strong><div>${renderTradeAssetStackHTML(offer.giveIds)}</div><p>For ${draftEscapeHtml(result.target.name)}</p><p class="comparison-note">${offer.impact.reason ? draftEscapeHtml(offer.impact.reason) : offer.impact.currentWeekLocked ? "A player has already kicked off; this trade would take effect next week." : `Selected-week lineup estimate: you ${offer.impact.teamA.delta >= 0 ? "+" : ""}${offer.impact.teamA.delta.toFixed(1)} pts · partner ${offer.impact.teamB.delta >= 0 ? "+" : ""}${offer.impact.teamB.delta.toFixed(1)} pts`}</p><button type="button" data-target-offer="${index}">Review in Builder</button></article>`).join("")}</div>`;
+  container.innerHTML = `<p class="comparison-note">${result.offers.length} offers around ${draftEscapeHtml(result.target.name)} · ${draftEscapeHtml(result.partner.teamName)}. ${draftEscapeHtml(result.scoringIssue)}</p><div class="trade-target-offers">${result.offers.map((offer, index) =>
+    `<article class="trade-target-offer"><strong>${offer.giveIds.length}-for-${offer.getIds.length} · ${offer.match.toFixed(0)}% model-value match</strong><div class="trade-offer-sides"><section class="trade-offer-side is-send"><h4>You send · Model value ${offer.value}</h4>${renderTradeAssetStackHTML(offer.giveIds)}</section><section class="trade-offer-side is-receive"><h4>You receive · Model value ${offer.getValue}</h4>${renderTradeAssetStackHTML(offer.getIds)}</section></div>${renderTradeOfferImpact(offer)}<button type="button" data-target-offer="${index}">Review in Builder</button></article>`).join("")}</div>`;
   container.querySelectorAll("[data-target-offer]").forEach(button => {
     button.addEventListener("click", () => {
       const offer = result.offers[Number(button.dataset.targetOffer)];
-      const checked = buildTargetTradeOffers(offer.myIndex, result.target.id, document.getElementById("tradeTargetPackage").value);
-      if (Number(document.getElementById("tradeTeamA").value) !== offer.myIndex ||
+      const checked = buildTargetTradeOffers(offer.myIndex, result.target.id, document.getElementById("tradeTargetPackage").value,
+        document.getElementById("tradeTargetGoal").value);
+      if (!isTradeOfferOwned(offer) || Number(document.getElementById("tradeTeamA").value) !== offer.myIndex ||
         checked.reason || !checked.offers.some(candidate => candidate.partnerIndex === offer.partnerIndex &&
-          candidate.giveIds.join() === offer.giveIds.join())) {
+          candidate.giveIds.join() === offer.giveIds.join() && candidate.getIds.join() === offer.getIds.join())) {
         container.innerHTML = '<p class="comparison-note">The roster or target changed. Generate fresh offers.</p>'; return;
       }
+
       openTradeInBuilder(offer.giveIds, offer.getIds, offer.myIndex, offer.partnerIndex);
     });
   });
 }
+
+function renderTradeOfferImpact(offer) {
+  const signed = value => `${value >= 0 ? "+" : ""}${value.toFixed(1)}`;
+  const ros = offer.rosImpact ? `<p class="comparison-note">ROS lineup estimate: you ${signed(offer.rosImpact.mine)} PPG · partner ${signed(offer.rosImpact.partner)} PPG.${offer.rosImpact.mine <= 0 || offer.rosImpact.partner <= 0 ? " This is not an upgrade for both lineups." : ""}</p>` : "";
+  const weekly = offer.impact.reason ? draftEscapeHtml(offer.impact.reason) : offer.impact.currentWeekLocked
+    ? "A player has already kicked off; selected-week impact is unavailable."
+    : `Selected-week lineup estimate: you ${signed(offer.impact.teamA.delta)} pts · partner ${signed(offer.impact.teamB.delta)} pts`;
+  const explanation = !offer.rosImpact ? "Value comparison only: lineup benefits cannot be verified."
+    : offer.rosImpact.mine > 0.05 && offer.rosImpact.partner > 0.05 ? "Both teams gain estimated starter points: complementary roster needs may justify this offer."
+    : offer.rosImpact.mine > 0.05 ? `Your lineup improves; the partner ${offer.rosImpact.partner < -0.05 ? "loses estimated starter points and needs another reason to accept" : "gains no meaningful starter points; value or depth is the tradeoff"}.`
+    : offer.rosImpact.partner > 0.05 ? "The partner improves, but your lineup does not. Consider only for asset value or depth, not as a lineup upgrade."
+    : "Neither lineup meaningfully improves. This is an asset-value/depth comparison, not a starter upgrade.";
+  const review = getTradeRosterReview(state.managers[offer.myIndex], state.managers[offer.partnerIndex], offer.giveIds, offer.getIds);
+  return `${ros}<p class="comparison-note">${weekly}</p><p class="comparison-note">${explanation} Model-value match is not acceptance probability.</p>${renderTradeRosterWarnings(review)}`;
+}
+
 async function retryDataSync() {
   const usernameInput = document.getElementById("usernameInput");
   const username = usernameInput?.value.trim() || "";
@@ -1749,7 +1953,7 @@ function renderTradeAssetStackHTML(pids) {
             <img class="team-logo-sm" src="${teamLogoUrl(p.team)}" onerror="this.style.display='none'"/>${p.name}
           </div>
           <div style="font-size:11px; color:var(--text-muted); display:flex; align-items:center; gap:5px; flex-wrap:wrap; margin-top:2px;">
-            <span>${p.position} #${p.posRank} • ${p.seasonPpg.toFixed(1)} PPG</span>
+            <span>${p.position} #${p.posRank} • ${Number.isFinite(p.seasonPpg) ? p.seasonPpg.toFixed(1) : "Unavailable"} PPG</span>
             <span class="sos-mini-pill ${po.pillCls}">Playoff SOS: ${po.letter} (#${po.avgRank.toFixed(0)})</span>
           </div>
           <div style="font-size:10px; color:var(--text-muted); margin-top:1px;">${wkRangeLbl}: ${po.oppsStr}</div>
@@ -3381,7 +3585,7 @@ function renderTradeBuilderSide(isSideA) {
     div.className = "p-card" + (activeArr.includes(p.id) ? " selected" : "");
     div.innerHTML = `
       <img class="avatar" src="${avatarUrl(p)}" onerror="this.style.display='none'" />
-      <div style="flex:1;"><div style="font-weight:700;font-size:13px;color:#F2F4F8;"><img class="team-logo-sm" src="${teamLogoUrl(p.team)}" onerror="this.style.display='none'"/>${p.name}${isExt ? ' <span class="badge badge-yellow" style="font-size:9px;padding:2px 6px;">COMP</span>' : ''}</div><div style="font-size:11px;color:#8E96AA;">${p.position} #${p.posRank} - ${p.team} • ${p.seasonPpg.toFixed(1)} PPG • <span class="sos-mini-pill ${po.pillCls}">Playoff SOS: ${po.letter}</span></div></div>
+      <div style="flex:1;"><div style="font-weight:700;font-size:13px;color:#F2F4F8;"><img class="team-logo-sm" src="${teamLogoUrl(p.team)}" onerror="this.style.display='none'"/>${p.name}${isExt ? ' <span class="badge badge-yellow" style="font-size:9px;padding:2px 6px;">NO LONGER OWNED</span>' : ''}</div><div style="font-size:11px;color:#8E96AA;">${p.position} #${p.posRank} - ${p.team} • ${Number.isFinite(p.seasonPpg) ? p.seasonPpg.toFixed(1) : "Unavailable"} PPG • <span class="sos-mini-pill ${po.pillCls}">Playoff SOS: ${po.letter}</span></div></div>
       <div style="text-align:right;"><span class="badge badge-green">Model value ${p.baseValue}</span></div>`;
     div.onclick = () => {
       const idx = activeArr.indexOf(p.id);
@@ -3413,24 +3617,19 @@ function renderTradeBuilderSide(isSideA) {
 }
 
 function buildTradeLineupImpact(teamA, teamB, sideA, sideB) {
-  if (!teamA || !teamB || teamA === teamB || String(teamA.rosterId) === String(teamB.rosterId)) return { reason: "Choose two different teams." };
-  if (!sideA.length || !sideB.length) return { reason: "Select at least one asset on each side." };
+  const review = getTradeRosterReview(teamA, teamB, sideA, sideB, false);
+  if (review.reason) return review;
   const scoringIssue = getScoringDecisionIssue([...(teamA.players || []), ...(teamB.players || [])]);
   if (scoringIssue) return { reason: scoringIssue };
   const all = [...sideA, ...sideB];
-  if (new Set(all).size !== all.length) return { reason: "An asset appears more than once." };
-  for (const [team, ids] of [[teamA, sideA], [teamB, sideB]]) {
-    const owned = new Set([...(team.players || []), ...(team.ownedPicks || []).map(pick => pick.id)]);
-    if (ids.some(id => !state.players[id] || !owned.has(id))) return { reason: "A selected asset is missing or is not owned by its sending team. Refresh and revise the package." };
-  }
   const playersA = sideA.filter(id => !state.players[id].isPick);
   const playersB = sideB.filter(id => !state.players[id].isPick);
   const beforeA = getPlannerRosterIds(teamA), beforeB = getPlannerRosterIds(teamB);
-  const afterA = [...new Set(beforeA.filter(id => !playersA.includes(id)).concat(playersB))];
-  const afterB = [...new Set(beforeB.filter(id => !playersB.includes(id)).concat(playersA))];
+  const afterA = [...new Set(beforeA.filter(id => !playersA.includes(id)).concat(playersB.filter(id => beforeB.includes(id))))];
+  const afterB = [...new Set(beforeB.filter(id => !playersB.includes(id)).concat(playersA.filter(id => beforeA.includes(id))))];
+  if ([...new Set([...beforeA, ...beforeB, ...afterA, ...afterB])].some(id => !Number.isFinite(state.players[id]?.projectedPoints) || !Number.isFinite(state.players[id]?.seasonPpg))) return { reason: "A player projection or season PPG is missing or invalid. Refresh before modeling impact." };
   // A locked player can still be traded; the deal just takes effect next week, so only this-week impact is skipped.
   if (all.some(id => !state.players[id].isPick && getPlayerGameDayStatus(state.players[id]).locked)) return { currentWeekLocked: true, beforeA, beforeB, afterA, afterB };
-  if ([...new Set([...beforeA, ...beforeB, ...afterA, ...afterB])].some(id => !Number.isFinite(state.players[id]?.projectedPoints))) return { reason: "A player projection is missing or invalid. Refresh before modeling impact." };
   const impact = (team, before, after) => {
     const constraints = getLineupLockConstraints(team);
     const beforeTotal = calcOptimalLineup(before, false, constraints).total;
@@ -3446,14 +3645,7 @@ function updateTradeEvaluation() {
   const nameA = tmA ? tmA.teamName.split(" (")[0] : "Side 1";
   const nameB = tmB ? tmB.teamName.split(" (")[0] : "Side 2";
 
-  const valA = state.tradeSideA.reduce((s, id) => s + (state.players[id]?.baseValue || 0), 0);
-  const valB = state.tradeSideB.reduce((s, id) => s + (state.players[id]?.baseValue || 0), 0);
-  const cA = state.tradeSideA.length, cB = state.tradeSideB.length;
-  let adjA = valA, adjB = valB;
-  if (cA > 0 && cB > 0 && cA !== cB) {
-    const tax = 1 - Math.min(0.18, Math.abs(cA - cB) * 0.06);
-    if (cA > cB) adjA = Math.round(valA * tax); else adjB = Math.round(valB * tax);
-  }
+  const { giveValue: adjA, getValue: adjB } = getTradePackageValues(state.tradeSideA, state.tradeSideB);
 
   document.getElementById("sideATitle").textContent = `${nameA} sends · Model trade value ${adjA}`;
   document.getElementById("sideBTitle").textContent = `${nameB} sends · Model trade value ${adjB}`;
@@ -3488,28 +3680,24 @@ function updateTradeEvaluation() {
 
   const fairEl = document.getElementById("tradeFairness");
   const consoleEl = document.getElementById("tradeConsole");
-  const impact = buildTradeLineupImpact(tmA, tmB, state.tradeSideA, state.tradeSideB);
-  if (impact.reason) {
-    fairEl.textContent = impact.reason;
+  const review = getTradeRosterReview(tmA, tmB, state.tradeSideA, state.tradeSideB);
+  if (review.reason) {
+    fairEl.textContent = review.reason;
     fairEl.style.color = "var(--text-muted)";
     consoleEl.textContent = "No valid current-week trade impact to show.";
     return;
   }
   const diff = Math.abs(adjA - adjB), maxV = Math.max(adjA, adjB);
-  const ratio = maxV > 0 ? (1 - diff / maxV) * 100 : 100;
+  const ratio = maxV > 0 ? (1 - diff / maxV) * 100 : 0;
 
-  if (ratio >= 90) { fairEl.textContent = `Fair Trade (${ratio.toFixed(1)}% Value Match)`; fairEl.style.color = "var(--good)"; }
+  if (ratio >= 90) { fairEl.textContent = `Similar model values (${ratio.toFixed(1)}% match; not acceptance odds)`; fairEl.style.color = "var(--good)"; }
   else if (adjA > adjB) { fairEl.textContent = `Favors ${nameB} (+${diff} net value)`; fairEl.style.color = "var(--bad)"; }
   else { fairEl.textContent = `Favors ${nameA} (+${diff} net value)`; fairEl.style.color = "var(--warn)"; }
 
-  if (!tmA || !tmB) return;
-  const scoringIssue = getScoringDecisionIssue([...(tmA.players || []), ...(tmB.players || [])]);
-  if (scoringIssue) {
-    document.getElementById("simRows").innerHTML = `<p class="draft-empty">${draftEscapeHtml(scoringIssue)}</p>`;
-    for (const side of ["A", "B"]) {
-      document.getElementById(`simBanner${side}`).textContent = "Win probability unavailable";
-      document.getElementById(`simScore${side}`).textContent = "Scoring inputs incomplete";
-    }
+  const impact = buildTradeLineupImpact(tmA, tmB, state.tradeSideA, state.tradeSideB);
+  const warningsHtml = renderTradeRosterWarnings(review);
+  if (impact.reason) {
+    consoleEl.innerHTML = `<p class="comparison-note">${draftEscapeHtml(impact.reason)} Model values remain available; no verified lineup impact.</p>${warningsHtml}`;
     return;
   }
   const beforeA = calcOptimalLineup(impact.beforeA, true).total;
@@ -3524,12 +3712,12 @@ function updateTradeEvaluation() {
   const signed = value => `${value >= 0 ? "+" : ""}${value.toFixed(1)}`;
   if (impact.currentWeekLocked) {
     consoleEl.innerHTML = `<div class="trade-impact-grid">${[[nameA, dA, poDeltaA], [nameB, dB, poDeltaB]].map(([name, ros, po]) => `<div><strong>${draftEscapeHtml(name)}</strong><span>Playoffs ${signed(po)} pts/game</span><b style="color:var(--${ros >= 0 ? "good" : "bad"})">${signed(ros)} pts/game rest of season</b></div>`).join("")}</div>
-    <p class="comparison-note">A selected player has already kicked off this week, so this trade would take effect next week. Showing the rest-of-season and playoff starter impact instead of this week. Model asset value: ${adjA} vs ${adjB} (${ratio.toFixed(1)}% match), not a probability of acceptance. Does not verify roster limits, trade deadlines or processing time.</p>`;
+    <p class="comparison-note">A selected player has already kicked off this week; selected-week impact is withheld. Showing rest-of-season and playoff estimates, not a guaranteed processing date. Model asset value: ${adjA} vs ${adjB} (${ratio.toFixed(1)}% match), not acceptance odds. Verify trade deadlines, reserve eligibility and processing time.</p>${warningsHtml}`;
     return;
   }
 
   consoleEl.innerHTML = `<div class="trade-impact-grid">${[[nameA, impact.teamA], [nameB, impact.teamB]].map(([name, result]) => `<div><strong>${draftEscapeHtml(name)}</strong><span>${result.before.toFixed(1)} → ${result.after.toFixed(1)} projected starter points</span><b style="color:var(--${result.delta >= 0 ? "good" : "bad"})">${result.delta >= 0 ? "+" : ""}${result.delta.toFixed(1)} this week</b></div>`).join("")}</div>
-    <p class="comparison-note">${draftEscapeHtml(getProjectionSourceNote())} ${state.gameDayScheduleAvailable ? "Known kickoff locks respected." : "Kickoff locks unverified."} Assumes immediate availability; does not verify roster limits, trade deadlines or processing time.</p>
+    <p class="comparison-note">${draftEscapeHtml(getProjectionSourceNote())} ${state.gameDayScheduleAvailable ? "Known kickoff locks respected." : "Kickoff locks unverified."} Assumes immediate availability; verify trade deadlines, reserve eligibility and processing time.</p>${warningsHtml}
     <details><summary>Asset values &amp; longer-term estimates</summary>
     <p>Model asset value: ${adjA} vs ${adjB} (${ratio.toFixed(1)}% match). Not a probability of acceptance.</p>
     <p>ROS starter estimate: ${draftEscapeHtml(nameA)} ${dA >= 0 ? "+" : ""}${dA.toFixed(1)} · ${draftEscapeHtml(nameB)} ${dB >= 0 ? "+" : ""}${dB.toFixed(1)} points/game.</p>
@@ -3545,24 +3733,30 @@ function computeLeaguePositionalGrades(myIdx) {
   }
 
   const totalTeams = state.managers.length;
-  const slotCounts = { QB: 1, RB: 2, WR: 2, TE: 1 };
   const slots = state.activeLeague?.rosterPositions || [];
-  if (slots.filter(s => s === "QB").length >= 2 || slots.some(s => ["SUPER_FLEX","Q/W/R/T"].includes(s))) slotCounts.QB = 2;
-  if (slots.filter(s => s === "WR").length >= 3) slotCounts.WR = 3;
+  const slotCounts = slots.length ? Object.fromEntries(["QB", "RB", "WR", "TE"].map(pos =>
+    [pos, slots.filter(slot => slot === pos).length])) : { QB: 1, RB: 2, WR: 2, TE: 1 };
+  if (slots.some(s => ["SUPER_FLEX","Q/W/R/T"].includes(s))) slotCounts.QB += slots.filter(s => ["SUPER_FLEX","Q/W/R/T"].includes(s)).length;
 
-  const unitKeys = ["QB", "RB", "WR", "TE", "DEPTH"];
+  const corePositions = ["QB", "RB", "WR", "TE"].filter(pos => !slots.length || slots.some(slot => isPosEligible(pos, slot)));
+  if (!corePositions.length) {
+    gridEl?.replaceChildren();
+    if (summaryEl) summaryEl.textContent = "This league has no QB/RB/WR/TE starter slots. Use target comparisons for other positions.";
+    return { weakestPos: "ALL", surplusPos: "ALL" };
+  }
+  const unitKeys = [...corePositions, "DEPTH"];
   const scoresByUnit = { QB: [], RB: [], WR: [], TE: [], DEPTH: [] };
 
   state.managers.forEach((mgr, mIdx) => {
     const byPos = { QB: [], RB: [], WR: [], TE: [] };
-    mgr.players.forEach(pid => {
+    getPlannerRosterIds(mgr).forEach(pid => {
       const p = state.players[pid];
       if (p && !p.isPick && byPos[p.position]) byPos[p.position].push(p);
     });
     Object.keys(byPos).forEach(k => byPos[k].sort((a, b) => (b.baseValue + b.seasonPpg * 140) - (a.baseValue + a.seasonPpg * 140)));
 
-    ["QB", "RB", "WR", "TE"].forEach(pos => {
-      const req = slotCounts[pos] || 1;
+    corePositions.forEach(pos => {
+      const req = slotCounts[pos];
       const starters = byPos[pos].slice(0, req);
       const backups = byPos[pos].slice(req, req + 2);
       const stScore = starters.reduce((s, p) => s + p.baseValue + p.seasonPpg * 180, 0);
@@ -3579,8 +3773,8 @@ function computeLeaguePositionalGrades(myIdx) {
   const myGrades = {};
   unitKeys.forEach(u => {
     const sorted = [...scoresByUnit[u]].sort((a, b) => b.score - a.score);
-    const rk = sorted.findIndex(x => x.mIdx === myIdx) + 1;
-    const mine = sorted[rk - 1];
+    const mine = sorted.find(x => x.mIdx === myIdx);
+    const rk = sorted.filter(x => x.score > mine.score).length + 1;
     const pct = totalTeams > 1 ? (totalTeams - rk) / (totalTeams - 1) : 0.5;
     let letter = "B", badgeCls = "badge-blue";
     if (pct >= 0.84) { letter = "A+"; badgeCls = "badge-green"; }
@@ -3593,8 +3787,8 @@ function computeLeaguePositionalGrades(myIdx) {
     myGrades[u] = { unit: u, rank: rk, totalTeams, letter, badgeCls, topPlayers: mine.topPlayers };
   });
 
-  const coreUnits = ["QB", "RB", "WR", "TE"].map(k => myGrades[k]).sort((a, b) => b.rank - a.rank);
-  const weakest = coreUnits[0], secondWeakest = coreUnits[1];
+  const coreUnits = corePositions.map(k => myGrades[k]).sort((a, b) => b.rank - a.rank);
+  const weakest = coreUnits[0], secondWeakest = coreUnits[1] || weakest;
   const strongest = [...coreUnits].sort((a, b) => a.rank - b.rank)[0];
   state.weakestPosByTeam[myIdx] = weakest.unit;
 
@@ -3640,10 +3834,10 @@ function computeLeaguePositionalGrades(myIdx) {
     summaryEl.innerHTML = `
       <div style="display:flex;flex-wrap:wrap;gap:14px;align-items:center;justify-content:space-between;">
         <div style="flex:1;min-width:280px;">
-          <b style="color:var(--bad);">Primary Roster Weakness — ${weakest.unit} (Grade ${weakest.letter}, Rank #${weakest.rank}/${totalTeams}):</b>
-          ${myTeamName}'s ${weakest.unit} group (${weakNames}) trails league contenders, with ${secondWeakest.unit} (Rank #${secondWeakest.rank}/${totalTeams}) as your secondary upgrade spot.<br>
-          <b style="color:var(--good);">Best Trade Leverage — ${strongest.unit} Surplus (Grade ${strongest.letter}, Rank #${strongest.rank}/${totalTeams}):</b>
-          Deal from your ${strongest.unit} depth (${surplusNames}) in a <b>2-for-1 consolidation</b> or <b>2-for-2 package</b> below to acquire players with <b>A / A+ Fantasy Playoff schedules</b>.
+          <b style="color:var(--bad);">Relative Upgrade Priority — ${weakest.unit} (Grade ${weakest.letter}, Rank #${weakest.rank}/${totalTeams}):</b>
+          ${myTeamName}'s ${weakest.unit} group (${weakNames}) is a starting point for comparisons${secondWeakest !== weakest ? `, followed by ${secondWeakest.unit} (Rank #${secondWeakest.rank}/${totalTeams})` : ""}. A relative grade does not prove a starter gap or an available upgrade.<br>
+          <b style="color:var(--good);">Potential Trade Leverage — ${strongest.unit} (Grade ${strongest.letter}, Rank #${strongest.rank}/${totalTeams}):</b>
+          Compare offers involving ${strongest.unit} assets (${surplusNames || "no active players"}). Protect starter coverage and review both teams' gains; stronger unit rank does not mean every player is expendable.
         </div>
         <button id="autoTargetNeedBtn" class="btn-builder-action" style="padding:8px 14px;">Target ${weakest.unit} Upgrades (${weakest.letter})</button>
       </div>`;
@@ -3664,13 +3858,20 @@ function classifyManagerArchetype(mgr) {
     return { code: "CONTENDER", label: "TITLE CONTENDER", roleTag: "BUYING VETERANS", badgeCls: "badge-green" };
   }
   if (mgr.currentRank > pSpots + 1 || mgr.playoffPct <= 38) {
-    return { code: "REBUILDER", label: "REBUILDER • SELLER", roleTag: "WANTS PICKS / YOUTH", badgeCls: "badge-red" };
+    return { code: "REBUILDER", label: isPickTradingAllowedInLeague() ? "REBUILDER • SELLER" : "OUTSIDE PLAYOFF PICTURE", roleTag: isPickTradingAllowedInLeague() ? "PICKS / YOUTH MAY FIT" : "DEPTH MAY FIT", badgeCls: "badge-red" };
   }
   return { code: "BUBBLE", label: "PLAYOFF BUBBLE", roleTag: "URGENT WIN-NOW", badgeCls: "badge-yellow" };
 }
 
 async function buildTradeDatabase() {
+  const request = ++tradeHistoryRequest;
+  const league = state.activeLeague;
+  const key = `${league?.provider}:${league?.leagueId}:${state.week}`;
   state.dbTrades = [];
+  tradeHistoryStatus = { key, loading: league?.provider === "sleeper", errors: [],
+    coverage: league?.provider === "sleeper" ? `Two-team completed player exchanges from the last 8 weeks through Week ${state.week}. Picks and multi-team trades are excluded; player legs of mixed trades are labeled.`
+      : "Completed trade history is not available from this provider/import. Generated roster ideas are still available." };
+  renderTradeDatabase();
   if (state.activeLeague?.provider !== "espn") state.managerTendencies = [];
   const fmtTag = state.activeLeague
     ? `${state.activeLeague.leagueType === 2 ? "Dynasty" : (state.activeLeague.leagueType === 1 ? "Keeper" : "Redraft")} • ${state.activeLeague.totalTeams}T`
@@ -3682,9 +3883,17 @@ async function buildTradeDatabase() {
       const firstWeek = Math.max(1, lastWeek - 7);
       const reqs = [];
       for (let w = firstWeek; w <= lastWeek; w++) {
-        reqs.push(fetchJson(`https://api.sleeper.app/v1/league/${state.activeLeague.leagueId}/transactions/${w}`).catch(() => []));
+        reqs.push(fetchJson(`https://api.sleeper.app/v1/league/${league.leagueId}/transactions/${w}`));
       }
-      const weeklyTx = await Promise.all(reqs);
+      const responses = await Promise.allSettled(reqs);
+      if (request !== tradeHistoryRequest || state.activeLeague !== league) return;
+      const weeklyTx = responses.map((response, index) => {
+        if (response.status === "fulfilled" && Array.isArray(response.value)) return response.value;
+        const message = response.status === "rejected" ? response.reason.message : "Invalid transaction response.";
+        tradeHistoryStatus.errors.push(`Week ${firstWeek + index}: ${message}`);
+        console.warn("Trade history unavailable:", message);
+        return [];
+      });
       const tendencies = new Map();
       const getTendency = rosterId => {
         if (!tendencies.has(rosterId)) tendencies.set(rosterId, { rosterId, acquisitions: 0, trades: 0, positions: {}, draftPicks: 0, draftPositions: {} });
@@ -3703,26 +3912,27 @@ async function buildTradeDatabase() {
             if (tx.type === "trade") tradeRecipients.add(rosterId);
           });
           tradeRecipients.forEach(rosterId => { getTendency(rosterId).trades++; });
-          if (tx.type !== "trade" || !tx.roster_ids || tx.roster_ids.length < 2) return;
+          if (tx.type !== "trade" || !tx.roster_ids || tx.roster_ids.length !== 2) return;
           const rA = tx.roster_ids[0], rB = tx.roster_ids[1];
           const aIds = [], bIds = [];
           for (const [pid, destRoster] of Object.entries(tx.adds || {})) {
             if (!state.players[pid]) continue;
-            if (destRoster === rA) aIds.push(pid);
-            else if (destRoster === rB) bIds.push(pid);
+            if (String(destRoster) === String(rB)) aIds.push(pid);
+            else if (String(destRoster) === String(rA)) bIds.push(pid);
           }
           if (aIds.length && bIds.length) {
-            const aVal = aIds.reduce((s, id) => s + state.players[id].baseValue, 0);
-            const bVal = bIds.reduce((s, id) => s + state.players[id].baseValue, 0);
-            state.dbTrades.push({ aIds, bIds, aVal, bVal, src: "LEAGUE", label: `Week ${firstWeek + wIdx} League Trade`, format: fmtTag });
+            const { giveValue: aVal, getValue: bVal } = getTradePackageValues(aIds, bIds);
+            state.dbTrades.push({ aIds, bIds, aVal, bVal, rosterA: rA, rosterB: rB, src: "LEAGUE", label: `Week ${firstWeek + wIdx} Completed Trade`, format: `${fmtTag}${tx.draft_picks?.length ? " • Player legs only; picks omitted" : ""}` });
           }
         });
       });
       try {
-        const drafts = await fetchJson(`https://api.sleeper.app/v1/league/${state.activeLeague.leagueId}/drafts`);
+        const drafts = await fetchJson(`https://api.sleeper.app/v1/league/${league.leagueId}/drafts`);
+        if (request !== tradeHistoryRequest || state.activeLeague !== league) return;
         const selectedDraft = (drafts || []).find(draft => String(draft.season) === String(state.activeLeague.season)) || drafts?.[0];
         if (selectedDraft?.draft_id) {
           const picks = await fetchJson(`https://api.sleeper.app/v1/draft/${selectedDraft.draft_id}/picks`);
+          if (request !== tradeHistoryRequest || state.activeLeague !== league) return;
           (picks || []).forEach(pick => {
             const player = state.players[pick.player_id];
             if (!player) return;
@@ -3731,94 +3941,90 @@ async function buildTradeDatabase() {
             profile.draftPositions[player.position] = (profile.draftPositions[player.position] || 0) + 1;
           });
         }
-      } catch {}
+      } catch (error) {
+        if (request !== tradeHistoryRequest || state.activeLeague !== league) return;
+        console.warn("Manager draft tendencies unavailable:", error);
+      }
       state.managerTendencies = [...tendencies.values()];
-    } catch {}
-  }
-
-  const selTeamIdx = parseInt(document.getElementById("teamSelect")?.value || "0", 10);
-  const myMgr = state.managers[selTeamIdx];
-  const myRosterSet = new Set(myMgr ? myMgr.players : []);
-
-  const myRosterPlayers = Array.from(myRosterSet)
-    .map(id => state.players[id])
-    .filter(p => p && !p.isPick && p.isCurrentNfl && ["QB","RB","WR","TE"].includes(p.position) && p.baseValue >= 800)
-    .sort((a, b) => b.baseValue - a.baseValue);
-
-  const otherLeaguePlayers = Object.values(state.players)
-    .filter(p => !p.isPick && p.isCurrentNfl && !myRosterSet.has(p.id) && ["QB","RB","WR","TE"].includes(p.position) && p.baseValue >= 800)
-    .sort((a, b) => b.baseValue - a.baseValue);
-
-  const seenCompKeys = new Set();
-
-  myRosterPlayers.forEach((myP, idx) => {
-    let matchesForThisPlayer = 0;
-    for (const otherP of otherLeaguePlayers) {
-      if (myP.position === otherP.position) continue;
-      const match = (1 - Math.abs(myP.baseValue - otherP.baseValue) / Math.max(myP.baseValue, otherP.baseValue)) * 100;
-      if (match >= 90) {
-        const key = [myP.id, otherP.id].sort().join("|");
-        if (!seenCompKeys.has(key)) {
-          seenCompKeys.add(key);
-          const ownerMgr = state.managers.find(m => m.players.includes(otherP.id));
-          const ownerLbl = ownerMgr ? `vs ${ownerMgr.teamName.split(" (")[0]}` : "1-for-1 Market Comp";
-          state.dbTrades.push({
-            aIds: [myP.id], bIds: [otherP.id], aVal: myP.baseValue, bVal: otherP.baseValue,
-            src: "MARKET", label: `Roster Comp (${ownerLbl})`, format: fmtTag, involvesMyRoster: true
-          });
-          matchesForThisPlayer++;
-          if (matchesForThisPlayer >= 3) break;
-        }
-      }
-    }
-
-    if (idx + 1 < myRosterPlayers.length) {
-      const myP2 = myRosterPlayers[idx + 1];
-      const pairVal = Math.round((myP.baseValue + myP2.baseValue) * 0.92);
-      for (const stud of otherLeaguePlayers.slice(0, 35)) {
-        if (stud.baseValue <= myP.baseValue * 1.08) continue;
-        const match = (1 - Math.abs(pairVal - stud.baseValue) / Math.max(pairVal, stud.baseValue)) * 100;
-        if (match >= 91) {
-          const ownerMgr = state.managers.find(m => m.players.includes(stud.id));
-          const ownerLbl = ownerMgr ? `vs ${ownerMgr.teamName.split(" (")[0]}` : "2-for-1 Comp";
-          state.dbTrades.push({
-            aIds: [myP.id, myP2.id], bIds: [stud.id], aVal: pairVal, bVal: stud.baseValue,
-            src: "MARKET", label: `2-for-1 Upgrade (${ownerLbl})`, format: fmtTag, involvesMyRoster: true
-          });
-          break;
-        }
-      }
-    }
-  });
-
-  const topPool = otherLeaguePlayers.slice(0, 60);
-  for (let i = 0; i < topPool.length; i += 2) {
-    const pA = topPool[i], pB = topPool[i + 1];
-    if (!pA || !pB || pA.position === pB.position) continue;
-    const match = (1 - Math.abs(pA.baseValue - pB.baseValue) / Math.max(pA.baseValue, pB.baseValue)) * 100;
-    if (match >= 91) {
-      state.dbTrades.push({
-        aIds: [pA.id], bIds: [pB.id], aVal: pA.baseValue, bVal: pB.baseValue,
-        src: "MARKET", label: "League-Wide Market Comp", format: fmtTag, involvesMyRoster: false
-      });
+    } catch (error) {
+      if (request !== tradeHistoryRequest || state.activeLeague !== league) return;
+      tradeHistoryStatus.errors.push(`Could not read completed trades: ${error.message}`);
+      console.warn("Trade history unavailable:", error);
     }
   }
-
+  if (request !== tradeHistoryRequest || state.activeLeague !== league) return;
+  tradeHistoryStatus.loading = false;
   renderTradeDatabase();
   renderTradeFinder();
 }
 
+function getGeneratedTradeIdeas(myIndex, goal) {
+  const key = JSON.stringify([myIndex, goal, state.week, state.activeLeague, state.managers.map(manager =>
+    [manager.rosterId, manager.players, manager.reserve, manager.taxi]), state.managers.flatMap(manager =>
+    (manager.players || []).map(id => [id, state.players[id]?.baseValue, state.players[id]?.seasonPpg,
+      state.players[id]?.projectedPoints, state.players[id]?.projectionScoringIssue])), state.gameDayByTeam]);
+  if (tradeIdeasCache.key === key) return tradeIdeasCache.offers;
+  const offers = [];
+  const seen = new Set();
+  state.managers.forEach((partner, partnerIndex) => {
+    if (partnerIndex === myIndex) return;
+    (partner.players || []).forEach(targetId => {
+      const result = buildTargetTradeOffers(myIndex, targetId, "all", goal, true);
+      (result.offers || []).forEach(offer => {
+        const identity = `${partnerIndex}:${offer.giveIds.slice().sort().join(",")}|${offer.getIds.slice().sort().join(",")}`;
+        if (seen.has(identity)) return;
+        seen.add(identity);
+        offers.push({ ...offer, aIds: offer.giveIds, bIds: offer.getIds, aVal: offer.value, bVal: offer.getValue,
+          src: "MARKET", label: `Idea with ${partner.teamName}`, format: "Generated model comparison", involvesMyRoster: true });
+      });
+    });
+  });
+  offers.sort((a, b) => b.rankScore - a.rankScore);
+  tradeIdeasCache = { key, offers };
+  return offers;
+}
+
+function scheduleTradeDatabaseRender() {
+  const request = ++tradeDatabaseRenderRequest;
+  const table = document.getElementById("dbTable");
+  table.setAttribute("aria-busy", "true");
+  document.getElementById("dbStatus").textContent = "Generating roster ideas and reviewing both teams' lineup tradeoffs...";
+  setTimeout(() => {
+    if (request !== tradeDatabaseRenderRequest) return;
+    try {
+      renderTradeDatabase();
+    } catch (error) {
+      console.error("Trade Database generation failed:", error);
+      document.getElementById("dbStatus").textContent = `Could not generate trade ideas: ${error.message}. Retry Refresh or refresh league data.`;
+      table.replaceChildren();
+    } finally {
+      table.setAttribute("aria-busy", "false");
+    }
+  }, 0);
+}
+
 function renderTradeDatabase() {
   ensureDynamicTradeControls();
+  syncTradeRosterControls();
   const q = (document.getElementById("dbSearch")?.value || "").trim().toLowerCase();
   const pos = document.getElementById("dbPosFilter")?.value || "ALL";
-  const src = document.getElementById("dbSrcFilter")?.value || "ALL";
+  const src = document.getElementById("dbSrcFilter")?.value || "MARKET";
   const rosterScope = document.getElementById("dbRosterScope")?.value || "MY_ROSTER";
 
-  const selTeamIdx = parseInt(document.getElementById("teamSelect")?.value || "0", 10);
+  const selTeamIdx = parseInt(document.getElementById("tradeTeamA")?.value || "0", 10);
   const myMgr = state.managers[selTeamIdx];
   const myRosterSet = new Set(myMgr ? myMgr.players : []);
   const myTeamShort = myMgr ? myMgr.teamName.split(" (")[0] : "Selected Roster";
+  const history = src === "LEAGUE";
+  document.getElementById("dbGoal").disabled = history;
+  document.getElementById("dbRosterScope").disabled = !history;
+  const historyKey = `${state.activeLeague?.provider}:${state.activeLeague?.leagueId}:${state.week}`;
+  const status = tradeHistoryStatus.key === historyKey ? tradeHistoryStatus : { loading: false, errors: [],
+    coverage: state.activeLeague?.provider === "sleeper" ? "History has not been loaded. Use Refresh ideas & history."
+      : "Completed trade history is unavailable for this provider/import." };
+  document.getElementById("dbStatus").textContent = !myMgr ? "Connect a league to generate roster-based trade ideas."
+    : history ? `${status.loading ? "Loading completed trades… " : ""}${status.coverage} ${status.errors.join(" ")}`
+    : `Ideas for ${myMgr.teamName}. Ranked by ${document.getElementById("dbGoal").value === "mine" ? "your estimated lineup gain (partner losses are disclosed)" : "both teams' estimated lineup gains and value balance (neither lineup meaningfully loses)"}. Missing scoring produces value-only comparisons. Not completed trades or acceptance predictions.`;
 
   const arrow = k => (dbSortKey === k ? (dbSortDir === -1 ? " ▼" : " ▲") : "");
   const tbl = document.getElementById("dbTable");
@@ -3827,9 +4033,9 @@ function renderTradeDatabase() {
     <thead>
       <tr>
         <th style="width:165px;cursor:pointer;" data-dbsort="src">Source / Partner${arrow("src")}</th>
-        <th style="text-align:left;cursor:pointer;color:var(--accent);" data-dbsort="aVal">${rosterScope === "MY_ROSTER" ? `${myTeamShort} Side` : "Side A Assets"} (Val)${arrow("aVal")}</th>
+        <th style="text-align:left;cursor:pointer;color:var(--accent);" data-dbsort="aVal">${!history || rosterScope === "MY_ROSTER" ? `${draftEscapeHtml(myTeamShort)} sends` : "Team A sent"} (Model value)${arrow("aVal")}</th>
         <th style="width:145px;cursor:pointer;color:var(--good);" data-dbsort="matchPct">Value Balance${arrow("matchPct")}</th>
-        <th style="text-align:left;cursor:pointer;color:var(--warn);" data-dbsort="bVal">Counterparty Assets (Val)${arrow("bVal")}</th>
+        <th style="text-align:left;cursor:pointer;color:var(--warn);" data-dbsort="bVal">${history ? "Other team sent" : "You receive"} (Model value)${arrow("bVal")}</th>
         <th style="width:135px;">Modify Trade</th>
       </tr>
     </thead>
@@ -3845,19 +4051,16 @@ function renderTradeDatabase() {
   });
 
   const tbody = tbl.querySelector("tbody");
-  const scoringIssue = getScoringDecisionIssue();
-  if (scoringIssue) {
-    tbody.innerHTML = `<tr><td colspan="5" class="draft-empty">${draftEscapeHtml(scoringIssue)}</td></tr>`;
-    return;
-  }
   const filtered = [];
 
-  state.dbTrades.forEach(t => {
+  const trades = history ? (tradeHistoryStatus.key === historyKey ? state.dbTrades : [])
+    : myMgr ? getGeneratedTradeIdeas(selTeamIdx, document.getElementById("dbGoal").value) : [];
+  trades.forEach(t => {
     if (src !== "ALL" && t.src !== src) return;
     let aIds = [...t.aIds], bIds = [...t.bIds], aVal = t.aVal, bVal = t.bVal;
 
-    const aHasMine = aIds.some(id => myRosterSet.has(id));
-    const bHasMine = bIds.some(id => myRosterSet.has(id));
+    const aHasMine = t.rosterA != null ? String(t.rosterA) === String(myMgr?.rosterId) : aIds.some(id => myRosterSet.has(id));
+    const bHasMine = t.rosterB != null ? String(t.rosterB) === String(myMgr?.rosterId) : bIds.some(id => myRosterSet.has(id));
     const involvesMine = aHasMine || bHasMine;
 
     if (rosterScope === "MY_ROSTER" && myRosterSet.size > 0 && !involvesMine) return;
@@ -3871,12 +4074,14 @@ function renderTradeDatabase() {
     const pB = bIds.map(id => state.players[id]).filter(Boolean);
     const all = [...pA, ...pB];
     if (!all.length) return;
-    if (q && !all.some(p => p.name.toLowerCase().includes(q) || p.team.toLowerCase().includes(q)) && !t.label.toLowerCase().includes(q)) return;
+    const managers = state.managers.filter(manager => [t.rosterA, t.rosterB].some(id => id != null && String(id) === String(manager.rosterId))).map(manager => manager.teamName).join(" / ");
+    if (q && !all.some(p => p.name.toLowerCase().includes(q) || p.team.toLowerCase().includes(q)) &&
+      !`${t.label} ${managers}`.toLowerCase().includes(q)) return;
     if (pos !== "ALL" && !all.some(p => p.position === pos)) return;
 
     const diff = Math.abs(aVal - bVal);
     const matchPct = Math.max(aVal, bVal) > 0 ? (1 - diff / Math.max(aVal, bVal)) * 100 : 100;
-    filtered.push({ ...t, aIds, bIds, aVal, bVal, matchPct, involvesMine });
+    filtered.push({ ...t, aIds, bIds, aVal, bVal, matchPct, involvesMine, managerLabel: managers });
   });
 
   filtered.sort((a, b) => {
@@ -3884,6 +4089,7 @@ function renderTradeDatabase() {
     if (dbSortKey === "aVal") return (b.aVal - a.aVal) * dir;
     if (dbSortKey === "bVal") return (b.bVal - a.bVal) * dir;
     if (dbSortKey === "src") return a.src.localeCompare(b.src) * dir;
+    if (dbSortKey === "rankScore") return (b.rankScore - a.rankScore) * dir;
     return (b.matchPct - a.matchPct) * dir;
   });
 
@@ -3891,25 +4097,36 @@ function renderTradeDatabase() {
   shownList.forEach(t => {
     const srcBadge = t.src === "LEAGUE"
       ? `<span class="badge badge-green">LEAGUE TRADE</span>`
-      : (t.involvesMine ? `<span class="badge badge-blue">MY ROSTER COMP</span>` : `<span class="badge badge-purple">MARKET COMP</span>`);
+      : `<span class="badge badge-blue">GENERATED IDEA</span>`;
 
     const tr = document.createElement("tr");
     tr.className = "table-row-hover";
     tr.innerHTML = `
-      <td><div style="display:flex;flex-direction:column;gap:5px;align-items:center;">${srcBadge}<div style="font-size:11px;font-weight:700;">${t.label}</div><div style="font-size:10px;color:var(--text-muted);">${t.format}</div></div></td>
+      <td><div style="display:flex;flex-direction:column;gap:5px;align-items:center;">${srcBadge}<div style="font-size:11px;font-weight:700;">${draftEscapeHtml(t.label)}</div>${history ? `<div style="font-size:11px;">${draftEscapeHtml(t.managerLabel)}</div>` : ""}<div style="font-size:10px;color:var(--text-muted);">${draftEscapeHtml(t.format)}</div></div></td>
       <td>${renderTradeAssetStackHTML(t.aIds)}</td>
-      <td><div style="display:flex;flex-direction:column;gap:5px;align-items:center;"><span class="badge ${t.matchPct >= 92 ? 'badge-green' : 'badge-yellow'}">${t.matchPct.toFixed(0)}% Fair Match</span><div style="font-size:11px;font-weight:700;color:var(--text-muted);">${t.aVal} vs ${t.bVal}</div></div></td>
+      <td><div style="display:flex;flex-direction:column;gap:5px;align-items:center;"><span class="badge ${t.matchPct >= 92 ? 'badge-green' : 'badge-yellow'}">${t.matchPct.toFixed(0)}% Model-value match</span><div style="font-size:11px;font-weight:700;color:var(--text-muted);">${t.aVal} vs ${t.bVal}</div></div>${history ? '<p class="comparison-note">Values are today’s estimates, not values when traded.</p>' : renderTradeOfferImpact(t)}</td>
       <td>${renderTradeAssetStackHTML(t.bIds)}</td>
-      <td><button class="btn-builder-action">Open in Builder →</button></td>`;
-    tr.querySelector("button").onclick = () => openTradeInBuilder(t.aIds, t.bIds);
+      <td>${history ? '<span class="comparison-note">Completed trade · history only</span>' : '<button class="btn-builder-action">Review in Builder</button>'}</td>`;
+    if (!history) tr.querySelector("button").onclick = () => {
+      if (!isTradeOfferOwned(t) || getTradePackageValues(t.aIds, t.bIds).match < 85 ||
+        Number(document.getElementById("tradeTeamA").value) !== t.myIndex) {
+        document.getElementById("dbStatus").textContent = "Rosters changed. Refresh ideas before reviewing."; return;
+      }
+      openTradeInBuilder(t.aIds, t.bIds, t.myIndex, t.partnerIndex);
+    };
     tbody.appendChild(tr);
   });
 
   if (!shownList.length) {
-    tbody.innerHTML = `<tr><td colspan="5" style="padding:24px;color:var(--text-muted);">No matching trades found. Try switching Roster Filter to "All League & Market Comps".</td></tr>`;
+    const message = !myMgr ? "Connect a league to see trade ideas." : q || pos !== "ALL"
+      ? "No results match these filters. Clear the search or choose All Positions."
+      : history ? status.loading ? "Loading completed trades…" : status.errors.length ? "History is incomplete or unavailable. See the error above and retry Refresh."
+        : "No completed player trades reported for this view. Try All league teams or switch to Generated Trade Ideas."
+      : "No packages meet this goal and the 85% model-value match. Try Improve my lineup, another team, or a target comparison in Trade Finder. We do not invent an upgrade when the model finds none.";
+    tbody.innerHTML = `<tr><td colspan="5" class="draft-empty">${draftEscapeHtml(message)}</td></tr>`;
   }
   const cntEl = document.getElementById("dbCountLbl");
-  if (cntEl) cntEl.textContent = `${shownList.length} trades shown`;
+  if (cntEl) cntEl.textContent = `${shownList.length} of ${filtered.length} ${history ? "completed trades" : "ideas"}`;
 }
 
 function renderTradeFinder() {
@@ -3932,7 +4149,10 @@ function renderTradeFinder() {
   });
 
   const tbody = tbl.querySelector("tbody");
-  const scoringIssue = getScoringDecisionIssue();
+  const activePlayers = state.managers.flatMap(getPlannerRosterIds);
+  const scoringIssue = getScoringDecisionIssue() || (activePlayers.some(id =>
+    !Number.isFinite(state.players[id]?.projectedPoints) || !Number.isFinite(state.players[id]?.seasonPpg))
+    ? "Player projections or season PPG are missing or invalid. Needs-based upgrades are paused; target and Database value comparisons remain available." : "");
   if (scoringIssue) {
     document.getElementById("finderCountLbl").textContent = "0 proposals";
     document.getElementById("posGradesGrid").replaceChildren();
@@ -3944,6 +4164,8 @@ function renderTradeFinder() {
   }
   if (!myTm || state.managers.length < 2) {
     if (document.getElementById("posGradesGrid")) document.getElementById("posGradesGrid").innerHTML = "";
+    document.getElementById("myArchetypeBadge").textContent = "CONNECT A LEAGUE";
+    document.getElementById("rosterNeedsSummary").textContent = "Connect a league with at least two teams to analyze roster needs.";
     tbody.innerHTML = `<tr><td colspan="6" style="padding:24px;color:var(--text-muted);">Connect a league above to analyze positional grades, Contender vs. Rebuilder tags, and archetype-matched trades.</td></tr>`;
     document.getElementById("finderCountLbl").textContent = "0 proposals";
     return;
@@ -3968,8 +4190,9 @@ function renderTradeFinder() {
   const leagueSupportsPicks = isPickTradingAllowedInLeague();
   const allowPicks = leagueSupportsPicks && (pickMode !== "OFF");
 
-  const myBase = calcOptimalLineup(myTm.players, true).total;
-  const myPlayoffBase = calcPlayoffWindowAvgLineupPpg(myTm.players);
+  const myActive = getPlannerRosterIds(myTm);
+  const myBase = calcOptimalLineup(myActive, true).total;
+  const myPlayoffBase = calcPlayoffWindowAvgLineupPpg(myActive);
   const myPl = myTm.players.map(id => state.players[id])
     .filter(p => p && !p.isPick && p.isCurrentNfl && ["QB","RB","WR","TE"].includes(p.position) && p.baseValue >= 900)
     .sort((a, b) => b.baseValue - a.baseValue);
@@ -4018,25 +4241,16 @@ function renderTradeFinder() {
 
     if (sosBoostMode === "STRICT" && !hasElitePlayoffTarget) return;
 
-    const rawGive = giveObjs.reduce((s, p) => s + p.baseValue, 0);
-    const rawGet = getObjs.reduce((s, p) => s + p.baseValue, 0);
-    const cA = giveIds.length, cB = getIds.length;
-    let adjGive = rawGive, adjGet = rawGet;
-    if (cA !== cB) {
-      const tax = 1 - Math.min(0.16, Math.abs(cA - cB) * 0.06);
-      if (cA > cB) adjGive = Math.round(rawGive * tax);
-      else adjGet = Math.round(rawGet * tax);
-    }
-
-    const maxV = Math.max(adjGive, adjGet);
-    const match = maxV > 0 ? (1 - Math.abs(adjGive - adjGet) / maxV) * 100 : 0;
+    const { giveValue: adjGive, getValue: adjGet, match } = getTradePackageValues(giveIds, getIds);
     if (match < 85) return;
     if (strat === 2 && match < 92) return;
+    if (getTradeRosterReview(myTm, part, giveIds, getIds, false).reason) return;
 
     const givePlayerIds = giveIds.filter(id => !String(id).startsWith("PICK_"));
     const getPlayerIds = getIds.filter(id => !String(id).startsWith("PICK_"));
-    const myAfter = myTm.players.filter(id => !givePlayerIds.includes(id)).concat(getPlayerIds);
-    const ptAfter = part.players.filter(id => !getPlayerIds.includes(id)).concat(givePlayerIds);
+    const partnerActive = getPlannerRosterIds(part);
+    const myAfter = myActive.filter(id => !givePlayerIds.includes(id)).concat(getPlayerIds.filter(id => partnerActive.includes(id)));
+    const ptAfter = partnerActive.filter(id => !getPlayerIds.includes(id)).concat(givePlayerIds.filter(id => myActive.includes(id)));
     const dMy = calcOptimalLineup(myAfter, true).total - myBase;
     const dPt = calcOptimalLineup(ptAfter, true).total - partBase;
     const dPlayoffMy = calcPlayoffWindowAvgLineupPpg(myAfter) - myPlayoffBase;
@@ -4050,7 +4264,7 @@ function renderTradeFinder() {
     let archetypeFitBonus = 0;
     let archetypeReason = "";
 
-    if (partArch.code === "REBUILDER") {
+    if (partArch.code === "REBUILDER" && leagueSupportsPicks) {
       if (partnerGetsPick && weGetVeteranStarter) { archetypeFitBonus += 1.85; archetypeReason = "Rebuilder receives future pick for starting vet"; }
       else if (partnerGetsYoungAsset && weGetVeteranStarter) { archetypeFitBonus += 1.25; archetypeReason = "Rebuilder gets younger asset (≤25yo) for vet starter"; }
       else if (givePlayersOnly.length > getPlayersOnly.length) { archetypeFitBonus += 0.90; archetypeReason = "Rebuilder acquires multiple roster assets for stud"; }
@@ -4064,12 +4278,12 @@ function renderTradeFinder() {
 
     const effectiveMyGain = sosBoostMode !== "OFF" ? Math.max(dMy, dPlayoffMy) : dMy;
     let minPartnerDelta = -0.25;
-    if (partArch.code === "REBUILDER" && (partnerGetsPick || partnerGetsYoungAsset || givePlayersOnly.length > getPlayersOnly.length)) minPartnerDelta = -3.50;
+    if (leagueSupportsPicks && partArch.code === "REBUILDER" && (partnerGetsPick || partnerGetsYoungAsset || givePlayersOnly.length > getPlayersOnly.length)) minPartnerDelta = -3.50;
     else if (partnerGetsPick) minPartnerDelta = -1.50;
 
     if (strat === 0 && (effectiveMyGain < 0.05 || dPt < minPartnerDelta)) return;
     if (strat === 1 && effectiveMyGain < 0.25) return;
-    if (strat === 2 && (effectiveMyGain <= 0 && dPt <= 0 && archetypeFitBonus <= 0)) return;
+    if (strat === 2 && (dMy < -0.05 || dPt < -0.05 || Math.max(dMy, dPt) <= 0.05)) return;
 
     let sosRankBonus = 0;
     if (sosBoostMode !== "OFF") {
@@ -4095,7 +4309,7 @@ function renderTradeFinder() {
     const partArch = classifyManagerArchetype(part);
     if (partnerTypeFilter !== "ALL" && partArch.code !== partnerTypeFilter) return;
 
-    const partBase = calcOptimalLineup(part.players, true).total;
+    const partBase = calcOptimalLineup(getPlannerRosterIds(part), true).total;
     const thPl = part.players.map(id => state.players[id])
       .filter(p => p && !p.isPick && p.isCurrentNfl && ["QB","RB","WR","TE"].includes(p.position) && p.baseValue >= 900)
       .sort((a, b) => b.baseValue - a.baseValue);
@@ -4237,9 +4451,18 @@ function renderTradeFinder() {
           <span class="badge ${pr.dPlayoffMy >= pr.dMy && pr.dPlayoffMy > 0 ? 'badge-green' : 'badge-purple'}">Playoffs: ${pr.dPlayoffMy >= 0 ? '+' : ''}${pr.dPlayoffMy.toFixed(2)} PPG</span>
           <span style="font-size:10px;color:var(--text-muted);font-weight:700;">Partner: ${pr.dPt >= 0 ? '+' : ''}${pr.dPt.toFixed(2)} PPG</span>
         </div>
+        <p class="comparison-note">${pr.dPt < -0.05 ? "Partner loses starter points; inferred asset fit is not evidence they will accept." : pr.dMy <= 0.05 ? "ROS lineup does not improve; this idea relies on playoff or asset-value tradeoffs." : "Estimated lineup upgrade; partner preferences are inferred, not verified."}</p>
+        ${renderTradeRosterWarnings(getTradeRosterReview(myTm, pr.part, pr.giveIds, pr.getIds))}
       </td>
       <td><button class="btn-builder-action">Open in Builder →</button></td>`;
-    tr.querySelector("button").onclick = () => openTradeInBuilder(pr.giveIds, pr.getIds, myIdx, pr.partnerIdx);
+    tr.querySelector("button").onclick = () => {
+      const review = getTradeRosterReview(state.managers[myIdx], state.managers[pr.partnerIdx], pr.giveIds, pr.getIds);
+      if (review.reason || Number(document.getElementById("tradeTeamA").value) !== myIdx) {
+        document.getElementById("finderCountLbl").textContent = review.reason || "Selected team changed. Refresh these ideas.";
+        return;
+      }
+      openTradeInBuilder(pr.giveIds, pr.getIds, myIdx, pr.partnerIdx);
+    };
     tbody.appendChild(tr);
   });
 }
@@ -9772,6 +9995,7 @@ function renderAllViews(teamIdx) {
   renderRosterTab(teamIdx); renderPowerTab();
   renderTradeBuilderSide(true); renderTradeBuilderSide(false);
   updateTradeEvaluation(); renderTradeTargets(); renderTradeFinder();
+  if (document.getElementById("tmode-1").style.display !== "none") renderTradeDatabase();
   renderOptimizerTab(teamIdx); renderWaiversTab();
   renderMatchupSim(); drawSingleAnalyticsChart();
   renderPlayerComparison();
@@ -10082,7 +10306,11 @@ function bindControlEvents() {
     }
     rememberWorkspaceSelection();
     const idx = parseInt(e.target.value, 10);
-    if (document.getElementById("tradeTeamA")) document.getElementById("tradeTeamA").value = idx;
+    const tradeTeam = document.getElementById("tradeTeamA");
+    if (tradeTeam.value !== String(idx)) state.tradeSideA = [];
+    tradeTeam.value = String(idx);
+    renderTradeBuilderSide(true);
+    updateTradeEvaluation();
     renderTradeTargets();
     renderRosterTab(idx); renderOptimizerTab(idx); renderWaiversTab(); renderSosTab(); renderTradeFinder(); renderDraftRoom(); buildTradeDatabase();
     if (document.getElementById("inboxRecap")?.open) renderLeagueNewsletter();
@@ -10109,17 +10337,32 @@ function bindControlEvents() {
   });
   document.getElementById("powerChartMode")?.addEventListener("change", drawPowerChart);
   document.getElementById("tradeTeamA")?.addEventListener("change", e => {
-    if (document.getElementById("teamSelect")) document.getElementById("teamSelect").value = e.target.value;
     state.tradeSideA = [];
-    renderTradeTargets();
-    renderTradeBuilderSide(true); updateTradeEvaluation(); buildTradeDatabase();
+    const teamSelect = document.getElementById("teamSelect");
+    teamSelect.value = e.target.value;
+    teamSelect.dispatchEvent(new Event("change"));
   });
+  document.querySelectorAll("[data-trade-roster]").forEach(select => select.addEventListener("change", event => {
+    document.getElementById("tradeTeamA").value = event.target.value;
+    document.getElementById("tradeTeamA").dispatchEvent(new Event("change"));
+  }));
   document.getElementById("tradeTeamB")?.addEventListener("change", () => { state.tradeSideB = []; renderTradeBuilderSide(false); updateTradeEvaluation(); });
   document.getElementById("clearTradeBtn")?.addEventListener("click", () => { state.tradeSideA = []; state.tradeSideB = []; renderTradeBuilderSide(true); renderTradeBuilderSide(false); updateTradeEvaluation(); });
   document.getElementById("dbSearch")?.addEventListener("input", renderTradeDatabase);
   document.getElementById("dbRosterScope")?.addEventListener("change", renderTradeDatabase);
   document.getElementById("dbPosFilter")?.addEventListener("change", renderTradeDatabase);
-  document.getElementById("dbSrcFilter")?.addEventListener("change", renderTradeDatabase);
+  document.getElementById("dbSrcFilter")?.addEventListener("change", () => {
+    dbSortKey = document.getElementById("dbSrcFilter").value === "LEAGUE" ? "matchPct" : "rankScore";
+    dbSortDir = -1;
+    renderTradeDatabase();
+  });
+  document.getElementById("dbGoal")?.addEventListener("change", () => {
+    dbSortKey = "rankScore"; dbSortDir = -1; renderTradeDatabase();
+  });
+  document.getElementById("dbRefresh")?.addEventListener("click", () => {
+    tradeIdeasCache.key = "";
+    buildTradeDatabase();
+  });
   document.getElementById("finderPos")?.addEventListener("change", renderTradeFinder);
   document.getElementById("finderPartnerType")?.addEventListener("change", renderTradeFinder);
   document.getElementById("finderPkgType")?.addEventListener("change", renderTradeFinder);
@@ -10129,6 +10372,7 @@ function bindControlEvents() {
   document.getElementById("tradeTargetSearch")?.addEventListener("input", renderTradeTargets);
   document.getElementById("tradeTargetPlayer")?.addEventListener("change", () => document.getElementById("tradeTargetResults").replaceChildren());
   document.getElementById("tradeTargetPackage")?.addEventListener("change", () => document.getElementById("tradeTargetResults").replaceChildren());
+  document.getElementById("tradeTargetGoal")?.addEventListener("change", () => document.getElementById("tradeTargetResults").replaceChildren());
   document.getElementById("tradeTargetGenerate")?.addEventListener("click", generateTargetTradeOffers);
   document.getElementById("companionOpenLeague")?.addEventListener("click", openProviderInCurrentTab);
   initExtensionPanel();
